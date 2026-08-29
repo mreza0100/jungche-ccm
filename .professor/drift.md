@@ -336,3 +336,14 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   (`~/.config/systemd/user/tmux-title-renudge.{path,timer,service}`, hand-rolled, un-tracked) fires at
   `%h/.local/bin/tmux-title-renudge`; the symlink preserves that contract. Neither ships to adopters.
   Follow-up candidate: fold both into `pfm/internal/installer/assets/` so `pfm install` owns the wiring.
+
+- 2026-08-29: this host runs `claude.systemPrompt = "professor"` (~/.config/pfm/config.json); the RND
+  sandbox `.professor/RND/harness-prompt/1-load-bearing/` keeps the capture/drift tooling (sink.py,
+  snapshot-harness-prompt.sh, check-harness-drift.sh) and the v2.1.251 baselines pfm's doctor check was
+  built from. A bare `claude` typed inside an existing tmux pane still takes the launcher's TMUX
+  passthrough (pre-existing) and gets the production prompt; fleet spawns inject.
+- 2026-08-29: `scripts/pfm-statusline` gauge learns the post-compact window — a `compact_boundary`
+  entry newer than the last usage entry means that usage is the pre-compact corpse; render instead
+  `compactMetadata.postTokens` + the project's cached system floor, marked `~` (estimate). Missing
+  both → the pre-compact number stands (stale beats blank). Verified against a live post-compact
+  transcript: estimate ~77.0K vs actual 76.1K first call.

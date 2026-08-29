@@ -28,6 +28,14 @@ const (
 const (
 	PermissionBypass = "bypass"
 	PermissionPrompt = "prompted"
+
+	// claude.systemPrompt values: which system prompt every managed Claude
+	// launch carries. Production leaves the CLI's own prompt untouched; lean
+	// selects its built-in minimal prompt (CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1);
+	// professor injects the staged professor prompt via --system-prompt-file.
+	SystemPromptProduction = "production"
+	SystemPromptLean       = "lean"
+	SystemPromptProfessor  = "professor"
 )
 
 // Account is one Claude account. ProjectDir is the transcript root used by
@@ -57,6 +65,9 @@ type AccountSkip struct {
 type ClaudePrefs struct {
 	PermissionMode string
 	Binary         string
+	// SystemPrompt is one of the SystemPrompt* values; empty means
+	// SystemPromptProduction.
+	SystemPrompt string
 	// Cache1H is Claude Code's prompt-cache TTL choice: true selects the
 	// ~32%-cheaper 1-hour TTL (ENABLE_PROMPT_CACHING_1H), false the 5-minute
 	// TTL. Defaults true — see decodeClaudePrefs and defaultsWithMCPServers.
@@ -182,6 +193,7 @@ type rawClaude struct {
 	PermissionMode *string `json:"permissionMode,omitempty"`
 	Binary         *string `json:"binary,omitempty"`
 	Cache1H        *bool   `json:"cache1h,omitempty"`
+	SystemPrompt   *string `json:"systemPrompt,omitempty"`
 }
 
 type rawOpenCode struct {
@@ -591,6 +603,10 @@ func loadWithMCPServers(
 		if raw.Claude.Cache1H != nil {
 			result.Claude.Cache1H = prefs.Cache1H
 		}
+		if raw.Claude.SystemPrompt != nil {
+			result.Claude.SystemPrompt = prefs.SystemPrompt
+			result.Sources[engineConfigKey(pfmengine.Claude, "systemPrompt")] = SourceFile
+		}
 	}
 	if raw.Accounts != nil {
 		accounts, err := validateAccounts(*raw.Accounts, home)
@@ -789,6 +805,13 @@ func decodeClaudePrefs(raw rawClaude, path, scope string, index int) (ClaudePref
 	if raw.Cache1H != nil {
 		prefs.Cache1H = *raw.Cache1H
 	}
+	if raw.SystemPrompt != nil {
+		value := *raw.SystemPrompt
+		if value != SystemPromptProduction && value != SystemPromptLean && value != SystemPromptProfessor {
+			return ClaudePrefs{}, fmt.Errorf("config %s: %s.systemPrompt must be %q, %q or %q, got %q", path, configScope(scope, index), SystemPromptProduction, SystemPromptLean, SystemPromptProfessor, value)
+		}
+		prefs.SystemPrompt = value
+	}
 	return prefs, nil
 }
 
@@ -979,6 +1002,9 @@ func (config Config) EffectiveClaude(id int) ClaudePrefs {
 		// unset account-level Cache1H with the resolved top-level value, so
 		// there is no false-zero ambiguity left to guard against here.
 		result.Cache1H = account.Claude.Cache1H
+		if account.Claude.SystemPrompt != "" {
+			result.SystemPrompt = account.Claude.SystemPrompt
+		}
 	}
 	return result
 }

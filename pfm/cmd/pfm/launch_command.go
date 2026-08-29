@@ -98,14 +98,14 @@ func runInternalLaunch(args []string, stdout, stderr io.Writer, runtime commandR
 		fmt.Fprintln(stderr, "pfm internal launch: --cwd must be an absolute path")
 		return 2
 	}
+	primary := readPrimaryAccount(runtime.Paths, runtime.Config)
 	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
 	if configDir == "" {
-		primary := readPrimaryAccount(runtime.Paths, runtime.Config)
 		if account, found := runtime.Config.AccountByID(primary); found && !account.Implicit {
 			configDir = account.ConfigDir
 		}
 	}
-	realRun, err := action.LauncherRun(*real, arguments, configDir)
+	realRun, err := action.LauncherRun(*real, arguments, configDir, runtime.Paths.Home, runtime.Config.EffectiveClaude(primary))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal launch: build Claude command: %v\n", err)
 		return 1

@@ -35,9 +35,6 @@
 //   + in-body CLAUDE.md → AGENTS.md rewrite for the AGENTS.md compile step only
 //     (marker line and appended adapter constant keep their own CLAUDE.md wording)
 //   + nested command names flattened (wave/orchestrator → wave-orchestrator, name: rewritten)
-//   + persona-adoption pointers stripped (output-styles are Claude-harness-only;
-//     the pin is the imperative phrase "Read `.claude/output-styles/…` … now and adopt it" —
-//     rules that merely MENTION output-styles survive)
 //   + one constant preamble per agent TOML (Codex subagents receive ONLY
 //     developer_instructions — the preamble routes them to AGENTS.md for the law).
 // Every generated file carries a marker line; the script only ever overwrites or
@@ -152,11 +149,6 @@ function parseFm(text) {
   return { fm, body: lines.slice(end + 1).join('\n'), fields };
 }
 
-// Persona blocks: optional "## Persona"-style heading + the one adopt-instruction
-// line + trailing blanks. A "---\n\n---" left where the block sat between two
-// separators collapses to one.
-const PERSONA_RE = /(^|\n)(#{1,6}[ \t]*Persona[ \t]*\n+)?[^\n]*`\.claude\/output-styles\/[^\n]*now and adopt it[^\n]*\n*/g;
-const stripPersona = (s) => s.replace(PERSONA_RE, '$1').replace(/\n---\n\n---\n/g, '\n---\n');
 
 const flatName = (rel) => rel.replace(/\.md$/, '').split('/').join('-');
 const colonName = (rel) => rel.replace(/\.md$/, '').split('/').join(':');
@@ -211,7 +203,7 @@ for (const { src, dst, root } of [
   ...projects.map((p) => ({ src: join(ROOT, p, 'CLAUDE.md'), dst: join(ROOT, p, 'AGENTS.md'), root: false })),
 ]) {
   const srcRel = relative(ROOT, src);
-  const body = cmdSwap(swap(stripPersona(read(src))).replaceAll('CLAUDE.md', 'AGENTS.md'));
+  const body = cmdSwap(swap(read(src)).replaceAll('CLAUDE.md', 'AGENTS.md'));
   outputs.set(dst, {
     content: `<!-- ${marker(srcRel)} -->\n${body}${root ? ADAPTER : ''}`,
   });
@@ -254,7 +246,7 @@ for (const { src, name } of agentSources) {
       `# ${marker(srcRel)}\n${tier}name = "${tomlName}"\n` +
       `description = "${tomlEscape(cmdSwap(swap(fields.description ?? '')))}"\n` +
       (readOnly ? `sandbox_mode = "read-only"\n` : '') +
-      `developer_instructions = """\n${tomlMultiline(agentPreamble(tomlName) + cmdSwap(swap(stripPersona(body).trim())))}"""\n`,
+      `developer_instructions = """\n${tomlMultiline(agentPreamble(tomlName) + cmdSwap(swap(body.trim())))}"""\n`,
   });
 }
 
@@ -272,7 +264,7 @@ function compileCommands(srcRoot, srcLabel, emit) {
     const { fm, body, fields } = parseFm(raw);
     const fmLines = (fm ?? []).filter((l) => !/^name:/.test(l));
     const content =
-      `---\n# ${marker(`${srcLabel}/${rel}`)}\nname: ${flat}\n${cmdSwap(fmLines.join('\n'))}\n---\n${cmdSwap(swap(stripPersona(body)))}`;
+      `---\n# ${marker(`${srcLabel}/${rel}`)}\nname: ${flat}\n${cmdSwap(fmLines.join('\n'))}\n---\n${cmdSwap(swap(body))}`;
     emit({ flat, content, modelInvocable: fields['disable-model-invocation'] !== 'true' });
   }
 }
@@ -492,7 +484,7 @@ if (MODE !== 'generate') doctored = runDoctor(problems);
 
 for (const n of notes) console.log(`note: ${n}`);
 if (doctored) console.log(`doctor: ${doctored} TOML artifact(s) parsed (repo .codex + $HOME/.codex)`);
-const counts = `${outputs.size} outputs (${projects.length + 1} AGENTS.md, ${agentSources.length} agent TOMLs) + config.toml mcp fence — coverage: repo commands+skills+agents, $HOME commands, repo .mcp.json; NOT covered: <project>/.claude/skills, output-styles, workflows, hooks (Claude-harness-only), $HOME-level MCP registries`;
+const counts = `${outputs.size} outputs (${projects.length + 1} AGENTS.md, ${agentSources.length} agent TOMLs) + config.toml mcp fence — coverage: repo commands+skills+agents, $HOME commands, repo .mcp.json; NOT covered: <project>/.claude/skills, workflows, hooks (Claude-harness-only), $HOME-level MCP registries`;
 if (problems.length) {
   for (const p of problems) console.error(p);
   console.error(`${MODE === 'generate' ? 'GENERATE INCOMPLETE' : MODE.toUpperCase() + ' FAIL'} — ${problems.length} problem(s); ${counts}`);

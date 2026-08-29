@@ -113,7 +113,7 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 **Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `p:360`, `ghostwriter`, `vision-factory`. The `deep-rr` skill is in-tree at `engines/deep-rr/` and installs with the blueprint.
 
-**Host tooling (opt-in):** statusline, VSCode tmux launcher, a macOS multi-account `/reload` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-kill, `pfm reap` orphan sweeper).
+**Host tooling (opt-in):** statusline, the `pfm install --vscode` terminal profile, a macOS multi-account `/reload` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-kill, `pfm reap` orphan sweeper).
 
 **Tier B — opt-in domain archetypes:**
 

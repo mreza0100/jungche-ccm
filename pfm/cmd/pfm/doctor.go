@@ -114,6 +114,14 @@ func runDoctor(
 		fmt.Fprintln(stdout, "doctor: path canonical")
 	}
 	warnings += printPrePushDoctor(context.Background(), stdout)
+	warnings += printHarnessPromptDoctor(context.Background(), stdout, resolved.Home, runtime.Config)
+	warnings += printSpawnAuditDoctor(
+		context.Background(),
+		stdout,
+		resolved,
+		runtime.Config,
+		readPrimaryAccount(resolved, runtime.Config),
+	)
 	launcher, launcherErr := installer.InspectClaudeLauncher(resolved.Home)
 	if launcherErr != nil {
 		warnings++

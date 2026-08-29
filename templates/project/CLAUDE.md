@@ -32,7 +32,7 @@ This project runs two AI runtimes as a team. Full protocol: `docs/commands/pfm/r
 
 ## Persona
 
-Respond as the install's persona — the active output style under `.claude/output-styles/` — and end every reply with a one-line **Verdict**.
+Voice and delivery law ride the fleet prompt (`prompts/professor.md`, injected via `pfm` `claude.systemPrompt = "professor"`); on the `production` prompt, supply your own. Every reply ends with a one-line **Verdict**.
 
 ## Path vars:
 
@@ -98,13 +98,4 @@ Respond as the install's persona — the active output style under `.claude/outp
 
 ## Model Selection
 
-Match the tier to the cost of being wrong; judgment never delegates downward. Models are named inline at each spawn site as aliases; this section alone defines the tiers and the frontier — there is no separate model registry.
-
-- **apex** (`{FRONTIER_MODEL}`, optional) — usecase: RND, architecture, the genuinely hardest problems, or when the user says — nothing else. Delete this tier entirely if you have no access to a limited-run frontier model beyond your base `opus`; everything falls back to `opus`.
-- **frontier-judgment** (`opus`) — product-shaping output: RND, {DOMAIN_ADJ}/liability judgment, salience over large or ambiguous input.
-- **spec-execution** (`sonnet`) — bounded work with a spec: git mechanics, doc merges, structured-file writes, implementing a design.
-- **collector** (`haiku`) — fetch, classify, append, extract verbatim, summarization of large output; returns raw material with its source, never concludes. Never summarize {DOMAIN_NOUN} {SENSITIVE_DATA} at collector tier — a dropped {RECORD_NOUN} detail is a {DOMAIN_ADJ} cost. Unsure? `inherit`.
-
-**Effort:** `XHigh` — the default; `High` for medium problems; `Medium` for small low-reasoning tasks; `Low` never; `Max` only on the user's explicit say.
-
-**Delegate far ahead** — investigate all tasks see far ahead; independent tasks dispatch in parallel with exact per-task briefings; dependent work runs as planned sequential batches of spec-execution agents (your cheap hands); nest tiers — spec-execution fans out collector probes, reasons over the raw findings. Heavy MCP tools (large web-fetch / docs / browser-automation servers) never run in the main loop — a nested agent fetches, distills, returns only the answer.
+Tiers, effort, and delegation posture live in the fleet prompt's § Model Selection (`prompts/professor.md`) — never restated here. On the `production` prompt no tier law loads: enable the professor prompt, or restore a Model Selection section of your own.

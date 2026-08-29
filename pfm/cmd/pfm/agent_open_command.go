@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"hostops/pfm/internal/agentopen"
-	"hostops/pfm/internal/config"
 )
 
 // runInternalAgentOpen is deliberately absent from operator help. It is the
@@ -45,11 +44,13 @@ func runInternalAgentOpen(
 		Accounts:     accounts,
 		ClaudeBinary: runtime.Config.Claude.Binary,
 		Commands: agentopen.ExecCommands{
-			Binary:            runtime.Config.Claude.Binary,
-			Home:              resolved.Home,
-			PromptPermissions: runtime.Config.EffectiveClaude(primary).PermissionMode == config.PermissionPrompt,
-			Stdout:            os.Stdout,
-			Stderr:            stderr,
+			// The machine config IS the policy: the spawn door reads the
+			// binary, the autonomy posture and the system-prompt choice off
+			// the account that owns each config directory.
+			Home:    resolved.Home,
+			Machine: runtime.Config,
+			Stdout:  os.Stdout,
+			Stderr:  stderr,
 		},
 		Processes: agentopen.RealProcesses{Root: resolved.ProcRoot},
 		Tmux:      agentopen.RealTmux{Dir: resolved.TmuxDir, Stderr: stderr},

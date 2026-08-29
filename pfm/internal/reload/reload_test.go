@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"hostops/pfm/internal/action"
+	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 )
@@ -296,23 +298,92 @@ func TestRunRefusesAnOverlappingPaneReload(t *testing.T) {
 }
 
 func TestClaudeRunUnsetsInheritedIdentity(t *testing.T) {
-	run := claudeRun(Request{
-		Account:          2,
-		AccountConfigDir: "/jail/home/.cc/2",
-		SessionID:        "11111111-1111-4111-8111-111111111111",
+	run, err := claudeRun(Request{
+		Account:   2,
+		Machine:   reloadTestMachine("", ""),
+		SessionID: "11111111-1111-4111-8111-111111111111",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, variable := range []string{"CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR", "FORCE_PROMPT_CACHING_5M"} {
 		if !strings.Contains(run, variable) {
 			t.Fatalf("run %q does not mention %s", run, variable)
 		}
 	}
-	if !strings.Contains(run, "claude --resume") {
+	if !strings.Contains(run, "claude '--resume'") {
 		t.Fatalf("run %q has no resume", run)
 	}
 }
 
+// reloadTestMachine is a two-account roster whose account 2 is explicit, so a
+// reload line has a config dir to state.
+func reloadTestMachine(systemPrompt, home string) pfmconfig.Config {
+	return pfmconfig.Config{
+		Claude: pfmconfig.ClaudePrefs{PermissionMode: pfmconfig.PermissionBypass, SystemPrompt: systemPrompt},
+		Accounts: []pfmconfig.Account{
+			{ID: 1, ConfigDir: filepath.Join(home, ".claude"), Implicit: true},
+			{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")},
+		},
+	}
+}
+
+// A reloaded chat is a RESUME, and a resume carries the same prompt material a
+// fresh launch would: the reload constructor used to be a fourth independent
+// spawn site with no idea the fleet had a configured system prompt, so a
+// rebooted seat silently reverted to the CLI's own.
+func TestClaudeRunCarriesTheConfiguredSystemPrompt(t *testing.T) {
+	home := "/jail/home"
+	professor, err := claudeRun(Request{
+		Account:   2,
+		Home:      home,
+		Machine:   reloadTestMachine(pfmconfig.SystemPromptProfessor, home),
+		SessionID: "11111111-1111-4111-8111-111111111111",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile := " --system-prompt-file " + action.Quote(action.ProfessorPromptPath(home))
+	if !strings.Contains(professor, wantFile) {
+		t.Fatalf("reloaded chat lost the professor prompt: %q lacks %q", professor, wantFile)
+	}
+	if !strings.Contains(professor, "--dangerously-skip-permissions") {
+		t.Fatalf("reloaded chat lost the configured autonomy posture: %q", professor)
+	}
+
+	lean, err := claudeRun(Request{
+		Account:   2,
+		Home:      home,
+		Machine:   reloadTestMachine(pfmconfig.SystemPromptLean, home),
+		SessionID: "11111111-1111-4111-8111-111111111111",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(lean, " CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1 ") {
+		t.Fatalf("reloaded chat lost the lean prompt arm: %q", lean)
+	}
+
+	production, err := claudeRun(Request{
+		Account:   2,
+		Home:      home,
+		Machine:   reloadTestMachine(pfmconfig.SystemPromptProduction, home),
+		SessionID: "11111111-1111-4111-8111-111111111111",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(production, "--system-prompt-file") ||
+		strings.Contains(production, "CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1") {
+		t.Fatalf("production mode invented prompt material: %q", production)
+	}
+	if !strings.Contains(production, " -u CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT ") {
+		t.Fatalf("reload no longer strips an inherited lean arm: %q", production)
+	}
+}
+
 func TestCodexRunUsesTheSelectedHomeAndRosterPolicy(t *testing.T) {
-	run := engineRun(Request{
+	run, err := engineRun(Request{
 		Engine:      "cx",
 		Account:     9,
 		AccountHome: "/jail/codex/9",
@@ -320,6 +391,9 @@ func TestCodexRunUsesTheSelectedHomeAndRosterPolicy(t *testing.T) {
 		CodexYolo:   false,
 		SessionID:   "019ff700-0000-7000-8000-000000000001",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		"CODEX_HOME='/jail/codex/9'",
 		"'/opt/codex safe' --sandbox workspace-write",
@@ -335,7 +409,11 @@ func TestCodexRunUsesTheSelectedHomeAndRosterPolicy(t *testing.T) {
 }
 
 func TestOpencodeRunIsNotMisroutedToClaude(t *testing.T) {
-	if run := engineRun(Request{Engine: pfmengine.Opencode}); run != "" {
+	run, err := engineRun(Request{Engine: pfmengine.Opencode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run != "" {
 		t.Fatalf("engineRun(OpenCode)=%q, want an explicit unsupported result", run)
 	}
 }
@@ -361,16 +439,16 @@ func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
 	result, err := Run(
 		context.Background(),
 		Request{
-			Engine:           pfmengine.Claude,
-			SocketPath:       "/tmp/tmux-1000/probe-reload",
-			Pane:             "%7",
-			PanePID:          700,
-			SessionID:        "11111111-1111-4111-8111-111111111111",
-			CWD:              "/jail/project",
-			Account:          2,
-			AccountIDs:       []int{2},
-			AccountConfigDir: "/jail/home/.cc/2",
-			Cache1H:          false,
+			Engine:     pfmengine.Claude,
+			SocketPath: "/tmp/tmux-1000/probe-reload",
+			Pane:       "%7",
+			PanePID:    700,
+			SessionID:  "11111111-1111-4111-8111-111111111111",
+			CWD:        "/jail/project",
+			Account:    2,
+			AccountIDs: []int{2},
+			Machine:    reloadTestMachine("", "/jail/home"),
+			Cache1H:    false,
 		},
 		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2},
 		tmux,
@@ -386,7 +464,7 @@ func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
 	for _, want := range []string{
 		"CLAUDE_CONFIG_DIR=",
 		"FORCE_PROMPT_CACHING_5M=1",
-		"claude --resume",
+		"claude '--resume'",
 		"11111111-1111-4111-8111-111111111111",
 	} {
 		if !strings.Contains(tmux.respawn, want) {

@@ -45,7 +45,7 @@ be forced, never assumed). With no `--account` the chat KEEPS its current accoun
 is the pure "restart this chat on the 5m cache" move. Without `--1h`, an account reload preserves
 the chat's existing cache mode (a flagless elder counts as 1h, the default it actually runs).
 
-## Swapping yourself (limit rescue)
+## Reloading yourself onto another account (limit rescue)
 
 When the current account's usage limit is nearly exhausted and work remains, invoke this yourself
 instead of stalling:
@@ -53,7 +53,7 @@ instead of stalling:
 1. **Land in-flight work first** — sub-agents, workflows, and background tasks do NOT survive the
    reboot. Finish or checkpoint them; never reload mid-flight.
 2. **Pick a different configured account for the current engine** from `pfm config show`.
-3. **Swap with a handoff**:
+3. **Reload with a handoff**:
    `~/.local/bin/pfm chat reload --account <other-n> --then "Continue: <what you were doing + the next concrete step>"`
 4. One short line to the user (which account you moved to and why), end turn. The reborn you
    reads the `--then` prompt and continues on the fresh account's budget.

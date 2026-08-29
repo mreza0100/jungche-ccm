@@ -14,7 +14,7 @@ Measure what every loaded pipeline component costs in context, find the bloat, a
 Enumerate every surface from disk — rosters and counts are derived per run:
 
 ```bash
-find .claude/agents {project}/.claude/agents .claude/commands .claude/skills .claude/output-styles -name '*.md' -not -path '*/worktrees/*' -exec wc -c {} + | sort -rn | head -25
+find .claude/agents {project}/.claude/agents .claude/commands .claude/skills -name '*.md' -not -path '*/worktrees/*' -exec wc -c {} + | sort -rn | head -25
 wc -l CLAUDE.md {project}/CLAUDE.md $(find .claude -name SKILL.md -not -path '*/worktrees/*') | sort -rn
 ```
 
@@ -24,7 +24,7 @@ Flag a file when:
 - `.claude/agents/*.md` and `{project}/.claude/agents/*.md`: over 15 KB, or `description` over 30 words — every agent description loads into every spawn
 - `.claude/commands/**/*.md`, nested command dirs included (`pfm/`, `wave/`, `quality/`, `audit/`, `p/`, `h/`): over 35 KB
 - `SKILL.md`, under `.claude/skills/*/` and embedded in command dirs: over 500 lines, or `description` plus when-to-use over 1,536 chars combined
-- `.claude/output-styles/*.md`: the active style bills against the always-loaded floor, overlays only on their command's invocation
+- The injected fleet prompt bills against the always-loaded floor (main-loop only; subagents never receive it)
 - `.mcp.json`: a server wrapping a CLI already on PATH (`gh`) — schemas are deferred, so tool count costs little until fetched
 
 The size limits are `/pfm`'s (§ Hard thresholds, § Critical invariants); this command only measures against them.
@@ -33,13 +33,13 @@ The size limits are `/pfm`'s (§ Hard thresholds, § Critical invariants); this 
 
 Sort every component into one bucket:
 
-- Always loaded: root CLAUDE.md, agent `description` frontmatter (present in every spawn even when that agent is never invoked), the active output style (main-loop system prompt only — subagents never receive it), and skill content kept after invocation. The recurring tax; weigh it hardest.
+- Always loaded: root CLAUDE.md, agent `description` frontmatter (present in every spawn even when that agent is never invoked), the injected fleet prompt (main-loop system prompt only — subagents never receive it), and skill content kept after invocation. The recurring tax; weigh it hardest.
 - On demand: command bodies, skill bodies, agent bodies — paid only when invoked. Cheaper bloat, still real.
 - MCP schemas: deferred. Tool schemas load through `ToolSearch` and stay unbilled until fetched, so a many-tool server costs almost nothing while idle; what is always present is the deferred-tool name list (a few tokens per tool) plus whatever schemas this session pulled. Rank a server by how often its schemas actually get pulled, not by raw tool count.
 
 ## Report
 
-In order: the always-loaded total read from `/context`, with its composition named (CLAUDE.md chain, agent descriptions, output style, MCP name list); one row per surface — root CLAUDE.md, child CLAUDE.md, agents, commands, skills, MCP — carrying count, bytes, and estimated tokens; every over-limit file with its size, its limit, and the suggested trim; then the savings ranked by tokens reclaimed, top three first.
+In order: the always-loaded total read from `/context`, with its composition named (CLAUDE.md chain, agent descriptions, the fleet prompt, MCP name list); one row per surface — root CLAUDE.md, child CLAUDE.md, agents, commands, skills, MCP — carrying count, bytes, and estimated tokens; every over-limit file with its size, its limit, and the suggested trim; then the savings ranked by tokens reclaimed, top three first.
 
 `--verbose` adds per-file token counts, the heaviest files line by line, and the MCP tool list with per-tool schema estimates.
 

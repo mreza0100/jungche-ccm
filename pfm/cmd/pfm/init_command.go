@@ -16,7 +16,6 @@ var initTemplatePaths = []struct{ source, target string }{
 	{source: "project/CLAUDE.md", target: "CLAUDE.md"},
 	{source: "project/CLAUDE.md", target: "AGENTS.md"},
 	{source: "project/settings.json", target: ".claude/settings.json"},
-	{source: "project/output-styles", target: ".claude/output-styles"},
 	{source: "project/commands", target: ".claude/commands"},
 	{source: "project/agents", target: ".claude/agents"},
 	{source: "project/skills", target: ".claude/skills"},

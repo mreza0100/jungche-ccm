@@ -136,7 +136,7 @@ func TestPrepareSourceRepoStagesEvenAReadyRepository(t *testing.T) {
 		}
 	}
 	for _, relative := range []string{
-		".claude/output-styles", ".claude/commands", ".claude/agents", ".claude/skills",
+		".claude/commands", ".claude/agents", ".claude/skills",
 	} {
 		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(relative)), 0o700); err != nil {
 			t.Fatal(err)
@@ -1015,7 +1015,7 @@ func (h *e2eHarness) assertInit(project, source string) {
 	} {
 		h.assertInitFile(filepath.Join(templates, mapping.source), filepath.Join(project, mapping.target), mapping.target)
 	}
-	for _, directory := range []string{"output-styles", "commands", "agents", "skills"} {
+	for _, directory := range []string{"commands", "agents", "skills"} {
 		sourceDir := filepath.Join(templates, directory)
 		targetDir := filepath.Join(project, ".claude", directory)
 		h.assertInitPath(targetDir, filepath.Join(".claude", directory))

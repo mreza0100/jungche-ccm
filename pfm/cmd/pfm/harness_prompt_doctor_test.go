@@ -1,0 +1,97 @@
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestHarnessPromptVerdictThreeOutcomes(t *testing.T) {
+	captured := "block one\n\n=== SYSTEM BLOCK ===\n\nblock two\n"
+	sum := sha256.Sum256([]byte(captured))
+	matching := hex.EncodeToString(sum[:])
+
+	line, warn := harnessPromptVerdict(matching, "harness-original-v2.1.251.md", captured, nil)
+	if warn || !strings.Contains(line, "matches baseline harness-original-v2.1.251.md") {
+		t.Fatalf("match outcome = (%q, %v), want an ok line", line, warn)
+	}
+
+	line, warn = harnessPromptVerdict(strings.Repeat("0", 64), "harness-original-v2.1.251.md", captured, nil)
+	if !warn || !strings.Contains(line, "DRIFT") {
+		t.Fatalf("drift outcome = (%q, %v), want a DRIFT warning", line, warn)
+	}
+
+	line, warn = harnessPromptVerdict(matching, "harness-original-v2.1.251.md", "", errors.New("no API request reached the capture sink"))
+	if !warn || !strings.Contains(line, "CHECK FAILED") || strings.Contains(line, "DRIFT") || strings.Contains(line, "matches") {
+		t.Fatalf("capture-failure outcome = (%q, %v), want a distinct CHECK FAILED warning", line, warn)
+	}
+}
+
+func TestHarnessSinkCapturesOnlyMessagesRequests(t *testing.T) {
+	bodies := make(chan []byte, 1)
+	server := httptest.NewServer(harnessSinkHandler(bodies))
+	defer server.Close()
+
+	post := func(path, body string) *http.Response {
+		t.Helper()
+		response, err := http.Post(server.URL+path, "application/json", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		return response
+	}
+
+	if response := post("/v1/telemetry", ""); response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("telemetry response = %d, want 400", response.StatusCode)
+	}
+	select {
+	case body := <-bodies:
+		t.Fatalf("non-messages POST won the capture: %q", body)
+	default:
+	}
+
+	if response := post("/v1/messages", `{"system":"real"}`); response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("messages response = %d, want 400", response.StatusCode)
+	}
+	post("/v1/messages", `{"system":"late-duplicate"}`)
+
+	select {
+	case body := <-bodies:
+		if string(body) != `{"system":"real"}` {
+			t.Fatalf("captured body = %q, want the FIRST messages body", body)
+		}
+	default:
+		t.Fatal("messages POST did not reach the capture channel")
+	}
+	select {
+	case body := <-bodies:
+		t.Fatalf("second messages body was buffered: %q — first-match semantics broken", body)
+	default:
+	}
+}
+
+func TestJoinSystemBlocksMatchesBaselineRendering(t *testing.T) {
+	body := []byte(`{"system":[{"type":"text","text":"alpha"},{"type":"text","text":"beta"}]}`)
+	got, err := joinSystemBlocks(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "alpha\n\n=== SYSTEM BLOCK ===\n\nbeta\n" {
+		t.Fatalf("joined = %q, want the jq-compatible join with trailing newline", got)
+	}
+
+	plain, err := joinSystemBlocks([]byte(`{"system":"solo"}`))
+	if err != nil || plain != "solo\n" {
+		t.Fatalf("plain system = (%q, %v), want solo with trailing newline", plain, err)
+	}
+
+	if _, err := joinSystemBlocks([]byte(`{"model":"x"}`)); err == nil {
+		t.Fatal("a request with no system prompt must error, not hash empty content")
+	}
+}

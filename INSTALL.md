@@ -156,7 +156,7 @@ Same eight base surfaces, the same optional VS Code surface, and the same rc-97 
 
 Everything above, plus `CLAUDE.md`, per-project agents, commands, docs scaffolding, and the whole pipeline — customized to your project through a Claude-guided interview. Nothing here duplicates what paths 1/2 already do; the interview invokes them for you if you opt into a host extra.
 
-**Prerequisites:** Claude Code CLI, logged in. A git repository — if the project isn't one, Claude asks before `git init`. `jq` — required by the host installer and several hooks (`brew install jq` / `apt install jq`). Optional, per opt-in: `prettier` via `npx` (markdown format hook), `tmux` (VSCode launcher, host fleet), `node` (Codex mirror compiler), `gh`/`glab` (git-host skill). Ten to fifteen minutes of your attention.
+**Prerequisites:** Claude Code CLI, logged in. A git repository — if the project isn't one, Claude asks before `git init`. `jq` — required by the host installer and several hooks (`brew install jq` / `apt install jq`). Optional, per opt-in: `prettier` via `npx` (markdown format hook), `tmux` (host fleet), `node` (Codex mirror compiler), `gh`/`glab` (git-host skill). Ten to fifteen minutes of your attention.
 
 Open Claude Code in your target project and paste:
 

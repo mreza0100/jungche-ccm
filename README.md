@@ -132,7 +132,7 @@ What that discipline looks like in practice:
   and `.opencode/` layers are compiled pointers, never restatements.
 
 Optional roles ship for teams that want them — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer` —
-along with output-style personas and a legal skill shelf.
+along with a legal skill shelf.
 
 **Read the philosophy in [docs/BLUEPRINT.md](docs/BLUEPRINT.md)** rather than here.
 

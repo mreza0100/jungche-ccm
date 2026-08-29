@@ -86,17 +86,9 @@ func parseFrontmatter(text string) (map[string]string, string, error) {
 	return fields, strings.Join(lines[end+1:], "\n"), nil
 }
 
-var personaInstruction = regexp.MustCompile(`(?m)(^|\n)(#{1,6}[ \t]*Persona[ \t]*\n+)?[^\n]*` + regexp.QuoteMeta("`.claude/output-styles/") + `[^\n]*now and adopt it[^\n]*\n*`)
-
-func stripPersona(text string) string {
-	text = personaInstruction.ReplaceAllString(text, "$1")
-	return strings.ReplaceAll(text, "\n---\n\n---\n", "\n---\n")
-}
-
 func transformMarkdown(text string, options TransformOptions) string {
 	text = swapModels(text, options.ModelMap)
 	text = swapCommands(text, options.Commands)
-	text = stripPersona(text)
 	if options.ReplaceClaudeFile {
 		text = strings.ReplaceAll(text, "CLAUDE.md", "AGENTS.md")
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/action"
+	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 )
 
@@ -20,20 +21,23 @@ func TestRunRespawnsWithConfiguredClaudePolicy(t *testing.T) {
 	tmux := &fakeReloadTmux{}
 	configDir := filepath.Join(t.TempDir(), "account 42")
 	customBinary := "/opt/tools/claude enterprise"
+	machine := pfmconfig.Config{
+		Claude:   pfmconfig.ClaudePrefs{PermissionMode: pfmconfig.PermissionPrompt, Binary: customBinary},
+		Accounts: []pfmconfig.Account{{ID: 42, ConfigDir: configDir}},
+		Sources:  map[string]pfmconfig.Source{"claude.binary": pfmconfig.SourceFile},
+	}
 	_, err := Run(
 		context.Background(),
 		Request{
-			Engine:            pfmengine.Claude,
-			SocketPath:        "/tmp/tmux-1000/configured-reload",
-			Pane:              "%7",
-			SessionID:         "11111111-1111-4111-8111-111111111111",
-			CWD:               "/jail/project",
-			Account:           42,
-			AccountIDs:        []int{42},
-			AccountConfigDir:  configDir,
-			ClaudeBinary:      customBinary,
-			PromptPermissions: true,
-			Cache1H:           true,
+			Engine:     pfmengine.Claude,
+			SocketPath: "/tmp/tmux-1000/configured-reload",
+			Pane:       "%7",
+			SessionID:  "11111111-1111-4111-8111-111111111111",
+			CWD:        "/jail/project",
+			Account:    42,
+			AccountIDs: []int{42},
+			Cache1H:    true,
+			Machine:    machine,
 		},
 		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2},
 		tmux,

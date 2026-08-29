@@ -6,8 +6,6 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}] [--l
 
 # PTM Release — Publish the Blueprint
 
-**Persona:** Read `.claude/output-styles/dr-house.md` now and adopt it for all responses while this command's work is active.
-
 ## Constants
 
 - Public repo: `mreza0100/professor` — **this repo IS the upstream.** There is no separate clone to sync into; the working copy you are in is the one that publishes.

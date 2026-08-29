@@ -55,7 +55,7 @@ The engine bundle built from `engines/wave-walker/engine` (script path in `walke
 
 **Panel modes (no walk):** `args.claims` or `args.manifestPath` skip steps 1–6 entirely — see Entry points; a dead security auditor never sinks a walk, it becomes an explicit Coverage hole.
 
-**Frontier seats** — the final judge (step 5), the second-opinion judge (step 4), and the investigate brainer default to the durable `opus` alias; a limited-time frontier model rides only the invocation args (`finalJudgeModel`, `securityEscalateModel`, `brainerModel`) per root `CLAUDE.md` § Model Selection — never a literal in this file or the script. Security judgment seats never downgrade below `opus`.
+**Frontier seats** — the final judge (step 5), the second-opinion judge (step 4), and the investigate brainer default to the durable `opus` alias; a limited-time frontier model rides only the invocation args (`finalJudgeModel`, `securityEscalateModel`, `brainerModel`) per the fleet prompt § Model Selection — never a literal in this file or the script. Security judgment seats never downgrade below `opus`.
 
 ## § Role: Scout
 

@@ -80,6 +80,24 @@ _cc_run() {
   if [[ "${PFM_CLAUDE_PROMPTED[$acct]:-0}" != 1 ]]; then
     autonomy_flags=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)
   fi
+  # systemPrompt layer (claude.systemPrompt): pfm decides per account, the shim only relays its
+  # line protocol (`env K=V` / `arg TOKEN`). Fail-OPEN on any nonzero exit — a broken prompt
+  # layer must not brick every chat spawn; pfm doctor is the alarm. A missing pfm binary (a
+  # pre-install shell) skips silently.
+  local -a prompt_env=() prompt_args=()
+  local _pa_out _pa_line
+  if [[ -x "$HOME/.local/bin/pfm" ]]; then
+    if _pa_out="$("$HOME/.local/bin/pfm" internal prompt-args "$acct" 2>&1)"; then
+      while IFS= read -r _pa_line; do
+        case "$_pa_line" in
+          env\ *) prompt_env+=("${_pa_line#env }") ;;
+          arg\ *) prompt_args+=("${_pa_line#arg }") ;;
+        esac
+      done <<< "$_pa_out"
+    else
+      [[ -n "$_pa_out" ]] && print -u2 "pfm shim: ${_pa_out%%$'\n'*}"
+    fi
+  fi
   local in_tmux=0; [[ -n "$TMUX" ]] && in_tmux=1
   # ⚡1h-cache is per-launch, NEVER sticky (2× write premium must be a deliberate choice each
   # time) — _cc_arm1h decides; the strip below unsets the leaked flag, and an armed launch
@@ -99,10 +117,14 @@ _cc_run() {
     local run="env ${CC_SESSION_UNSET} -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET}"
     if [[ -n "$cfg" ]]; then run+=" CLAUDE_CONFIG_DIR=$cfg"; else run+=" -u CLAUDE_CONFIG_DIR"; fi
     if [[ "$arm1h" == 1 ]]; then run+=" ENABLE_PROMPT_CACHING_1H=1"; else run+=" FORCE_PROMPT_CACHING_5M=1"; fi
+    if (( ${#prompt_env[@]} )); then run+=" ${(j: :)${(@q)prompt_env}}"; fi
     # PER-ELEMENT quoting, then join. "${(q)@}" joins the array into ONE word FIRST and quotes
     # that, so two flags arrive as a single argv element with an escaped space, claude rejects the
-    # unknown option, and the tmux session dies at birth.
-    run+=" claude ${(j: :)${(@q)autonomy_flags}} ${(j: :)${(@q)@}}"
+    # unknown option, and the tmux session dies at birth. Prompt-layer args ride in one array with
+    # the autonomy flags (an empty layer adds no gap) and sit before the caller's own words, so a
+    # caller's flags still follow and win.
+    local -a claude_flags=("${autonomy_flags[@]}" "${prompt_args[@]}")
+    run+=" claude ${(j: :)${(@q)claude_flags}} ${(j: :)${(@q)@}}"
     # A bare terminal hands itself to the chat (_cc_own_terminal); a bunker pane is EXEC'd into
     # the viewport, which is the same law by another route. Inside another chat, neither: a
     # nested viewport that closed on exit would take its host chat's pane down with it.
@@ -120,7 +142,8 @@ _cc_run() {
     local -a envargs=("${CC_SESSION_UNSET[@]}" -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M "${CC_ENDPOINT_UNSET[@]}")
     if [[ -n "$cfg" ]]; then envargs+=(CLAUDE_CONFIG_DIR="$cfg"); else envargs+=(-u CLAUDE_CONFIG_DIR); fi
     if [[ "$arm1h" == 1 ]]; then envargs+=(ENABLE_PROMPT_CACHING_1H=1); else envargs+=(FORCE_PROMPT_CACHING_5M=1); fi
-    env "${envargs[@]}" claude "${autonomy_flags[@]}" "$@"
+    envargs+=("${prompt_env[@]}")
+    env "${envargs[@]}" claude "${autonomy_flags[@]}" "${prompt_args[@]}" "$@"
     _cc_own_terminal $?
   fi
 }

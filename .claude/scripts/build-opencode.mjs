@@ -118,12 +118,6 @@ function parseFm(text) {
   return { fm, body: lines.slice(end + 1).join('\n'), fields };
 }
 
-// Persona blocks: optional "## Persona"-style heading + the one adopt-instruction
-// line + trailing blanks. Identical to build-codex.mjs — a persona pin that
-// survived in ONE mirror but not the other is drift by construction.
-const PERSONA_RE = /(^|\n)(#{1,6}[ \t]*Persona[ \t]*\n+)?[^\n]*`\.claude\/output-styles\/[^\n]*now and adopt it[^\n]*\n*/g;
-const stripPersona = (s) => s.replace(PERSONA_RE, '$1').replace(/\n---\n\n---\n/g, '\n---\n');
-
 const flatName = (rel) => rel.replace(/\.md$/, '').split('/').join('-');
 const colonName = (rel) => rel.replace(/\.md$/, '').split('/').join(':');
 
@@ -197,12 +191,12 @@ for (const { src, name } of agentSources) {
   // No `model` frontmatter on purpose: no host model roster is pinned for
   // OpenCode (a fabricated provider/model id fails at spawn and reads as a
   // harness bug). The tier travels as prose; the session model serves it.
-  const tier = fields.model ? `Model tier: ${fields.model} per CLAUDE.md § Model Selection — run this host's matching model.\n\n` : '';
+  const tier = fields.model ? `Model tier: ${fields.model} per the fleet prompt § Model Selection — run this host's matching model.\n\n` : '';
   const permission = name === 'gitter' ? 'permission:\n  bash:\n    "git *": allow\n' : '';
   outputs.set(join(ROOT, '.opencode/agent', `${name}.md`), {
     content:
       `---\n# ${marker(srcRel)}\ndescription: ${yamlQuote(cmdSwap(fields.description ?? ''))}\nmode: subagent\n${permission}---\n` +
-      `${agentPreamble(name)}${tier}${cmdSwap(stripPersona(body).trim())}\n`,
+      `${agentPreamble(name)}${tier}${cmdSwap(body.trim())}\n`,
   });
 }
 
@@ -219,7 +213,7 @@ function compileCommands(srcRoot, srcLabel, emit) {
     const { body, fields } = parseFm(read(entry.file));
     emit({
       flat,
-      content: `---\n# ${marker(`${srcLabel}/${rel}`)}\ndescription: ${yamlQuote(cmdSwap(fields.description ?? ''))}\n---\n${cmdSwap(stripPersona(body))}`,
+      content: `---\n# ${marker(`${srcLabel}/${rel}`)}\ndescription: ${yamlQuote(cmdSwap(fields.description ?? ''))}\n---\n${cmdSwap(body)}`,
     });
   }
 }

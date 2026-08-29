@@ -23,7 +23,6 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - `.claude/commands/*.md` — slash commands (/wave:builder, /jc, /pfm, …)
 - `.claude/agents/*.md` — root pipeline agents (gitter) + qa-{proj} wrappers, one per project (registered QA gates that read the child protocol and carry the test-output filter hook)
 - `.claude/skills/*/SKILL.md` — reusable skills (`ls .claude/skills/` for the current set)
-- `.claude/output-styles/*.md` — persona registry (session style + per-command overlays)
 - `.claude/scripts/*.{sh,mjs}` — worktree.sh, alloc-ports.sh, dev.sh, build-codex.mjs (Claude→Codex compiler)
 - `.claude/workflows/*.js` — saved Workflow scripts, invocable as Workflow({name, args}) — each a declared copy of its command file's orchestration section (§ Critical invariants, workflow-scripts-are-schedulers); a skill may embed its own engine as {skill}/workflow.js via Workflow({scriptPath})
 - `{project}/.claude/agents/*.md` — child project agents; `{project}/CLAUDE.md` — child project conventions. A `{project}` held as a git submodule lands its commits in the child repo, and the monorepo pins a pointer (gitter-owned)
@@ -35,10 +34,10 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - **Pipeline flow lives in wave/builder.md** — CLAUDE.md just redirects. Don't duplicate.
 - **Agent frontmatter must match behavior** — `name`, `description`, `tools` fields.
 - **Registry over tables** — a command/skill's `description:` frontmatter IS its routing (the harness injects that registry into every session); `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands. The roster ban and what CLAUDE.md may carry: § Authoring conventions (CLAUDE.md).
-- **No command >35KB, no agent >15KB** — token consciousness. Every `general-purpose` spawn carries the full root CLAUDE.md (+ git status) and a build spawns 30+ agents, so a root CLAUDE.md line is the most expensive line in the framework — weight cuts by that multiplier (`Explore`/`Plan` types skip the CLAUDE.md chain; the output style appends to the main-loop system prompt only). `@path` imports expand at launch, so splitting CLAUDE.md saves zero context — cut content, don't relocate it.
+- **No command >35KB, no agent >15KB** — token consciousness. Every `general-purpose` spawn carries the full root CLAUDE.md (+ git status) and a build spawns 30+ agents, so a root CLAUDE.md line is the most expensive line in the framework — weight cuts by that multiplier (`Explore`/`Plan` types skip the CLAUDE.md chain; the fleet prompt rides the main-loop system prompt only). `@path` imports expand at launch, so splitting CLAUDE.md saves zero context — cut content, don't relocate it.
 - **Never hardcode names, counts, or rosters that change** — table names, enum values, chain names, agent/queue/chain tallies evolve. Tell agents WHERE to discover (`ls`, a registry file, the owning script), not WHAT the values are.
 - **Frontmatter features need registration** — `hooks:`/`model:`/`effort:` load ONLY when an agent is spawned as a registered type via its `subagent_type`; a protocol file read by a general-purpose agent never loads frontmatter. A child agent needing frontmatter features needs a thin root wrapper (the `qa-{proj}` pattern: registration shell at root, protocol stays in the child file).
-- **Registries read at session start** — agent types, settings.json hooks, and the output style load at session start; mid-session file changes land at natural boundaries (next spawn, next pipeline, next session). When a long-running session will consume an edited orchestrator file, add a transitional fallback clause (brief-wins, registry-fallback) rather than assuming hot reload.
+- **Registries read at session start** — agent types, settings.json hooks, and the injected fleet prompt load at session start; mid-session file changes land at natural boundaries (next spawn, next pipeline, next session). When a long-running session will consume an edited orchestrator file, add a transitional fallback clause (brief-wins, registry-fallback) rather than assuming hot reload.
 - **Workflow scripts are schedulers** — workflow sub-agents carry NO Agent tool (no nesting) and no Skill tool; a saved workflow script must call every role directly via `agent()` — `agentType` resolves registered types (frontmatter model/hooks intact). A script's flow graph is a declared copy of its command file — update both in the same change. **One-level nesting only** (`workflow()` inside a child throws): when a workflow can't be nested at a call site, that site inlines the same `agent()` fan-out as a second declared copy. Sync set today: `doc-approval.md` ↔ `quality/doc.md` § Approval.
 
 ### Inventory (derive, never recall)
@@ -70,7 +69,7 @@ Above threshold = split into a referenced file (one level deep, with a Table of 
 
 ### Voice location
 
-Voice lives in `.claude/output-styles/` — the session persona as the active output style (main-loop only; subagents never receive it), command personas as overlay files read at invocation; personas ≤~10 lines may stay inline in their command. CLAUDE.md and every agent/skill/command carry zero voice. Cross-file dedup targets: child CLAUDE.md keeps only its delta vs root CLAUDE.md; a project agent keeps only its delta vs the project CLAUDE.md it reads at start.
+Voice lives in the fleet prompt (`templates/prompts/professor.md`), injected via `pfm` `claude.systemPrompt = "professor"`. CLAUDE.md and every agent/skill/command carry zero voice. Cross-file dedup targets: child CLAUDE.md keeps only its delta vs root CLAUDE.md; a project agent keeps only its delta vs the project CLAUDE.md it reads at start.
 
 ### Hooks vs prompts
 
@@ -81,7 +80,7 @@ For things that must happen every time (formatting, validation, secret-scanning)
 - Behavioral rules → prompt files (CLAUDE.md, agents, commands, skills)
 - Incident narratives ("on 2026-XX-XX...") → commit message / epic manifest (`docs/epics/{name}/`) — never prompt files
 - Architectural decisions / why-this-design → epic manifest or `docs/commands/{cmd}/references/` — prompts encode the rule, not the rationale
-- Voice / character flavor → `.claude/output-styles/` (session style + overlays) — zero voice in CLAUDE.md, agents, skills, commands
+- Voice / character flavor → the fleet prompt (`templates/prompts/professor.md`) — zero voice in CLAUDE.md, agents, skills, commands
 - Project-specific tooling → child CLAUDE.md only — never per-project agents (they inherit via parent)
 - Cross-cutting templates (report format, plan shape) → one canonical reference file — never duplicated per-project
 
@@ -89,7 +88,7 @@ For things that must happen every time (formatting, validation, secret-scanning)
 
 - Root CLAUDE.md: `CLAUDE.md`; child CLAUDE.md: `{project}/CLAUDE.md`
 - Agents: `.claude/agents/*.md` (root) + `{project}/.claude/agents/*.md` (child)
-- Commands: `.claude/commands/*.md`; skills: `.claude/skills/*/SKILL.md`; output styles: `.claude/output-styles/*.md`
+- Commands: `.claude/commands/*.md`; skills: `.claude/skills/*/SKILL.md`
 - Scripts: `.claude/scripts/*.{sh,mjs}`; workflows: `.claude/workflows/*.js`; settings: `.claude/settings.json`
 - Codex mirror: `.codex/` + `AGENTS.md` files + `$HOME/.codex/` — all generated from the Claude sources by `node .claude/scripts/build-codex.mjs`. Auto-compiled at turn end by the `codex-sync.sh` hooks whenever an Edit/Write touches a Claude source (Bash-driven writes are outside that hook's coverage — run `generate` yourself after one); `check` gates drift. Hand-written keepers: `.codex/config.toml` (except its generated `mcp_servers` fence, compiled from `.mcp.json`), `.codex/rules`
 - PFM reference docs: `docs/commands/pfm/references/`

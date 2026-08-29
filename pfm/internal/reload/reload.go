@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"hostops/pfm/internal/action"
+	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/inject"
@@ -51,24 +52,27 @@ type Process interface {
 }
 
 type Request struct {
-	Engine            pfmengine.ID
-	SocketPath        string
-	Pane              string
-	PanePID           int
-	SessionID         string
-	Transcript        string
-	CWD               string
-	Account           int
-	AccountIDs        []int
-	AccountHome       string
-	AccountConfigDir  string
-	AccountImplicit   bool
-	ClaudeBinary      string
-	CodexBinary       string
-	CodexYolo         bool
-	PromptPermissions bool
-	Cache1H           bool
-	Then              string
+	Engine      pfmengine.ID
+	SocketPath  string
+	Pane        string
+	PanePID     int
+	SessionID   string
+	Transcript  string
+	CWD         string
+	Account     int
+	AccountIDs  []int
+	AccountHome string
+	CodexBinary string
+	CodexYolo   bool
+	Cache1H     bool
+	Then        string
+	// Home and Machine are the Claude respawn's whole policy: the account's
+	// config dir, its autonomy posture and its system-prompt choice all come
+	// from them through action.ClaudeSpawn. A reload used to synthesize its
+	// own launch line here, and a rebooted chat silently lost the fleet's
+	// configured system prompt because this constructor never knew about one.
+	Home    string
+	Machine pfmconfig.Config
 }
 
 type Options struct {
@@ -117,9 +121,12 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if !rosterContains(request.AccountIDs, request.Account) {
 		return Result{}, fmt.Errorf("account %d is not in the configured roster", request.Account)
 	}
-	run := engineRun(request)
+	run, err := engineRun(request)
+	if err != nil {
+		return Result{}, err
+	}
 	if run == "" {
-		if descriptor, err := pfmengine.Lookup(request.Engine); err == nil {
+		if descriptor, lookupErr := pfmengine.Lookup(request.Engine); lookupErr == nil {
 			return Result{}, fmt.Errorf("%s does not support in-place reload", descriptor.Short)
 		}
 		return Result{}, fmt.Errorf("engine %q does not support in-place reload", request.Engine)
@@ -317,43 +324,43 @@ func selectorOpen(capture string) bool {
 	return false
 }
 
-func claudeRun(request Request) string {
-	parts := []string{"env", "-u", "CLAUDE_CODE_SESSION_ID", "-u", "CLAUDECODE", "-u", "ENABLE_PROMPT_CACHING_1H", "-u", "FORCE_PROMPT_CACHING_5M", "-u", "ANTHROPIC_BASE_URL", "-u", "ANTHROPIC_AUTH_TOKEN", "-u", "ANTHROPIC_MODEL", "-u", "ANTHROPIC_SMALL_FAST_MODEL", "-u", "CLAUDE_CODE_AUTO_COMPACT_WINDOW", "-u", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "-u", "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"}
-	if !request.AccountImplicit && request.AccountConfigDir != "" {
-		parts = append(parts, "CLAUDE_CONFIG_DIR="+action.Quote(request.AccountConfigDir))
-	} else {
-		parts = append(parts, "-u", "CLAUDE_CONFIG_DIR")
+// claudeBinary is the executable word the reborn Claude pane must show — the
+// same account-aware resolution the spawn door uses, so the liveness proof and
+// the respawn line can never disagree about which binary was launched.
+func (request Request) claudeBinary() string {
+	if binary := request.Machine.EffectiveClaude(request.Account).Binary; binary != "" {
+		return binary
 	}
-	if request.Cache1H {
-		parts = append(parts, "ENABLE_PROMPT_CACHING_1H=1")
-	} else {
-		parts = append(parts, "FORCE_PROMPT_CACHING_5M=1")
-	}
-	binary := request.ClaudeBinary
-	if binary == "" {
-		binary = pfmengine.MustLookup(pfmengine.Claude).Binary
-	}
-	if binary != pfmengine.MustLookup(pfmengine.Claude).Binary {
-		binary = action.Quote(binary)
-	}
-	parts = append(parts, binary)
-	if request.SessionID != "" {
-		parts = append(parts, "--resume", action.Quote(request.SessionID))
-	}
-	if !request.PromptPermissions {
-		parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
-	}
-	return strings.Join(parts, " ")
+	return pfmengine.MustLookup(pfmengine.Claude).Binary
 }
 
-func engineRun(request Request) string {
+// claudeRun is the respawn line for a Claude seat. It owns nothing: the strip,
+// the autonomy posture and the system prompt all come from the one spawn door,
+// so a chat that reboots in place comes back with exactly what a fresh launch
+// would have carried.
+func claudeRun(request Request) (string, error) {
+	arguments := []string(nil)
+	if request.SessionID != "" {
+		arguments = []string{"--resume", request.SessionID}
+	}
+	return action.ClaudeSpawn{
+		Purpose: action.PurposeResume,
+		Account: request.Account,
+		Cache1H: request.Cache1H,
+		Args:    arguments,
+		Home:    request.Home,
+		Machine: request.Machine,
+	}.ShellCommand()
+}
+
+func engineRun(request Request) (string, error) {
 	switch request.Engine {
 	case pfmengine.Claude:
 		return claudeRun(request)
 	case pfmengine.Codex:
-		return codexRun(request)
+		return codexRun(request), nil
 	default:
-		return ""
+		return "", nil
 	}
 }
 
@@ -423,7 +430,7 @@ ready:
 	if err != nil {
 		return fmt.Errorf("reload --then: refresh reborn pane process: %w", err)
 	}
-	live, err := engineLive(proc, panePID, request.Engine, request.ClaudeBinary, request.CodexBinary)
+	live, err := engineLive(proc, panePID, request.Engine, request.claudeBinary(), request.CodexBinary)
 	if err != nil {
 		return fmt.Errorf("reload --then: prove live Claude: %w", err)
 	}

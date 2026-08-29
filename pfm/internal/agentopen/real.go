@@ -12,61 +12,74 @@ import (
 	"syscall"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 )
 
-// ExecCommands is the production command boundary. It strips inherited chat
-// identity before every Claude invocation, exactly as the shell helper did.
+// ExecCommands is the production command boundary. Every Claude invocation it
+// makes is built by action.ClaudeSpawn — the one spawn door — so the hygiene
+// strip, the autonomy posture and the system-prompt injection are the fleet's
+// single copies rather than a private restatement that drifts.
 type ExecCommands struct {
-	Binary            string
-	Home              string
-	PromptPermissions bool
-	Stdout            io.Writer
-	Stderr            io.Writer
+	Home    string
+	Machine config.Config
+	Stdout  io.Writer
+	Stderr  io.Writer
 }
 
-func (commands ExecCommands) binary() string {
-	if commands.Binary != "" {
-		return deps.Executable(commands.Binary)
-	}
-	return deps.Executable(pfmengine.MustLookup(pfmengine.Claude).Binary)
-}
-func (commands ExecCommands) environment(config string, cache1H bool) []string {
-	dropped := map[string]struct{}{
-		"CLAUDE_CODE_SESSION_ID": {}, "CLAUDECODE": {}, "CLAUDE_CONFIG_DIR": {},
-		"ENABLE_PROMPT_CACHING_1H": {}, "FORCE_PROMPT_CACHING_5M": {},
-		"ANTHROPIC_BASE_URL": {}, "ANTHROPIC_AUTH_TOKEN": {}, "ANTHROPIC_MODEL": {},
-		"ANTHROPIC_SMALL_FAST_MODEL": {}, "CLAUDE_CODE_AUTO_COMPACT_WINDOW": {},
-		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": {}, "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": {},
-		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": {},
-	}
-	env := make([]string, 0, len(os.Environ())+2)
-	for _, value := range os.Environ() {
-		key, _, _ := strings.Cut(value, "=")
-		if _, ok := dropped[key]; !ok {
-			env = append(env, value)
+// accountFor names the account that owns one config directory. The registry
+// query and the resume both address ONE account's directory, and that account
+// carries the prompt and autonomy policy the launch must use — so a directory
+// that matches no account is an error, never a silent fall back to the primary
+// seat's policy under another seat's config dir.
+func (commands ExecCommands) accountFor(configDir string) (int, error) {
+	for _, account := range commands.Machine.Accounts {
+		if account.Implicit {
+			if configDir == "" || filepath.Clean(configDir) == filepath.Clean(account.ConfigDir) {
+				return account.ID, nil
+			}
+			continue
+		}
+		if filepath.Clean(account.ConfigDir) == filepath.Clean(configDir) {
+			return account.ID, nil
 		}
 	}
-	if config != "" {
-		env = append(env, "CLAUDE_CONFIG_DIR="+config)
-	}
-	if cache1H {
-		env = append(env, "ENABLE_PROMPT_CACHING_1H=1")
-	} else {
-		env = append(env, "FORCE_PROMPT_CACHING_5M=1")
-	}
-	return env
+	return 0, fmt.Errorf("config directory %q belongs to no configured Claude account", configDir)
 }
-func (commands ExecCommands) command(ctx context.Context, config string, cache1H bool, args ...string) *exec.Cmd {
-	command := exec.CommandContext(ctx, commands.binary(), args...)
-	command.Env = commands.environment(config, cache1H)
+
+func (commands ExecCommands) command(
+	ctx context.Context,
+	purpose action.Purpose,
+	configDir string,
+	cache1H bool,
+	args ...string,
+) (*exec.Cmd, error) {
+	account, err := commands.accountFor(configDir)
+	if err != nil {
+		return nil, err
+	}
+	command, err := action.ClaudeSpawn{
+		Purpose: purpose,
+		Account: account,
+		Cache1H: cache1H,
+		Args:    args,
+		Home:    commands.Home,
+		Machine: commands.Machine,
+	}.Command(ctx)
+	if err != nil {
+		return nil, err
+	}
 	command.Stdout, command.Stderr = commands.Stdout, commands.Stderr
-	return command
+	return command, nil
 }
+
 func (commands ExecCommands) QueryAgents(ctx context.Context, config string) ([]byte, error) {
-	command := commands.command(ctx, config, false, "agents", "--json")
+	command, err := commands.command(ctx, action.PurposeQuery, config, false, "agents", "--json")
+	if err != nil {
+		return nil, fmt.Errorf("query agents: %w", err)
+	}
 	// Output captures stdout for the registry parser; diagnostics still flow to
 	// the caller's stderr through command.Stderr.
 	command.Stdout = nil
@@ -76,17 +89,21 @@ func (commands ExecCommands) QueryAgents(ctx context.Context, config string) ([]
 	}
 	return output, nil
 }
+
 func (commands ExecCommands) Resume(ctx context.Context, config, cwd, id string, cache1H bool) error {
-	arguments := []string{"--resume", id}
-	if !commands.PromptPermissions {
-		arguments = append([]string{"--allow-dangerously-skip-permissions", "--dangerously-skip-permissions"}, arguments...)
+	command, err := commands.command(ctx, action.PurposeResume, config, cache1H, "--resume", id)
+	if err != nil {
+		return fmt.Errorf("resume agent session: %w", err)
 	}
-	command := commands.command(ctx, config, cache1H, arguments...)
 	command.Dir = cwd
 	return command.Run()
 }
+
 func (commands ExecCommands) View(ctx context.Context, config, cwd string) error {
-	command := commands.command(ctx, config, false, "agents", "--cwd", cwd)
+	command, err := commands.command(ctx, action.PurposeQuery, config, false, "agents", "--cwd", cwd)
+	if err != nil {
+		return fmt.Errorf("open agent view: %w", err)
+	}
 	return command.Run()
 }
 

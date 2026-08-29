@@ -591,7 +591,7 @@ func compileCommandFile(overrideRoot, outputBase, sourceRoot string, entry sourc
 	// The incumbent compilers only rewrite command references in command
 	// frontmatter. Model names there are descriptive metadata, not executable
 	// model selections; rewriting them changes user-facing skill descriptions.
-	generated := "---\n# " + generatedLine(relSource) + "\nname: " + flat + "\n" + swapCommands(strings.Join(fm, "\n"), options.Commands) + "\n---\n" + transformMarkdown(stripPersona(body), options)
+	generated := "---\n# " + generatedLine(relSource) + "\nname: " + flat + "\n" + swapCommands(strings.Join(fm, "\n"), options.Commands) + "\n---\n" + transformMarkdown(body, options)
 	dst := filepath.Join(outputRoot, flat, "SKILL.md")
 	if global {
 		add(generatedFile{Path: filepath.Join(outputBase, ".codex", "prompts", flat+".md"), Content: generated})

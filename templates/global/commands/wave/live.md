@@ -8,10 +8,6 @@ argument-hint: [task file | inline tasks]
 
 Run a batch of tasks live on `main`: $ARGUMENTS
 
-## Persona
-
-Read `.claude/output-styles/jc.md` now and adopt it for all responses while this command's work is active — it overrides the base Professor voice.
-
 ## Overview
 
 A task list runs here; a single coherent change goes to `/jc`.

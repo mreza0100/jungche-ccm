@@ -82,60 +82,10 @@ professor/            ← this repo
     ├── refresh-map.json
     ├── themes/       (curated statusline themes — no live source)
     ├── global/       (machine-global originals — agents/, commands/, skills/; `pfm install` symlinks them into engine registries; agent `.toml` twins are release-generated beside their originals and out of this map's scope)
-    └── project/      (per-install templates — CLAUDE.md, agents/, commands/, skills/, scripts/, docs-agents/, docs-commands/, workflows/, epics/, output-styles/, codex/, vscode/)
+    └── project/      (per-install templates — CLAUDE.md, agents/, commands/, skills/, scripts/, docs-agents/, docs-commands/, workflows/, epics/, codex/)
 ```
 
 Rosters live in the tree, not here — `ls` the scope dir and read `refresh-map.json` for each file's live source or `curated` ruling. Two annotations that govern the refresh pass: source-fetched skills (each scope's `skills/sources.json`) are cloned from their canonical repos at install and never vendored; deep-rr ships in-tree at `engines/deep-rr/` (updates with the blueprint clone, not independently).
-
-> **VSCode tmux launcher:** Tier C universal mechanic, **opt-in** at install (it edits the user's _global_ editor + shell config, so SETUP.md asks first). New VSCode terminals open straight into `tmux + cc` — Claude Code inside a tmux session; on `/exit`, claude ends, the tmux session ends, and control falls back to a normal interactive shell — the terminal never closes on you. Ships the three files below (defined inline here — no repo source to mine); SETUP.md merges `terminal-profile.json` into the user's VSCode `settings.json`, appends `zshrc-cc.snippet.sh` to the user's shell rc, and copies `tmux.conf` to `~/.tmux.conf` (mouse scroll + click-to-copy — the comfort tmux-in-a-terminal assumes). The `cc` launcher is `typeset -f`-guarded so it **never clobbers an existing `cc`**.
-
-`templates/project/vscode/terminal-profile.json` — merge into VSCode user `settings.json` (macOS keys shown; swap `osx`→`linux`/`windows` on other platforms):
-
-```jsonc
-"terminal.integrated.profiles.osx": {
-  "tmux + claude": {
-    "path": "/bin/zsh",
-    "args": ["-l"],
-    "env": { "VSCODE_AUTO_CC": "1" }
-  }
-},
-"terminal.integrated.defaultProfile.osx": "tmux + claude"
-```
-
-`templates/project/vscode/zshrc-cc.snippet.sh` — append to the user's shell rc (`~/.zshrc`):
-
-```zsh
-# ── cc: Claude Code in tmux (reuses an existing cc if one is already defined) ──
-if ! typeset -f cc >/dev/null; then
-  cc() {
-    if [[ -n "$TMUX" ]]; then
-      claude "$@"
-    else
-      tmux new-session "claude $*"   # claude exits → tmux ends → back to shell
-    fi
-  }
-fi
-
-# ── VSCode: new terminals open straight into tmux + cc ──
-# The "tmux + claude" profile sets VSCODE_AUTO_CC. Run cc once, then unset it so
-# the tmux/claude children never re-trigger. On /exit you land back in a shell.
-if [[ -o interactive && -n "$VSCODE_AUTO_CC" ]]; then
-  unset VSCODE_AUTO_CC
-  cc
-fi
-```
-
-`templates/project/vscode/tmux.conf` — copy to `~/.tmux.conf` (mouse + click-to-copy; macOS `pbcopy` — swap for `xclip`/`wl-copy`/`clip.exe` on Linux/Windows):
-
-```tmux
-set -g mouse on
-bind -T copy-mode    MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
-bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
-bind -T copy-mode    DoubleClick1Pane send-keys -X select-word \; send-keys -X copy-pipe-and-cancel "pbcopy"
-bind -T copy-mode-vi DoubleClick1Pane send-keys -X select-word \; send-keys -X copy-pipe-and-cancel "pbcopy"
-bind -T copy-mode    TripleClick1Pane send-keys -X select-line \; send-keys -X copy-pipe-and-cancel "pbcopy"
-bind -T copy-mode-vi TripleClick1Pane send-keys -X select-line \; send-keys -X copy-pipe-and-cancel "pbcopy"
-```
 
 ## 4. SETUP.md — interactive install interview
 
@@ -207,7 +157,6 @@ One-paragraph pitch: portable .claude/ that turns Claude Code into a self-discip
 - Epics — cross-conversation context persistence via manifest files (PLANNING → IN_PROGRESS → SHIPPED)
 - Path conventions ($DOCS, $WORKTREE, $CDOCS)
 - Documentation discipline (one agent writes permanent docs)
-- VSCode terminals that auto-open into tmux + Claude (`/exit` → back to your shell)
 
 ## Quick start
 git clone, cd your-project, claude → read blueprint → follow SETUP.md → interview → customize → smoke test

@@ -16,10 +16,6 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 
 ---
 
-**Persona:** Read `.claude/output-styles/dr-house.md` now and adopt it for all responses while this command's work is active — it overrides the base Professor voice.
-
----
-
 ## System Wiring Knowledge
 
 ### How the pieces connect
@@ -28,7 +24,6 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - `.claude/commands/**/*.md` — slash commands (`/pfm`, `/pfm:release`, `/quality:*`, `/dev`, `/git`; `/context-meter` is global)
 - `.claude/agents/*.md` — registered agents (`ls` for the set); `gitter` is the Git writer, `tracer` the consumer-tree trace
 - `.claude/skills/*/SKILL.md` — reusable skills (`ls .claude/skills/` for the current set; source-fetched per `templates/project/skills/sources.json`, never vendored)
-- `.claude/output-styles/*.md` — persona registry: `professor.md` (session style) + `dr-house.md` (this command's overlay)
 - `.claude/scripts/*.{sh,mjs}` — dev.sh, pfm-guard.sh, guard-stamp.sh, format-md.sh, codex-sync.sh (mirror auto-compile; the Codex compiler itself is `pfm codex build`)
 - `docs/commands/{cmd}/references/` — command-owned reference docs (`$CDOCS/$CMD/$REFS/`); today: `pfm/references/{audit-scopes,refresh}.md`
 - **The shipped product** — `templates/**` is an adopter's live framework, one clone away. Same law, higher stakes: a change there ships to every future install. `docs/{BLUEPRINT,SETUP,PLACEHOLDERS}.md` are its spec; `templates/refresh-map.json` maps each template to the live source it is derived from.
@@ -39,17 +34,17 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - **Two audiences, one law** — a rule you write into `.claude/**` binds this repo; the same rule in `templates/**` binds every adopter. Never let the two drift silently: if a fix belongs upstream, it lands in the template too, and the change logs to `release.md`.
 - **Agent frontmatter must match behavior** — `name`, `description`, `tools` fields.
 - **Registry over tables** — a command/skill's `description:` frontmatter IS its routing (the harness injects that registry into every session); `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands. The roster ban and what CLAUDE.md may carry: § Authoring conventions (CLAUDE.md).
-- **No command >35KB, no agent >15KB** — token consciousness. Every `general-purpose` spawn carries the full root CLAUDE.md (+ git status) and a build spawns 30+ agents, so a root CLAUDE.md line is the most expensive line in the framework — weight cuts by that multiplier (`Explore`/`Plan` types skip the CLAUDE.md chain; the output style appends to the main-loop system prompt only). `@path` imports expand at launch, so splitting CLAUDE.md saves zero context — cut content, don't relocate it.
+- **No command >35KB, no agent >15KB** — token consciousness. Every `general-purpose` spawn carries the full root CLAUDE.md (+ git status) and a build spawns 30+ agents, so a root CLAUDE.md line is the most expensive line in the framework — weight cuts by that multiplier (`Explore`/`Plan` types skip the CLAUDE.md chain; the fleet prompt rides the main-loop system prompt only). `@path` imports expand at launch, so splitting CLAUDE.md saves zero context — cut content, don't relocate it.
 - **Never hardcode names, counts, or rosters that change** — table names, enum values, chain names, agent/queue/chain tallies evolve. Tell agents WHERE to discover (`ls`, a registry file, the owning script), not WHAT the values are.
 - **Frontmatter features need registration** — `hooks:`/`model:`/`effort:` load ONLY when an agent is spawned as a registered type via its `subagent_type`; a protocol file read by a general-purpose agent never loads frontmatter. A protocol needing frontmatter features needs a thin registered wrapper: registration shell in `.claude/agents/`, protocol in the file it reads.
-- **Registries read at session start** — agent types, settings.json hooks, and the output style load at session start; mid-session file changes land at natural boundaries (next spawn, next session). When a long-running session will consume an edited file, add a transitional fallback clause (brief-wins, registry-fallback) rather than assuming hot reload.
+- **Registries read at session start** — agent types, settings.json hooks, and the injected fleet prompt load at session start; mid-session file changes land at natural boundaries (next spawn, next session). When a long-running session will consume an edited file, add a transitional fallback clause (brief-wins, registry-fallback) rather than assuming hot reload.
 - **A subagent holds no `Workflow` tool** — a protocol that drives a Workflow structurally cannot be an agent; that is the line `walker.md` and `agents/tracer.md` were split along. Check it before proposing to convert a command into an agent.
 
 ### Inventory (derive, never recall)
 
 - **Projects:** `templates/` (markdown + shell, no build), `pfm/` (Go, including the memory organ), `engines/wave-walker/engine/` (npm) — confirm with `.claude/scripts/dev.sh status`
-- **Agents:** `ls .claude/agents/` — model tiers per CLAUDE.md § Model Selection
-- **Commands, skills, output styles:** `ls -R .claude/commands/ .claude/skills/ .claude/output-styles/`
+- **Agents:** `ls .claude/agents/` — model tiers per the fleet prompt § Model Selection
+- **Commands, skills:** `ls -R .claude/commands/ .claude/skills/`
 - **Shipped surface:** `find templates -type f -not -name refresh-map.json | wc -l` — the count that matters to adopters
 
 ---
@@ -73,7 +68,7 @@ Above threshold = split into a referenced file (one level deep, with a Table of 
 
 ### Voice location
 
-Voice lives in `.claude/output-styles/` — the session persona as the active output style (main-loop only; subagents never receive it), command personas as overlay files read at invocation; personas ≤~10 lines may stay inline in their command. CLAUDE.md and every agent/skill/command carry zero voice. Cross-file dedup targets: child CLAUDE.md keeps only its delta vs root CLAUDE.md; a project agent keeps only its delta vs the project CLAUDE.md it reads at start.
+Voice lives in the fleet prompt (`templates/prompts/professor.md`, injected by `pfm` `claude.systemPrompt = "professor"`) — main-loop only; subagents never receive it. CLAUDE.md and every agent/skill/command carry zero voice. Cross-file dedup targets: child CLAUDE.md keeps only its delta vs root CLAUDE.md; a project agent keeps only its delta vs the project CLAUDE.md it reads at start.
 
 ### Hooks vs prompts
 
@@ -84,7 +79,7 @@ For things that must happen every time (formatting, validation, secret-scanning)
 - Behavioral rules → prompt files (CLAUDE.md, agents, commands, skills)
 - Incident narratives ("on 2026-XX-XX...") → commit message / epic manifest (`docs/epics/{name}/`) — never prompt files
 - Architectural decisions / why-this-design → epic manifest or `docs/commands/{cmd}/references/` — prompts encode the rule, not the rationale
-- Voice / character flavor → `.claude/output-styles/` (session style + overlays) — zero voice in CLAUDE.md, agents, skills, commands
+- Voice / character flavor → the fleet prompt (`templates/prompts/professor.md`) — zero voice in CLAUDE.md, agents, skills, commands
 - Project-specific tooling → child CLAUDE.md only — never per-project agents (they inherit via parent)
 - Cross-cutting templates (report format, plan shape) → one canonical reference file — never duplicated per-project
 
@@ -92,7 +87,7 @@ For things that must happen every time (formatting, validation, secret-scanning)
 
 - Root CLAUDE.md: `CLAUDE.md`
 - Agents: `.claude/agents/*.md`
-- Commands: `.claude/commands/**/*.md`; skills: `.claude/skills/*/SKILL.md`; output styles: `.claude/output-styles/*.md`
+- Commands: `.claude/commands/**/*.md`; skills: `.claude/skills/*/SKILL.md`
 - Scripts: `.claude/scripts/*.{sh,mjs}`; settings: `.claude/settings.json`
 - The shipped blueprint: `templates/**` — templates, spec, and `refresh-map.json`. `/pfm:release` publishes it; `/pfm` edits it.
 - Codex mirror: `.codex/` + `AGENTS.md` files + `$HOME/.codex/` — all generated from the Claude sources by `pfm codex build` — the single writer. Auto-compiled at turn end by the `codex-sync.sh` hooks whenever an Edit/Write touches a Claude source (Bash-driven writes are outside that hook's coverage — run `pfm codex build .` yourself after one); `pfm codex check .` gates drift. Hand-written keepers: `.codex/config.toml` (except its generated `mcp_servers` fence, compiled from `.mcp.json`), `.codex/rules`

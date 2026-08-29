@@ -328,7 +328,7 @@ func runChatReloadWorkerWithRuntime(
 		fmt.Fprintln(stdout, "pfm chat reload: --then queued — the follow-up is typed into the reborn chat once it reaches its prompt")
 	}
 	options := reload.Options{Home: resolved.Home, SIDDir: resolved.SIDDir, ClaudeRoots: resolved.Roots[pfmengine.Claude], Delay: reloadDurationEnv("PFM_RELOAD_DELAY_MS", 1500), Poll: reloadDurationEnv("PFM_RELOAD_POLL_MS", 1000), ExitTries: reload.ParseIntEnv("PFM_RELOAD_EXIT_TRIES", 20), ThenTries: reload.ParseIntEnv("PFM_RELOAD_THEN_TRIES", 900)}
-	result, err := reload.Run(context.Background(), reload.Request{Engine: engine, SocketPath: socketPath, Pane: pane, PanePID: paneState.PID, SessionID: id, Transcript: transcript, CWD: cwd, Account: acct, AccountIDs: selected.IDs, AccountHome: selected.CodexHome, AccountConfigDir: selected.ClaudeConfigDir, AccountImplicit: selected.ClaudeImplicit, ClaudeBinary: selected.ClaudeBinary, CodexBinary: selected.CodexBinary, CodexYolo: selected.CodexYolo, PromptPermissions: selected.PromptPermissions, Cache1H: cache, Then: then}, options, tmux, reloadProc{procfs: gather.NewProcFS(resolved.ProcRoot)}, stderr)
+	result, err := reload.Run(context.Background(), reload.Request{Engine: engine, SocketPath: socketPath, Pane: pane, PanePID: paneState.PID, SessionID: id, Transcript: transcript, CWD: cwd, Account: acct, AccountIDs: selected.IDs, AccountHome: selected.CodexHome, CodexBinary: selected.CodexBinary, CodexYolo: selected.CodexYolo, Cache1H: cache, Then: then, Home: resolved.Home, Machine: runtime.Config}, options, tmux, reloadProc{procfs: gather.NewProcFS(resolved.ProcRoot)}, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat reload: %v\n", err)
 		return 1
@@ -677,15 +677,14 @@ func accountForCodexHome(machine pfmconfig.Config, home string) int {
 	return machine.CodexAccounts[0].ID
 }
 
+// reloadAccountSelection is the roster verdict a reload needs BEYOND the
+// machine config it already carries: the Claude half is now the door's job, so
+// only the roster and the Codex seat's own fields survive here.
 type reloadAccountSelection struct {
-	IDs               []int
-	ClaudeConfigDir   string
-	ClaudeImplicit    bool
-	ClaudeBinary      string
-	PromptPermissions bool
-	CodexHome         string
-	CodexBinary       string
-	CodexYolo         bool
+	IDs         []int
+	CodexHome   string
+	CodexBinary string
+	CodexYolo   bool
 }
 
 func validateReloadAccount(machine pfmconfig.Config, engine pfmengine.ID, account int) (reloadAccountSelection, error) {
@@ -713,16 +712,10 @@ func validateReloadAccount(machine pfmconfig.Config, engine pfmengine.ID, accoun
 	if len(machine.Accounts) == 0 {
 		return reloadAccountSelection{}, errors.New("no Claude accounts configured")
 	}
-	selected, found := machine.Account(account)
-	if !found {
+	if _, found := machine.Account(account); !found {
 		return reloadAccountSelection{}, fmt.Errorf("Claude account %d is not in the configured roster", account)
 	}
-	policy := machine.EffectiveClaude(account)
-	return reloadAccountSelection{
-		IDs: machine.AccountIDs(), ClaudeConfigDir: selected.ConfigDir,
-		ClaudeImplicit: selected.Implicit, ClaudeBinary: policy.Binary,
-		PromptPermissions: policy.PermissionMode == pfmconfig.PermissionPrompt,
-	}, nil
+	return reloadAccountSelection{IDs: machine.AccountIDs()}, nil
 }
 func reloadProcessInPane(proc reloadProc, pid, panePID int) (bool, error) {
 	current := pid

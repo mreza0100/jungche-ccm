@@ -106,7 +106,7 @@ func runChatWithRuntime(
 		return runChatUnkill(rest, stdout, stderr, runtime)
 	case "end":
 		return runChatEnd(rest, stdout, stderr, runtime)
-	case "reload", "swap":
+	case "reload":
 		return runChatReloadWithRuntime(rest, stdout, stderr, runtime)
 	case "whoami":
 		// The settled public command is `pfm whoami`; `pfm chat whoami`

@@ -44,7 +44,7 @@ Use `/dev build pfm` · `/dev verify pfm` · `/dev test pfm` for anything the pi
 | `heal/` | Codex thread-history projection verdicts and the repair a resume runs first |
 | `check/`, `spawn/`, `transcript/`, `shared/`, `legacy/`, `dream/` | doctor probes, process spawn, transcript follow, cross-writer shared state, legacy `.at` import, dreamer isolation |
 
-`shim/pfm.zsh` is the thin post-cutover wrapper. `testdata/` holds `claude-store/ codex-store/ crumbs/ proc/ golden/` plus the reference harness `e2e.sh`.
+`internal/installer/assets/shim/pfm.zsh` is the thin post-cutover wrapper (`shim/` holds only its tests). `testdata/` holds `claude-store/ codex-store/ crumbs/ proc/ golden/` plus the reference harness `e2e.sh`.
 
 ## Code Standards
 
@@ -61,7 +61,7 @@ Use `/dev build pfm` · `/dev verify pfm` · `/dev test pfm` for anything the pi
 - **A probe that could not run never returns "nothing found."** A pane capture on the wrong socket returns silence identical to a quiet chat; `kill -0` cannot tell a healthy waiter from a reparented deaf one. Build the distinguishing signal into the probe and return an error, not an empty set. This is the root law at engine scale, and it is the single most common defect class here.
 - Errors wrap with context (`fmt.Errorf("...: %w", err)`); a swallowed error in a gather path renders as a missing chat row, which reads as "no such chat."
 - SQLite migrations are additive and numbered — a new `migration_vN.sql` plus its `go:embed`, never an edit to `schema.sql` that existing databases will never see.
-- Behavior belongs in Go, not in `shim/pfm.zsh`. If a fix is easier in the shim, that is a signal the Go surface is wrong.
+- Behavior belongs in Go, not in the shim (`internal/installer/assets/shim/pfm.zsh`). If a fix is easier in the shim, that is a signal the Go surface is wrong.
 
 ## Testing Rules
 

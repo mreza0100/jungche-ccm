@@ -367,6 +367,9 @@ func runInternal(
 		fmt.Fprintln(stdout, readPrimaryAccount(runtime.Paths, runtime.Config))
 		return 0
 	}
+	if len(args) != 0 && args[0] == "prompt-args" {
+		return runInternalPromptArgs(args[1:], stdout, stderr, runtime)
+	}
 	if len(args) != 0 && args[0] == "primary-set" {
 		flags := newFlagSet(
 			"internal primary-set",

@@ -22,18 +22,46 @@ import (
 // launch a foreign endpoint, and it would answer from a foreign model under an
 // Anthropic medal. The launcher's verdict is the account; the environment gets
 // no vote.
-const hygiene = "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CONFIG_DIR" +
-	" -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M" +
-	" -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL" +
-	" -u ANTHROPIC_SMALL_FAST_MODEL -u CLAUDE_CODE_AUTO_COMPACT_WINDOW" +
-	" -u CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" +
-	" -u CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK" +
-	" -u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
+// The list is the source of truth and the shell string is derived from it, so
+// the two renderers in claude_spawn.go — a shell `env -u …` prefix and an
+// environment slice for direct execution — can never drift apart.
+var hygieneNames = []string{
+	"CLAUDE_CODE_SESSION_ID",
+	"CLAUDECODE",
+	"CLAUDE_CODE_CHILD_SESSION",
+	"CLAUDE_CONFIG_DIR",
+	"ENABLE_PROMPT_CACHING_1H",
+	"FORCE_PROMPT_CACHING_5M",
+	"CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT",
+	"ANTHROPIC_BASE_URL",
+	"ANTHROPIC_AUTH_TOKEN",
+	"ANTHROPIC_MODEL",
+	"ANTHROPIC_SMALL_FAST_MODEL",
+	"CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+	"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+	"CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK",
+	"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
+}
+
+var hygiene = envStripWords(hygieneNames)
+
+// envStripWords renders one strip list as the `env -u NAME …` prefix.
+func envStripWords(names []string) string {
+	var words strings.Builder
+	words.WriteString("env")
+	for _, name := range names {
+		words.WriteString(" -u ")
+		words.WriteString(name)
+	}
+	return words.String()
+}
 
 // LauncherRun is the one argv-preserving Claude spawn command used by the
 // managed launcher. It shares the fleet hygiene list with picker/headless
 // launches, but intentionally adds no autonomy or resume flags of its own.
-func LauncherRun(real string, args []string, configDir string) (string, error) {
+// home and claude carry the systemPrompt choice; the launcher re-decides it
+// every spawn (hygiene strips any inherited CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT).
+func LauncherRun(real string, args []string, configDir, home string, claude pfmconfig.ClaudePrefs) (string, error) {
 	values := append([]string{real, configDir}, args...)
 	if hasNUL(values...) {
 		return "", errors.New("launcher values cannot contain NUL")
@@ -41,19 +69,22 @@ func LauncherRun(real string, args []string, configDir string) (string, error) {
 	if real == "" {
 		return "", errors.New("real Claude binary is empty")
 	}
-	var command strings.Builder
-	command.WriteString(hygiene)
-	if configDir != "" {
-		command.WriteString(" CLAUDE_CONFIG_DIR=")
-		command.WriteString(Quote(configDir))
-	}
-	command.WriteString(" FORCE_PROMPT_CACHING_5M=1 ")
-	command.WriteString(Quote(real))
-	for _, argument := range args {
-		command.WriteByte(' ')
-		command.WriteString(Quote(argument))
-	}
-	return command.String(), nil
+	// The launcher states its own binary and config dir — it has already
+	// resolved the real Claude behind the shim, and its config dir came from
+	// the environment rather than from an account row — so it hands the door a
+	// single implicit account carrying only the prompt policy. Account 0 is
+	// deliberately absent from that roster: the CLAUDE_CONFIG_DIR assignment
+	// below is the launcher's, not an account's.
+	return ClaudeSpawn{
+		Purpose:           PurposeInteractive,
+		Home:              home,
+		Args:              args,
+		Machine:           pfmconfig.Config{Claude: claude},
+		explicitConfigDir: configDir,
+		binary:            real,
+		quoteBinary:       true,
+		noAutonomy:        true,
+	}.ShellCommand()
 }
 
 // autonomyFlags is CC_AUTONOMY_FLAGS — the full-autonomy
@@ -226,7 +257,8 @@ func Synthesize(request Request) (Plan, error) {
 			machine.Path,
 			owningConfig,
 		)
-		resume := claudeCommand(
+		resume, err := claudeCommand(
+			PurposeResume,
 			request.Home,
 			request.PrimaryAccount,
 			request.Cache1H,
@@ -234,6 +266,9 @@ func Synthesize(request Request) (Plan, error) {
 			"--resume",
 			request.Row.ID,
 		)
+		if err != nil {
+			return Plan{}, err
+		}
 		plan.Run = agentRun +
 			" || { echo; echo " +
 			Quote("agent router failed — resuming fresh:") +
@@ -251,7 +286,8 @@ func Synthesize(request Request) (Plan, error) {
 				"Claude resume requires id, cwd, and fresh socket",
 			)
 		}
-		resume := claudeCommand(
+		resume, err := claudeCommand(
+			PurposeResume,
 			request.Home,
 			request.PrimaryAccount,
 			request.Cache1H,
@@ -259,6 +295,9 @@ func Synthesize(request Request) (Plan, error) {
 			"--resume",
 			request.Row.ID,
 		)
+		if err != nil {
+			return Plan{}, err
+		}
 		agent := agentCommand(
 			request.Cache1H,
 			request.Row.ID,
@@ -331,54 +370,46 @@ func routeForKind(kind compose.Kind) (Route, error) {
 }
 
 func claudeCommand(
+	purpose Purpose,
 	home string,
 	account int,
 	cache1H bool,
 	machine pfmconfig.Config,
 	args ...string,
-) string {
-	return claudeCommandWith(hygiene, home, account, cache1H, machine, args...)
+) (string, error) {
+	return claudeCommandWith(purpose, hygieneNames, home, account, cache1H, machine, args...)
 }
 
 // claudeCommandWith is claudeCommand over a caller-chosen environment strip,
 // so the headless route can widen the strip without owning a second copy of
-// the account, cache and autonomy decisions.
+// the account, cache and autonomy decisions. Both are now thin wrappers over
+// ClaudeSpawn — the one door — and exist only because the synthesis routes
+// read better as one expression inside Synthesize.
 func claudeCommandWith(
-	environmentStrip string,
+	purpose Purpose,
+	strip []string,
 	home string,
 	account int,
 	cache1H bool,
 	machine pfmconfig.Config,
 	args ...string,
-) string {
-	var command strings.Builder
-	command.WriteString(environmentStrip)
-	// Account 1 is the default config dir (hygiene already unset it); every
-	// other account is an explicit CLAUDE_CONFIG_DIR.
-	if selected, found := machine.Account(account); found && !selected.Implicit {
-		command.WriteString(" CLAUDE_CONFIG_DIR=")
-		command.WriteString(Quote(selected.ConfigDir))
-	}
-	if cache1H {
-		command.WriteString(" ENABLE_PROMPT_CACHING_1H=1")
-	} else {
-		command.WriteString(" FORCE_PROMPT_CACHING_5M=1")
-	}
-	command.WriteByte(' ')
-	command.WriteString(binaryWord(
-		machine.Claude.Binary,
-		pfmengine.MustLookup(pfmengine.Claude).Binary,
-		machine.Source("claude.binary") == pfmconfig.SourceFile,
-	))
-	for _, argument := range args {
-		command.WriteByte(' ')
-		command.WriteString(Quote(argument))
-	}
-	if machine.EffectiveClaude(account).PermissionMode == pfmconfig.PermissionBypass {
-		command.WriteByte(' ')
-		command.WriteString(autonomyFlags)
-	}
-	return command.String()
+) (string, error) {
+	return ClaudeSpawn{
+		Purpose: purpose,
+		Account: account,
+		Cache1H: cache1H,
+		Args:    args,
+		Home:    home,
+		Machine: machine,
+		strip:   strip,
+	}.ShellCommand()
+}
+
+// ProfessorPromptPath is the staged professor system prompt `pfm install`
+// writes under the managed root; claude.systemPrompt "professor" points every
+// managed launch at it via --system-prompt-file.
+func ProfessorPromptPath(home string) string {
+	return filepath.Join(home, ".local", "share", "pfm", "install", "prompts", "professor-prompt.md")
 }
 
 // continuityBanner is the first thing a resumed Codex pane prints, above

@@ -12,7 +12,7 @@
 - `docs/`: the specs — `BLUEPRINT.md` (philosophy), `SETUP.md` (generation), `PLACEHOLDERS.md` (substitution law) — plus `commands/` reference cards and `dev/` wave trains.
 - `scripts/`: repo-level gates (`leak-check.sh`, `refresh-scope.sh`); `.githooks/` runs the leak gate `pre-push`.
 - `releases/` + root `README.md` / `INSTALL.md` / `CHANGELOG.md` / `VERSION`: the public face — edited with template-grade care.
-- `.claude/`: this repo's live install — commands, skills, agents, scripts, output styles — the source of truth. `.codex/` and `.opencode/`: pointer layers compiled over it, never a restatement.
+- `.claude/`: this repo's live install — commands, skills, agents, scripts — the source of truth. `.codex/` and `.opencode/`: pointer layers compiled over it, never a restatement.
 - `.professor/`: ledgers — `drift.md` (keep-local), `release.md` (pending upstream), `retro.md` (steering inbox).
 - `tmp/`: gitignored scratch — every generated artifact lands here, never in a tracked dir.
 
@@ -79,27 +79,16 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 - **A regression test counts only after it was watched FAILING against the unfixed code.**
 - A skipped or filtered suite is a NAMED gap in the report, never a pass.
 
-## Model Selection
-
-Match the tier to the cost of being wrong; judgment never delegates downward — a higher tier spawning a lower tier OWNS the operation and its fix: the dispatch carries the exact spec (files, edits, commands, acceptance), never the open problem. Aliases are named inline at each spawn site; this section alone defines the tiers.
-
-- apex: optional frontier — R&D loops, architecture, the genuinely hardest problems, or the user's say; falls back to `gpt-5.6-sol`.
-- frontier-judgment (`gpt-5.6-sol`): product-shaping output — framework surgery, release judgment, salience over ambiguous input, any ruling on shipped prompt text.
-- spec-execution (`gpt-5.6-luna`): bounded work arriving with a spec.
-- collector (`gpt-5.6-luna`): fetch, classify, extract verbatim, summarize large output; returns raw material with its source, never concludes. Unsure? `inherit`.
-
-Effort: `High` default · `Medium` for small low-reasoning tasks · `XHigh` only to force open a genuinely hard problem · `Max` only on the user's say · `Low` never.
-
 ## Subagent dispatch
 
-The cast, its triggers, and each agent's pinned model live in the harness registry (`.claude/agents/` frontmatter, injected every session) — never restated here. **Delegate far ahead:** independent work dispatches in parallel with exact per-task briefings; dependent work runs as planned sequential batches; nest tiers — a spec-execution agent fans out collector probes and reasons over the raw findings. Heavy MCP tools (large web-fetch, docs, browser automation) run in a nested agent that distills, never in the main loop.
+Tiers, effort, and delegation posture live in the fleet prompt's § Model Selection — never restated here. The cast, its triggers, and each agent's pinned model live in the harness registry (`.claude/agents/` frontmatter, injected every session).
 
 **The briefing contract — every dispatch carries all five:**
 
 1. The goal in one sentence, and the artifact it must return (a path, a map, a verdict — name the shape).
 2. The boundary — what is in scope and, explicitly, what is NOT.
 3. The anchors — exact files, symbols, or commands to start from; never "find the relevant code".
-4. The tier and effort per § Model Selection, plus a budget when the task can run away.
+4. The tier and effort per the fleet prompt's § Model Selection, plus a budget when the task can run away.
 5. What its own failure looks like — how to report a dead end, an empty result, a tool that would not run. Silence is never a result.
 
 **The laws:**
@@ -112,7 +101,7 @@ The cast, its triggers, and each agent's pinned model live in the harness regist
 
 ## Cross-Disciplinary System Analysis
 
-The three lenses, applied together — the Analysis Protocol in `.claude/output-styles/professor.md` executes this:
+The three lenses, applied together — the procedure: **Orient** (read `docs/BLUEPRINT.md` and `docs/SETUP.md` § the relevant phase; for an engine, its own spec before its code) → **Map before judging** (spawn `subagent_type: tracer` on the target; a map is never a verdict, it FEEDS one) → **Deep dive** (implementations + tests — what's tested vs NOT — plus the prompt files that drive them; for a prompt, what it makes an agent DO, not what it claims) → **Report** (verdict HEALTHY | NEEDS ATTENTION | CRITICAL ISSUES; findings per lens; cross-disciplinary insights; recommendations table). The lenses:
 
 1. Computer Science — correctness, concurrency, failure modes, the actual data flow.
 2. Instruction design — how an agent reads this at 2 a.m. with 40% context left: ambiguity, buried load-bearing sentences, rules satisfiable without being followed, a check whose broken state looks healthy.

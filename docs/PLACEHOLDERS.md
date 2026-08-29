@@ -156,8 +156,8 @@ Real slots, register as siblings of their aggregate:
 ## The PhDs (persona qualification)
 
 The Professor's qualification is fixed prose — "15+ PhDs, one in whatever area the work
-touches" — shipped verbatim in `output-styles/professor.md`; no per-install
-discipline slots exist and SETUP collects none. `{PHD_DISCIPLINE_1..10}` (prose form
+touches" — shipped verbatim in the fleet prompt (`templates/prompts/professor.md`); no
+per-install discipline slots exist and SETUP collects none. `{PHD_DISCIPLINE_1..10}` (prose form
 `{PHD_DISCIPLINE_N}`) and `{PHD_DOMAIN_DISCIPLINE_1..5}` are dead tokens — retired, never
 re-add them; a refresh pass finding a discipline roster in a live persona genericizes it
 to the fixed line.

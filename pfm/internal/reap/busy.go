@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
+	"hostops/pfm/internal/action"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
@@ -90,8 +91,25 @@ func (agents ClaudeAgents) BusySessions(
 	busy := make(map[string]struct{})
 	for _, directory := range agents.ConfigDirs {
 		queryCtx, cancel := context.WithTimeout(ctx, agents.timeout())
-		command := exec.CommandContext(queryCtx, agents.Binary, "agents", "--json")
-		command.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+directory)
+		// A registry read starts no conversation, so it carries no prompt
+		// material and no autonomy flags — but it still takes the fleet's one
+		// hygiene strip, so a probe fired from inside a chat cannot inherit
+		// that chat's session identity or endpoint. The probe holds a config
+		// directory rather than a machine config, so it states that seat as a
+		// one-account roster.
+		command, err := action.ClaudeSpawn{
+			Purpose: action.PurposeQuery,
+			Account: 1,
+			Args:    []string{"agents", "--json"},
+			Machine: pfmconfig.Config{
+				Claude:   pfmconfig.ClaudePrefs{Binary: agents.Binary},
+				Accounts: []pfmconfig.Account{{ID: 1, ConfigDir: directory}},
+			},
+		}.Command(queryCtx)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("build busy-agent query for %s: %w", directory, err)
+		}
 		output, err := command.Output()
 		cancel()
 		if err != nil {

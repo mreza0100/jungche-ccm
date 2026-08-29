@@ -346,7 +346,6 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 		"CLAUDE.md",
 		"AGENTS.md",
 		".claude/settings.json",
-		".claude/output-styles/style.md",
 		".claude/commands/command.md",
 		".claude/agents/agent.md",
 		".claude/skills/skill/SKILL.md",
@@ -362,7 +361,6 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 	templates := map[string]string{
 		"templates/project/CLAUDE.md":              "{{PROJECT_NAME}} contract\n",
 		"templates/project/settings.json":          "{}\n",
-		"templates/project/output-styles/style.md": "{{PROJECT_NAME}} style\n",
 		"templates/project/commands/command.md":    "{{PROJECT_NAME}} command\n",
 		"templates/project/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
 		"templates/project/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",
@@ -407,7 +405,6 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 		"CLAUDE.md":                      "{{PROJECT_NAME}} contract\n",
 		"AGENTS.md":                      "{{PROJECT_NAME}} contract\n",
 		".claude/settings.json":          "{}\n",
-		".claude/output-styles/style.md": "{{PROJECT_NAME}} style\n",
 		".claude/commands/command.md":    "{{PROJECT_NAME}} command\n",
 		".claude/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
 		".claude/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",

@@ -502,7 +502,7 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 }
 
 // TestPrimaryAccountGoesThroughTheStateStore fixtures the OUTCOME of a picker
-// account swap: the shared store validates the roster and mirrors the choice
+// account change: the shared store validates the roster and mirrors the choice
 // into ~/.claude-primary for the statusline.
 func TestPrimaryAccountGoesThroughTheStateStore(t *testing.T) {
 	home := t.TempDir()

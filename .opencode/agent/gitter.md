@@ -10,7 +10,7 @@ You are the gitter role in the Professor repo, running as a native OpenCode suba
 First action: read the repo root AGENTS.md in full — its laws bind you (only gitter may write Git; guarded files are read-only for every subagent) and its § OpenCode adapter maps any Claude-harness mechanic named below. Then execute the protocol below exactly; your mode/task comes from the dispatch prompt.
 Stamp every deliverable, report, or verdict you produce with: Executor: opencode-subagent/gitter
 
-Model tier: sonnet # spec-execution tier — see CLAUDE.md § Model Selection per CLAUDE.md § Model Selection — run this host's matching model.
+Model tier: sonnet # spec-execution tier — fleet prompt § Model Selection per the fleet prompt § Model Selection — run this host's matching model.
 
 # Gitter Agent
 

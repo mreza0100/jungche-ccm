@@ -17,23 +17,41 @@ import (
 	"hostops/pfm/internal/store"
 )
 
-// The swap verb is a public chat operation. Before its port, dispatch treated
-// it as an unknown command; keep this contract pinned at the CLI boundary.
-func TestChatSwapAcceptsCacheOnlyRequest(t *testing.T) {
+// reload is a public chat operation; keep the contract pinned at the CLI
+// boundary. `swap` was the pre-port spelling and is gone — dispatch must say
+// so rather than quietly accepting a name nothing documents.
+func TestChatReloadAcceptsCacheOnlyRequest(t *testing.T) {
 	jailTest(t)
 	var stdout, stderr bytes.Buffer
 	code := runChat(
-		[]string{"swap", "--1h", "on"},
+		[]string{"reload", "--1h", "on"},
 		strings.NewReader(""),
 		&stdout,
 		&stderr,
 	)
-	if code == 2 && strings.Contains(stderr.String(), `unknown command "swap"`) {
-		t.Fatalf("swap dispatch is still missing: rc=%d stderr=%q", code, stderr.String())
+	if code == 2 && strings.Contains(stderr.String(), `unknown command "reload"`) {
+		t.Fatalf("reload dispatch is still missing: rc=%d stderr=%q", code, stderr.String())
 	}
 }
 
-func TestChatSwapHelpIsPublicAndSuccessful(t *testing.T) {
+func TestChatReloadHelpIsPublicAndSuccessful(t *testing.T) {
+	jailTest(t)
+	var stdout, stderr bytes.Buffer
+	code := runChat(
+		[]string{"reload", "--help"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 || !strings.Contains(stdout.String(), "usage: pfm chat reload") {
+		t.Fatalf("reload help rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+// The retired `swap` alias must be refused by name. A dispatch that still
+// answered it would keep a second public spelling alive that no help text,
+// card, or doc mentions.
+func TestChatSwapAliasIsRetired(t *testing.T) {
 	jailTest(t)
 	var stdout, stderr bytes.Buffer
 	code := runChat(
@@ -42,17 +60,17 @@ func TestChatSwapHelpIsPublicAndSuccessful(t *testing.T) {
 		&stdout,
 		&stderr,
 	)
-	if code != 0 || !strings.Contains(stdout.String(), "usage: pfm chat reload") {
-		t.Fatalf("swap help rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	if code != 2 || !strings.Contains(stderr.String(), `unknown command "swap"`) {
+		t.Fatalf("retired swap alias still dispatches: rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
 
-func TestChatSwapRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
+func TestChatReloadRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
 	jailTest(t)
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	socket := probeSwapSocket(t, "selector")
+	socket := probeReloadSocket(t, "selector")
 	server := exec.Command(
 		"tmux", "-S", socket, "-f", "/dev/null", "new-session", "-d", "-s", "probe",
 		"printf '❯ 1. choose\\n'; sleep 120",
@@ -61,7 +79,7 @@ func TestChatSwapRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
 	if output, err := server.CombinedOutput(); err != nil {
 		t.Fatalf("start probe socket: %v: %s", err, output)
 	}
-	cleanupProbeSwapSocket(t, socket)
+	cleanupProbeReloadSocket(t, socket)
 	paneOutput, err := exec.Command("tmux", "-S", socket, "list-panes", "-F", "#{pane_id}").Output()
 	if err != nil {
 		t.Fatalf("read probe pane: %v", err)
@@ -88,7 +106,7 @@ func TestChatSwapRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := runChatReloadWorker([]string{"--sock", socket, "--1h", "on"}, &stdout, &stderr)
 	if code == 0 || !strings.Contains(stderr.String(), "open selector menu") {
-		t.Fatalf("swap selector gate rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		t.Fatalf("reload selector gate rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if output, err := exec.Command("tmux", "-S", socket, "list-panes", "-F", "#{pane_current_command}").Output(); err != nil || strings.TrimSpace(string(output)) == "" {
 		t.Fatalf("selector gate lost the pane: err=%v output=%q", err, output)
@@ -107,7 +125,7 @@ func TestChatReloadSchedulesADetachedWorker(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	socket := probeSwapSocket(t, "schedule")
+	socket := probeReloadSocket(t, "schedule")
 	server := exec.Command(
 		"tmux", "-S", socket, "-f", "/dev/null", "new-session", "-d", "-s", "probe",
 		"sleep 120",
@@ -116,7 +134,7 @@ func TestChatReloadSchedulesADetachedWorker(t *testing.T) {
 	if output, err := server.CombinedOutput(); err != nil {
 		t.Fatalf("start probe socket: %v: %s", err, output)
 	}
-	cleanupProbeSwapSocket(t, socket)
+	cleanupProbeReloadSocket(t, socket)
 	old := startReloadWorker
 	t.Cleanup(func() { startReloadWorker = old })
 	var workerArgs []string
@@ -128,7 +146,7 @@ func TestChatReloadSchedulesADetachedWorker(t *testing.T) {
 		return nil
 	}
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"--config", configPath, "chat", "swap", "2", "--sock", socket, "--1h", "on"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"--config", configPath, "chat", "reload", "2", "--sock", socket, "--1h", "on"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("schedule rc=%d stderr=%q", code, stderr.String())
 	}
 	joined := strings.Join(workerArgs, "\x00")
@@ -140,20 +158,20 @@ func TestChatReloadSchedulesADetachedWorker(t *testing.T) {
 		t.Fatalf("schedule receipt = %q", stdout.String())
 	}
 	if !detached {
-		t.Fatal("swap worker retained the caller's process group or stdio pipes")
+		t.Fatal("reload worker retained the caller's process group or stdio pipes")
 	}
 }
 
-func probeSwapSocket(t *testing.T, suffix string) string {
+func probeReloadSocket(t *testing.T, suffix string) string {
 	t.Helper()
 	dir := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(dir, "cc-probe-pfm-swap-"+strconv.Itoa(os.Getpid())+"-"+suffix)
+	return filepath.Join(dir, "cc-probe-pfm-reload-"+strconv.Itoa(os.Getpid())+"-"+suffix)
 }
 
-func cleanupProbeSwapSocket(t *testing.T, socket string) {
+func cleanupProbeReloadSocket(t *testing.T, socket string) {
 	t.Helper()
 	t.Cleanup(func() {
 		command := exec.Command("tmux", "-S", socket, "kill-server")
@@ -171,7 +189,7 @@ func cleanupProbeSwapSocket(t *testing.T, socket string) {
 	})
 }
 
-func TestSwapTargetIdentityNeverFallsBackToTheCallerSession(t *testing.T) {
+func TestReloadTargetIdentityNeverFallsBackToTheCallerSession(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "11111111-1111-4111-8111-111111111111")
 	resolved := paths.Values{
@@ -181,7 +199,7 @@ func TestSwapTargetIdentityNeverFallsBackToTheCallerSession(t *testing.T) {
 	_, _, err := resolveReloadSession(
 		resolved,
 		pfmconfig.Defaults(resolved.Home, resolved.Roots[pfmengine.Claude], firstRoot(resolved.Roots[pfmengine.Codex])),
-		"/tmp/tmux-1000/probe-pfm-swap-target",
+		"/tmp/tmux-1000/probe-pfm-reload-target",
 		"%7",
 		false,
 	)

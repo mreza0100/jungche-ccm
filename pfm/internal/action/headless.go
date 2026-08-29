@@ -23,7 +23,9 @@ const (
 // one; `run` is called from inside other chats and from scripts, where an
 // inherited thread id would make the new chat answer `whoami` — and therefore
 // `kill --self` — with its PARENT's identity.
-const headlessHygiene = hygiene + " -u CODEX_THREAD_ID"
+var headlessHygieneNames = append(append([]string{}, hygieneNames...), "CODEX_THREAD_ID")
+
+var headlessHygiene = envStripWords(headlessHygieneNames)
 
 // HeadlessRequest is one detached, named chat to start.
 type HeadlessRequest struct {
@@ -104,8 +106,12 @@ func HeadlessFork(request HeadlessForkRequest) (HeadlessPlan, error) {
 			arguments = append(arguments, "--model", request.Model)
 		}
 		arguments = append(arguments, "--name", request.Name)
+		run, err := claudeCommandWith(PurposeResume, headlessHygieneNames, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...)
+		if err != nil {
+			return HeadlessPlan{}, err
+		}
 		return HeadlessPlan{
-			Run:                 claudeCommandWith(headlessHygiene, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...),
+			Run:                 run,
 			Binary:              claudeBinaryWord(machine),
 			PromptOnCommandLine: true,
 		}, nil
@@ -178,8 +184,12 @@ func PlanClaude(request HeadlessRequest) (HeadlessPlan, error) {
 	if request.Prompt != "" {
 		arguments = append(arguments, request.Prompt)
 	}
+	run, err := claudeCommandWith(PurposeInteractive, headlessHygieneNames, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...)
+	if err != nil {
+		return HeadlessPlan{}, err
+	}
 	return HeadlessPlan{
-		Run:                 claudeCommandWith(headlessHygiene, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...),
+		Run:                 run,
 		Binary:              claudeBinaryWord(machine),
 		PromptOnCommandLine: true,
 	}, nil

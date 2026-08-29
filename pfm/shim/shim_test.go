@@ -1,3 +1,9 @@
+// Package shim is a TEST HOME, not a source directory: it holds no shim of its
+// own. The one shim the fleet ships is the installer asset at
+// internal/installer/assets/shim/pfm.zsh (embedded into the binary and staged
+// by `pfm install`), and embeddedShimPath below reads exactly that file. A
+// second pfm.zsh must never appear here — the binary is the single source of
+// truth for every staged host asset.
 package shim
 
 import (

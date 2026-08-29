@@ -12,13 +12,13 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/agentopen"
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
@@ -268,8 +268,24 @@ func registeredDaemonSession(
 	}
 	for _, config := range configs {
 		queryCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		command := exec.CommandContext(queryCtx, binary, "agents", "--json")
-		command.Env = environmentWith("CLAUDE_CONFIG_DIR", config)
+		// A registry read is not a conversation: no prompt material, no
+		// autonomy flags, but the fleet's one hygiene strip so a query fired
+		// from inside a chat cannot inherit that chat's identity. The loop
+		// walks bare config directories, so each is stated as a one-account
+		// roster — the door never takes a bare directory.
+		command, buildErr := action.ClaudeSpawn{
+			Purpose: action.PurposeQuery,
+			Account: 1,
+			Args:    []string{"agents", "--json"},
+			Machine: pfmconfig.Config{
+				Claude:   pfmconfig.ClaudePrefs{Binary: binary},
+				Accounts: []pfmconfig.Account{{ID: 1, ConfigDir: config}},
+			},
+		}.Command(queryCtx)
+		if buildErr != nil {
+			cancel()
+			return "", false, fmt.Errorf("build agent registry query for %q: %w", config, buildErr)
+		}
 		output, queryErr := command.Output()
 		cancel()
 		if queryErr != nil {

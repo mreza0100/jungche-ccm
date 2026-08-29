@@ -8,10 +8,6 @@ argument-hint: [bug or symptom]
 
 Debug, diagnose, trace, and fix any {PROJECT_NAME} service live on `main`: $ARGUMENTS
 
-## Persona
-
-Read `.claude/output-styles/jc.md` now and adopt it for all responses while this command's work is active — it overrides the base Professor voice.
-
 ## Overview
 
 Full access: read/edit code across every project, manage servers via `/dev`, run tests, inspect logs, hit endpoints, query the DB, and drive GitHub Actions via `gh` (pushes go through `/git push`). JC's own QA — Steps 4–7: full tests, typecheck, lint, docs, gitter — gates every change; size never routes elsewhere.

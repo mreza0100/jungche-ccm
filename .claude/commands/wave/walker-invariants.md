@@ -122,23 +122,43 @@ Any addition is `/pfm`-routed (guarded file) with the SAME rigor as a CLAUDE.md 
 
 ## COMMS-LEDGER
 
-**Law:** "Every chat→chat send records exactly one `comms` row in the shared ledger — an inject only when `Origin` is empty; a group send exactly one row carrying its matched members, with its nudge injects recording nothing; a spawn one row per `runRun`. A recorder failure surfaces on stderr and never blocks delivery. The cosmos surface distinguishes 'ledger unreachable' from 'no traffic' from 'truncated window' as three different renderings." — cosmos wave spec, `docs/dev/trains/queue/2026-08-27-cosmos.md` Task #8 (gap: no CLAUDE.md bullet codifies the ledger dimension yet; closest codified laws are `pfm/CLAUDE.md` § Code Standards "A probe that could not run never returns 'nothing found'" and root `CLAUDE.md` § Prompt & template code "An error never renders as ABSENCE").
+**Law:** "Every chat→chat send records exactly one `comms` row in the shared ledger — an inject only when `Origin` is empty; a spawn one row per `runRun`. A recorder failure surfaces on stderr and never blocks delivery. The cosmos surface distinguishes 'ledger unreachable' from 'no traffic' from 'truncated window' as three different renderings. Historical rows of retired kinds (`"group"`) are skipped silently — known history, never an unknown-kind warning." — cosmos wave spec, `docs/dev/trains/queue/2026-08-27-cosmos.md` Task #8, group clauses retired with the chat-group purge (gap: no CLAUDE.md bullet codifies the ledger dimension yet; closest codified laws are `pfm/CLAUDE.md` § Code Standards "A probe that could not run never returns 'nothing found'" and root `CLAUDE.md` § Prompt & template code "An error never renders as ABSENCE").
 
 **Territory:**
 
 - `pfm/internal/inject/**`
-- `pfm/internal/chatgroup/**`
 - `pfm/internal/shared/**`
 - `pfm/internal/compose/**`
 - `pfm/internal/mcpserv/**`
 - `pfm/internal/ui/**`
 - `pfm/cmd/pfm/**`
 
-**Triggers:** diff touches a chat→chat send path (inject delivery, group bus send or nudge, chat spawn), the comms recorder or its wiring, the `comms` DDL or its queries, or a cosmos rendering/empty/error branch; diff adds a NEW send path (which must record); diff changes delivery-result classification (`Typed`, `Code`) that feeds the recorder's success predicate.
+**Triggers:** diff touches a chat→chat send path (inject delivery, chat spawn), the comms recorder or its wiring, the `comms` DDL or its queries, or a cosmos rendering/empty/error branch; diff adds a NEW send path (which must record); diff changes delivery-result classification (`Typed`, `Code`) that feeds the recorder's success predicate.
 
 **Exemplars:** *(none pinned on main yet — the cosmos wave review confirmed two bugs of exactly this class on the wave branch: a recorder gated on a partial success signal recording undelivered sends, and two empty-state guards disagreeing on the same graph. When that branch merges, add both here with STATUS: FIXED + `file:line`.)*
 
-**Hunt Brief:** Enumerate every chat→chat send path in the territory; for each, name where its exactly-one `comms` row is written and under WHICH success predicate — a recording site keyed on a partial success signal (typed-but-undelivered) is a finding. Verify nudge injects carry the group `Origin` and record nothing, so one group send can never double-count. Verify a recorder failure surfaces on stderr while the delivery still completes. Walk the cosmos surface's states and confirm 'ledger unreachable', 'no traffic recorded', and 'truncated window' render as three distinguishable outputs on every render path (full-size AND compact). A send path with no recording site is a finding with `file:line`.
+**Hunt Brief:** Enumerate every chat→chat send path in the territory; for each, name where its exactly-one `comms` row is written and under WHICH success predicate — a recording site keyed on a partial success signal (typed-but-undelivered) is a finding. Verify a recorder failure surfaces on stderr while the delivery still completes. Walk the cosmos surface's states and confirm 'ledger unreachable', 'no traffic recorded', and 'truncated window' render as three distinguishable outputs on every render path (full-size AND compact), and that a literal `"group"` historical row produces no node, no edge, and no warning. A send path with no recording site is a finding with `file:line`.
+
+---
+
+## SPAWN-DOOR-COMPLETENESS
+
+**Law:** "Surgical changes: every changed line traces to the task; fix broken things you hit; dead code/references/deps — remove entirely, end to end." — root `CLAUDE.md` § Prompt & template code (gap: no CLAUDE.md bullet yet codifies the general form — a cross-cutting invariant binds EVERY door of its enumerated surface, and enforcement at N−1 of N doors is a violation at the missing door; the fleet prompt's § Model Selection ownership law — the dispatch carries the exact spec, never the open problem — is the process-side kin).
+
+**Territory:**
+
+- `pfm/internal/action/**`
+- `pfm/cmd/pfm/launch_command.go`
+- `pfm/internal/installer/assets/shim/**`
+- `pfm/internal/dream/seat/**`
+- `.claude/scripts/*.sh`
+- `templates/project/scripts/**`
+
+**Triggers:** diff adds or edits any site that execs, synthesizes, or templates a `claude` invocation; diff adds a spawn subcommand, shell alias, or launcher function; diff touches prompt-injection plumbing (`claudeCommandWith`, `LauncherRun`, `pfm internal prompt-args`, `_cc_run`) or the passthrough predicates (`launchPassThrough`).
+
+**Exemplars:** `pfm/internal/installer/assets/shim/pfm.zsh:105,123` — `_cc_run` built the claude argv bare while the Go synthesizers injected `--system-prompt-file`; a fresh picker chat ran the production prompt — STATUS: FIXED (`pfm internal prompt-args` + `_cc_run` line-protocol parse, prompt-layer wave).
+
+**Hunt Brief:** Enumerate EVERY site in the repo that launches or synthesizes a Claude CLI invocation — Go exec/argv builders, zsh shim functions, shell scripts, templated adopter scripts. For each, name the injection point it flows through (`claudeCommandWith` | `LauncherRun` | `pfm internal prompt-args`) or the documented exemption it sits behind (`launchPassThrough`'s inside-tmux and non-interactive doors; the doctor's deliberate production-prompt capture). A door with neither is a finding, LIVE, with `file:line`. The enumeration is closed-world: state the patterns searched and name any surface you could not rule out.
 
 ---
 
