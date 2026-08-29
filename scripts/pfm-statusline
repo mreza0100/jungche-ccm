@@ -8,6 +8,10 @@
 # (input + cache_read + cache_creation — prompt caching parks most context in cache_read) and
 # rewrites ONLY the gauge bar + percent + urgency glyph. Any failure => pfm's original line, so
 # this can never render worse than before.
+# Post-compact window: between a compact and the next recorded turn, the last usage entry is
+# the PRE-compact corpse — render instead the boundary's compactMetadata.postTokens plus the
+# project's remembered system floor, marked "~" (estimate). Missing both => the pre-compact
+# number stands (stale beats blank).
 # Broken-state report: on any internal error the line passes through UNMODIFIED — the failure
 # mode is "pfm's own gauge", never a blank statusline.
 set -o pipefail
@@ -33,12 +37,15 @@ env = os.environ.get("PFM_CONTEXT_WINDOW")
 if env and env.isdigit(): win = int(env)
 
 ctx = None
+usage_idx = -1
+boundary_idx = -1
+boundary_post = 0
 try:
     last_claude = None
     last_codex = None
     codex_win = None
     with open(tp) as f:
-        for ln in f:
+        for idx, ln in enumerate(f):
             try: d = json.loads(ln)
             except Exception: continue
             pl = d.get("payload") or {}
@@ -49,10 +56,16 @@ try:
                     last_codex = cur
                     codex_win = info.get("model_context_window") or codex_win
                 continue
+            if d.get("type") == "system" and d.get("subtype") == "compact_boundary":
+                boundary_idx = idx
+                p = (d.get("compactMetadata") or {}).get("postTokens")
+                boundary_post = p if isinstance(p, int) and p > 0 else 0
+                continue
             if d.get("isSidechain") is True: continue
             u = (d.get("message") or {}).get("usage") or d.get("usage")
             if u and (u.get("input_tokens") is not None or u.get("cache_read_input_tokens") is not None):
                 last_claude = u
+                usage_idx = idx
     if last_claude:
         ctx = (last_claude.get("input_tokens") or 0) + (last_claude.get("cache_read_input_tokens") or 0) \
               + (last_claude.get("cache_creation_input_tokens") or 0)
@@ -68,7 +81,10 @@ proj = re.sub(r"[^A-Za-z0-9]+", "-", (j.get("cwd") or "root")).strip("-")[:80] o
 cache_dir = Path.home() / ".cache" / "pfm-statusline"
 cache = cache_dir / f"{harness}-{proj}.txt"
 
-if ctx:
+# a compact boundary NEWER than the last usage entry means that usage is the pre-compact corpse
+stale_compact = boundary_idx >= 0 and boundary_idx > usage_idx
+
+if ctx and not stale_compact:
     # remember the smallest context ever seen for this project = its loaded-system floor
     try:
         prev = int(cache.read_text().strip()) if cache.exists() else None
@@ -83,11 +99,15 @@ if ctx:
             pass
     est = False
 else:
-    # no usage recorded yet (fresh chat, nothing typed) -> show the remembered baseline
+    # post-compact window or nothing recorded yet: floor (loaded system) + the boundary's
+    # postTokens (retained conversation) is the honest estimate; both absent -> the
+    # pre-compact number stands (stale beats blank)
     try:
-        ctx = int(cache.read_text().strip()) if cache.exists() else 0
+        floor = int(cache.read_text().strip()) if cache.exists() else 0
     except Exception:
-        ctx = 0
+        floor = 0
+    guess = floor + (boundary_post if stale_compact else 0)
+    ctx = guess or ctx or 0
     est = True
 
 if not ctx:
