@@ -326,3 +326,13 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   The tree diagram named dead commands (`animate`, `slow-burn`) and pre-split paths; it now shows the
   two-scope shape only and points at the tree + `refresh-map.json` for rosters (2026-08-29). The card
   documents this repo's own refresh pass and never ships.
+
+- **KEEP-LOCAL: host statusline + tmux-title scripts live in `scripts/`, symlinked from `~/.local/bin/`**
+  (2026-08-29, user-ordered). `scripts/pfm-statusline` — context-gauge overlay over `pfm statusline`
+  (recomputes true occupancy from the transcript; meltdown ladder; `1h∞`); its gauge regex now walks
+  glyph runs interleaved with ANSI escapes — `makeBar` emits color+filled+dim+empty, so an escape sits
+  MID-BAR at any nonzero percent, and the old single-run pattern matched only the empty half (the
+  double-bar defect). `scripts/tmux-title-renudge` — OSC-title re-emitter the systemd trio
+  (`~/.config/systemd/user/tmux-title-renudge.{path,timer,service}`, hand-rolled, un-tracked) fires at
+  `%h/.local/bin/tmux-title-renudge`; the symlink preserves that contract. Neither ships to adopters.
+  Follow-up candidate: fold both into `pfm/internal/installer/assets/` so `pfm install` owns the wiring.
