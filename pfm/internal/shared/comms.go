@@ -8,7 +8,6 @@ import (
 
 const (
 	KindInject = "inject"
-	KindGroup  = "group"
 	KindSpawn  = "spawn"
 )
 
@@ -23,9 +22,13 @@ type CommsEvent struct {
 	Target         string
 	ReceiverSocket string
 	ReceiverPane   string
-	GroupName      string
-	Members        string
-	Message        string
+	// GroupName and Members are historical: they carried the chat-group
+	// feature's ledger rows (kind "group") before its removal. The columns
+	// and these fields stay so existing rows keep scanning; nothing writes
+	// a non-empty value into either anymore.
+	GroupName string
+	Members   string
+	Message   string
 }
 
 // RecordComms appends one event to the shared operator ledger.

@@ -117,8 +117,6 @@ func runChatWithRuntime(
 		return runChatSatellite(verb, rest, stdin, stdout, stderr, runtime)
 	case "modal":
 		return runChatModal(rest, stdout, stderr)
-	case "group":
-		return runChatGroup(rest, stdin, stdout, stderr, runtime)
 	case "resolve":
 		return runChatResolve(rest, stdout, stderr, runtime)
 	case "help", "-h", "--help":
@@ -152,7 +150,7 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  unkill      remove a chat kill")
 	fmt.Fprintln(w, "  end         end a chat's tmux server")
 	fmt.Fprintln(w, "  reload      reboot a Claude chat in place under another configured account/cache mode")
-	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")
+	fmt.Fprintln(w, "  find/save/load/branch/history/ls/resolve")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "exit codes: 0 done · 2 usage · 3 chat dead · 4 no such chat")
 	fmt.Fprintln(w, "            5 answer timed out · 6 message not delivered")

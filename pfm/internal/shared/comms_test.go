@@ -21,7 +21,10 @@ func TestCommsRoundTripIsNewestFirstAndBounded(t *testing.T) {
 			ReceiverSocket: "cc-beta", ReceiverPane: "%1", Message: "first\nverbatim",
 		},
 		{
-			AtNS: 20, Kind: KindGroup, SenderLabel: "alpha", Target: "bet*",
+			// "group" is a historical kind value: the CHECK constraint and the
+			// GroupName/Members columns stay for rows already on disk, even
+			// though nothing writes this kind anymore.
+			AtNS: 20, Kind: "group", SenderLabel: "alpha", Target: "bet*",
 			GroupName: "crew", Members: `["beta"]`, Message: "second ⏎ verbatim",
 		},
 		{

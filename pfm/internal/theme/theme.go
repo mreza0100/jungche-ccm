@@ -35,7 +35,6 @@ type Palette struct {
 	Accent        string
 	Muted         string
 	Warn          string
-	CosmosHub     string
 	CosmosLineage string
 	CosmosStar    string
 	CosmosBright  string
@@ -75,7 +74,6 @@ var defaultPalette = Palette{
 	Accent:        "#22d3ee",
 	Muted:         "#94a3b8",
 	Warn:          "#fde047",
-	CosmosHub:     "#C878FF",
 	CosmosLineage: "#828CA5",
 	CosmosStar:    "#52586E",
 	CosmosBright:  "#E1E6F0",
@@ -112,7 +110,6 @@ var tokyoNightPalette = Palette{
 	Accent:        "#7dcfff",
 	Muted:         "#565f89",
 	Warn:          "#e0af68",
-	CosmosHub:     "#C878FF",
 	CosmosLineage: "#828CA5",
 	CosmosStar:    "#52586E",
 	CosmosBright:  "#E1E6F0",

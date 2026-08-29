@@ -20,7 +20,6 @@ func updateSettings(
 	pfmBinary := home + "/.local/bin/pfm"
 	expected := claudeHookTemplates(home)
 	clearCommand := commandByName(expected, "clear-kill")
-	groupCommand := commandByName(expected, "group")
 	statusCommand := pfmBinary + " statusline"
 	usageCommand := commandByName(expected, "usage")
 	exploreDenyCommand := commandByName(expected, "explore-deny")
@@ -84,13 +83,8 @@ func updateSettings(
 			hook, _ := hookValue.(map[string]any)
 			command, _ := hook["command"].(string)
 			original := command
-			if !uninstall {
-				switch {
-				case strings.Contains(command, "chat/group.sh") && strings.HasSuffix(command, " hook"):
-					command = groupCommand
-				case strings.Contains(command, "cc-usage-hook.sh"):
-					command = usageCommand
-				}
+			if !uninstall && strings.Contains(command, "cc-usage-hook.sh") {
+				command = usageCommand
 			}
 			if command != original {
 				hook["command"] = command
@@ -101,7 +95,7 @@ func updateSettings(
 				changed = true
 				continue
 			}
-			if !uninstall && (command == groupCommand || command == usageCommand || command == epicInjectCommand) {
+			if !uninstall && (command == usageCommand || command == epicInjectCommand) {
 				if seenUserPromptCommands[command] {
 					changed = true
 					continue
@@ -159,10 +153,6 @@ func updateSettings(
 	if !uninstall {
 		if !hasHookCommandWithMatcher(hookEntries(document, "SessionStart", true), launcherRepairCommand, "") {
 			appendHookWithMatcher(document, "SessionStart", "", launcherRepairCommand)
-			changed = true
-		}
-		if !hasHookCommand(hookEntries(document, "UserPromptSubmit", true), groupCommand) {
-			appendHook(document, "UserPromptSubmit", groupCommand)
 			changed = true
 		}
 		if !hasHookCommand(hookEntries(document, "UserPromptSubmit", true), usageCommand) {
@@ -270,6 +260,7 @@ var retiredHookCommands = []struct {
 	{Name: "dream-agent-inject", Subcommand: "dream hook agent-inject"},
 	{Name: "dream-nudge", Subcommand: "dream hook nudge"},
 	{Name: "dream-codex-subagent-inject", Subcommand: "dream hook codex-subagent-inject"},
+	{Name: "group", Subcommand: "chat group hook"},
 }
 
 // retiredHookShimHints are legacy shell-script hook file substrings that

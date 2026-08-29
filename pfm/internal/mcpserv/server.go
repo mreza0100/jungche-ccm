@@ -32,12 +32,11 @@ const (
 const selfCompactDescription = "The \"give yourself a compact\" verb — when the operator says to compact yourself, take a compact at a milestone, or self-compact, this is the tool. Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state or handoff file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the steers are the only things that cross the boundary. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended. END THE TURN IMMEDIATELY after this call returns: run no further tool, start no further work, just report that compaction is queued. The steers are delivered by a waiter that identifies the compaction turn by watching this pane, so a caller that keeps working after calling this makes its own turn indistinguishable from the compaction and the steer lands beside the compaction instead of after it."
 
 var chatToolNames = []string{
-	"chat_branch", "chat_capture", "chat_find", "chat_goal", "chat_group_create",
-	"chat_group_invite", "chat_group_ls", "chat_group_read", "chat_group_send",
-	"chat_group_subscribe", "chat_inject", "chat_keys", "chat_kill",
-	"chat_last", "chat_load", "chat_ls", "chat_name", "chat_new", "chat_open",
-	"chat_read", "chat_reload", "chat_resolve", "chat_save", "chat_self_compact",
-	"chat_status", "chat_unkill", "chat_whoami", "issue_servicedesk",
+	"chat_branch", "chat_capture", "chat_find", "chat_goal", "chat_inject",
+	"chat_keys", "chat_kill", "chat_last", "chat_load", "chat_ls", "chat_name",
+	"chat_new", "chat_open", "chat_read", "chat_reload", "chat_resolve",
+	"chat_save", "chat_self_compact", "chat_status", "chat_unkill",
+	"chat_whoami", "issue_servicedesk",
 }
 
 // ToolNames returns the canonical advertised chat MCP roster. The jailed
@@ -101,7 +100,7 @@ func newService(version string, backend *backend) *Service {
 		Name:    "pfm",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "The local pfm chat fleet: inspect, resolve, capture, search, read/load complete file sets, branch, compile/fire goals, coordinate through chat groups, name, kill, reload, save, and safely inject. Routing for common asks — any phrasing of delivering text to another chat (\"send\", \"tell\", \"message\", \"reply to\", \"inject into\" chat X) is chat_inject; \"give yourself a compact\" / \"self-compact at this milestone\" is chat_self_compact (single-line focus plus mandatory continuation steers); \"who are you / what is your address\" is chat_whoami; \"what chats are running\" is chat_ls; \"spawn/start a new chat\" is chat_new. Excluded interactive/plumbing verbs: end, modal, watch, stream, recover, and history.",
+		Instructions: "The local pfm chat fleet: inspect, resolve, capture, search, read/load complete file sets, branch, compile/fire goals, name, kill, reload, save, and safely inject. Routing for common asks — any phrasing of delivering text to another chat (\"send\", \"tell\", \"message\", \"reply to\", \"inject into\" chat X) is chat_inject; \"give yourself a compact\" / \"self-compact at this milestone\" is chat_self_compact (single-line focus plus mandatory continuation steers); \"who are you / what is your address\" is chat_whoami; \"what chats are running\" is chat_ls; \"spawn/start a new chat\" is chat_new. Excluded interactive/plumbing verbs: end, modal, watch, stream, recover, and history.",
 	})
 	service := &Service{server: server, backend: backend}
 	service.register()
@@ -155,24 +154,6 @@ func (service *Service) register() {
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name: "chat_load", Description: "Return every complete non-empty text file beneath the requested paths; fail atomically if the complete set exceeds max_bytes.", Annotations: readOnly,
 	}, service.chatLoad)
-	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_group_create", Description: "Create a local append-only chat group and subscribe the requesting chat.", Annotations: mutating,
-	}, service.chatGroupCreate)
-	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_group_subscribe", Description: "Subscribe the requesting chat to an existing chat group at the current ledger cursor.", Annotations: mutating,
-	}, service.chatGroupSubscribe)
-	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_group_invite", Description: "Send a signed invitation to a live chat; the target must subscribe itself.", Annotations: mutating,
-	}, service.chatGroupInvite)
-	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_group_send", Description: "Append one message to a chat-group ledger and nudge caught-up members once; optional to-glob limits doorbells, not visibility.", Annotations: mutating,
-	}, service.chatGroupSend)
-	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_group_read", Description: "Read and advance the requesting chat's unread cursor, or peek at the newest N ledger records without advancing it.", Annotations: mutating,
-	}, service.chatGroupRead)
-	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_group_ls", Description: "List chat groups, members, message counts, and the requesting chat's unread counts.", Annotations: readOnly,
-	}, service.chatGroupList)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_keys",
 		Description: "Press validated tmux key names or explicitly type literal key text into a live chat.",

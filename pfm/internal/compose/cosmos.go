@@ -1,7 +1,6 @@
 package compose
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -50,7 +49,6 @@ type CosmosNode struct {
 	Home   string
 	Live   bool
 	Killed bool
-	Group  bool
 	LastNS int64
 	// Dead marks a node whose chat no longer has a live presence in the
 	// roster. Two different questions decide it, and only one of them
@@ -59,8 +57,7 @@ type CosmosNode struct {
 	// is ambiguous on its own — a freshly spawned chat looks identical to
 	// a vanished one until the row layer catches up — so BuildCosmos gives
 	// it a short grace window (nowNS - LastNS) before calling a still-
-	// missing row GONE rather than PENDING. A group is never Dead; it is a
-	// channel, not a chat that can die.
+	// missing row GONE rather than PENDING.
 	Dead bool
 	// DiedNS, as this package sets it, is the node's own last edge activity
 	// (LastNS), not a kill time — the store's kill table has no path into
@@ -141,28 +138,6 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 			builder.touch(from, event.AtNS)
 			builder.touch(to, event.AtNS)
 			builder.addEdge(from.Key, to.Key, event)
-		case shared.KindGroup:
-			from := builder.chatNode(senderAddress(event))
-			group := CosmosNode{
-				Key:   groupKey(event.GroupName),
-				Label: resolve.Named(event.GroupName),
-				Group: true,
-			}
-			builder.touch(from, event.AtNS)
-			builder.touch(group, event.AtNS)
-			builder.addEdge(from.Key, group.Key, event)
-			var members []string
-			if err := json.Unmarshal([]byte(event.Members), &members); err != nil {
-				builder.warnings = append(builder.warnings, fmt.Sprintf(
-					"group comms event %d has malformed members: %v", event.ID, err,
-				))
-				continue
-			}
-			for _, member := range members {
-				node := builder.chatNode(resolve.Address{Label: member})
-				builder.touch(node, event.AtNS)
-				builder.addEdge(group.Key, node.Key, event)
-			}
 		case shared.KindSpawn:
 			child := builder.chatNode(receiverAddress(event))
 			builder.touch(child, event.AtNS)
@@ -173,6 +148,10 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 			parent := builder.chatNode(senderAddress(event))
 			builder.touch(parent, event.AtNS)
 			builder.addEdge(parent.Key, child.Key, event)
+		case "group":
+			// Retired chat-group events: a historical fleet.db row of this
+			// kind is known history, not an unknown one — skip it silently,
+			// with no node, no edge, and no warning.
 		default:
 			builder.warnings = append(builder.warnings, fmt.Sprintf(
 				"comms event %d has unknown kind %q", event.ID, event.Kind,
@@ -393,4 +372,3 @@ func (builder *cosmosBuilder) addEdge(from, to string, event shared.CommsEvent) 
 	builder.edges[key] = edge
 }
 
-func groupKey(name string) string { return "group:" + name }

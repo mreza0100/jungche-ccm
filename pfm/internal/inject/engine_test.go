@@ -549,20 +549,6 @@ func TestInjectRecordsOnlyDeliveredDirectMessages(t *testing.T) {
 		}
 	})
 
-	t.Run("group nudge is skipped", func(t *testing.T) {
-		calls := 0
-		engine, _ := newEngine(t, func(context.Context, shared.CommsEvent) error {
-			calls++
-			return nil
-		})
-		result, err := engine.Inject(context.Background(), Request{
-			Target: "beta", Message: "doorbell", Origin: OriginGroupNudge,
-		})
-		if err != nil || result.Code != 0 || calls != 0 {
-			t.Fatalf("Inject() = %+v, %v; recorder calls=%d", result, err, calls)
-		}
-	})
-
 	t.Run("recorder failure warns without changing delivery", func(t *testing.T) {
 		engine, warnings := newEngine(t, func(context.Context, shared.CommsEvent) error {
 			return errors.New("database unavailable")
