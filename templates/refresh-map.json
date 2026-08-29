@@ -39,11 +39,6 @@
     "global/agents/architect.md": {
       "curated": true
     },
-    "global/agents/gitter.md": {
-      "sources": {
-        ".claude/agents/gitter.md": "c766eebaf51a5c26ddc373d1ca1e697c3ce40562b7dbbd73b6be4f765e321270"
-      }
-    },
     "global/agents/reviewer.md": {
       "curated": true
     },
@@ -123,6 +118,11 @@
     "project/CLAUDE.md": {
       "sources": {
         "CLAUDE.md": "806cb0f47036ed2a5b6f69ae84516efae65199055371710be3e15027b4d98ada"
+      }
+    },
+    "project/agents/gitter.md": {
+      "sources": {
+        ".claude/agents/gitter.md": "c766eebaf51a5c26ddc373d1ca1e697c3ce40562b7dbbd73b6be4f765e321270"
       }
     },
     "project/agents/mono-architect.md": {

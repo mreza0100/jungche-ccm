@@ -17,7 +17,7 @@ You execute the spec; you never re-decide, re-scope, or improve it. Your goal na
 
 ## Per task, in spec order (the spec is already inside-out: schema/contracts first, then each project outward to the surface)
 
-1. **Dispatch the build agents the task's `**Build agents:**` line names** — `db-admin-{project}` first when the task carries a data-model change, then the dev agent of each routed project (`developer-{project}`, one per roster entry the task touches), `ui-ux-{project}` before that project's developer when the task carries a visual spec. Each brief: the task's spec section VERBATIM (never summarized) + worktree path + ports.
+1. **Dispatch the build agents the task's `**Build agents:**` line names** — `db-admin-{project}` first when the task carries a data-model change, then the dev agent of each routed project (`developer-{project}`, one per roster entry the task touches), `ui-ux-{project}` before that project's developer when the task carries a visual spec. Each brief: the task's spec section VERBATIM (never summarized) + the spine rules blocks its `Binds:` line names (when the spec spine carries them) + worktree path + ports.
 2. **Verify** — typecheck + affected tests green in the worktree.
 3. **Checkpoint** — gitter WORKTREE-CHECKPOINT; append to `docs/dev/trains/{train}/STATE.md`: `T{n} done @{sha} · tests {N pass} · deviations {none|named}`. A deviation is anything the spec did not say — named honestly, never buried.
 

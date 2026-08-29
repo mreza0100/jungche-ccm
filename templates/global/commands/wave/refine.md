@@ -13,7 +13,7 @@ A wave carries every layer of one feature together — contracts, schema, and ev
 
 ## R1 — Walk the code
 
-Read: root `CLAUDE.md`, `docs/facts/_index.md`, child CLAUDE.md of the touched projects, `$CDOCS/officer/$REFS/officer.md` _(when the Officer archetype is installed)_; grep how the roster's projects connect on the touched subsystems; introspect the live DB for canonical names. Fan out read-only `tracer` agents, one per subsystem cluster, each returning per-task cards with file:line evidence:
+Read: root `CLAUDE.md`, `docs/facts/_index.md`, child CLAUDE.md of the touched projects, `docs/business/compliance/officer.md` _(when the Officer archetype is installed)_; grep how the roster's projects connect on the touched subsystems; introspect the live DB for canonical names. Fan out read-only `tracer` agents, one per subsystem cluster, each returning per-task cards with file:line evidence:
 
 - Code referenced: paths/components/chains the task names or implies; nonexistent = say so. A path cited as a data source is opened to confirm it contains that data. A production behavior a task relies on as a precondition — an "existing" code path, a CLI verb or flag, an exit code — is verified in code at card time and cited with its anchor; absent = the wave gains the task that builds it, ordered before its dependent.
 - What exists today / what's missing.
