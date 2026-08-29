@@ -42,7 +42,6 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 
 	for _, path := range []string{canonical, secondary} {
 		for _, command := range []string{
-			home + "/.local/bin/pfm chat group hook",
 			home + "/.local/bin/pfm internal clear-kill",
 		} {
 			if got := hookCommandCount(t, readFixture(t, path), "", command); got != 1 {
@@ -86,7 +85,6 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 	}{
 		{"PreToolUse", "Agent|Task", prefix + " internal explore-deny"},
 		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
-		{"UserPromptSubmit", "", prefix + " chat group hook"},
 		{"UserPromptSubmit", "", prefix + " usage-hook"},
 		{"SessionStart", "", prefix + " internal launcher-repair"},
 		{"SessionEnd", "", prefix + " internal clear-kill"},
@@ -98,8 +96,8 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 			t.Fatalf("%s %s matcher count=%d, want 1\n%s", hook.event, hook.command, got, updated)
 		}
 	}
-	if len(owned) != 6 {
-		t.Fatalf("owned hooks=%d, want 6: %#v", len(owned), owned)
+	if len(owned) != 5 {
+		t.Fatalf("owned hooks=%d, want 5: %#v", len(owned), owned)
 	}
 
 	withManual := append([]byte(`{"hooks":{"PreToolUse":[{"matcher":"Agent|Task","hooks":[{"type":"command","command":"operator-keep"}]}]}}`), '\n')
@@ -310,8 +308,8 @@ func TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings(t *testing.T)
 	if changed {
 		t.Fatalf("an already fully-wired settings.json was unexpectedly rewritten")
 	}
-	if len(owned) != 6 {
-		t.Fatalf("owned hooks=%d, want 6 — every already-present expected hook must be claimed: %#v", len(owned), owned)
+	if len(owned) != 5 {
+		t.Fatalf("owned hooks=%d, want 5 — every already-present expected hook must be claimed: %#v", len(owned), owned)
 	}
 	for key, count := range owned {
 		if count != 1 {
@@ -390,7 +388,6 @@ func TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent(t *testing.
 	expectedKeys := []settingsHookKey{
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: prefix + " internal explore-deny"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal epic-inject"},
-		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " chat group hook"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " usage-hook"},
 		{Event: "SessionStart", Matcher: "", Command: prefix + " internal launcher-repair"},
 		{Event: "SessionEnd", Matcher: "", Command: prefix + " internal clear-kill"},
@@ -466,6 +463,54 @@ func TestSettingsInstallRemovesRetiredClearHideAndKeepsOneClearKill(t *testing.T
 	}
 	if owned[settingsHookKey{Event: "SessionEnd", Command: clearKill}] != 1 {
 		t.Fatalf("owned ledger did not claim the replacement clear-kill hook: %#v", owned)
+	}
+}
+
+// TestSettingsInstallRemovesRetiredChatGroupHookOnApply pins the retired
+// chat-group feature's live-host contract: a settings.json written by an
+// installer that predates the purge still carries the installer-owned
+// UserPromptSubmit entry `pfm chat group hook`. Once "group" joined
+// retiredHookCommands, the very next `pfm install` APPLY — not only an
+// eventual uninstall — must strip that stale entry, while its same-event
+// installer neighbors (usage-hook, epic-inject) and an unrelated operator
+// hook sitting in its own entry survive untouched.
+func TestSettingsInstallRemovesRetiredChatGroupHookOnApply(t *testing.T) {
+	home := filepath.Join("neutral", "home")
+	pfm := home + "/.local/bin/pfm"
+	raw := []byte(`{
+  "hooks": {
+    "UserPromptSubmit": [
+      {"matcher":"","hooks":[
+        {"type":"command","command":"` + pfm + ` chat group hook"},
+        {"type":"command","command":"` + pfm + ` usage-hook"},
+        {"type":"command","command":"` + pfm + ` internal epic-inject"}
+      ]},
+      {"matcher":"custom","hooks":[
+        {"type":"command","command":"operator-owned-hook"}
+      ]}
+    ]
+  }
+}`)
+
+	updated, changed, _, err := updateSettings(raw, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("apply did not change a document containing the retired chat-group hook")
+	}
+	if strings.Contains(string(updated), "chat group hook") {
+		t.Fatalf("retired chat-group hook survived an install apply:\n%s", updated)
+	}
+	for _, survivor := range []string{
+		pfm + " usage-hook", pfm + " internal epic-inject",
+	} {
+		if got := hookCommandCount(t, string(updated), "UserPromptSubmit", survivor); got != 1 {
+			t.Fatalf("apply dropped installer-owned neighbor %q: count=%d\n%s", survivor, got, updated)
+		}
+	}
+	if got := hookCommandCount(t, string(updated), "UserPromptSubmit", "operator-owned-hook"); got != 1 {
+		t.Fatalf("apply touched an unrelated operator hook in its own entry: count=%d\n%s", got, updated)
 	}
 }
 

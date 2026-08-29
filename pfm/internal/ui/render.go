@@ -215,15 +215,9 @@ func (model Model) renderHeader(width int) string {
 			contentWidth,
 		)))
 	case TabCosmos:
-		chatCount := 0
-		for _, node := range model.cosmos.Nodes {
-			if !node.Group {
-				chatCount++
-			}
-		}
 		lines = append(lines, dimStyle.Render(fillLine(fmt.Sprintf(
 			" cosmos · %d chats · %d edges · last 24h",
-			chatCount, len(model.cosmos.Edges),
+			len(model.cosmos.Nodes), len(model.cosmos.Edges),
 		), contentWidth)))
 	default:
 		lines = append(lines, dimStyle.Render(fillLine(

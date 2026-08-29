@@ -75,7 +75,6 @@ func claudeHookTemplates(home string) []ExpectedHook {
 	binary := filepath.Join(home, ".local", "bin", "pfm")
 	return []ExpectedHook{
 		{Event: "SessionStart", Command: binary + " internal launcher-repair", Name: "launcher-repair"},
-		{Event: "UserPromptSubmit", Command: binary + " chat group hook", Name: "group"},
 		{Event: "UserPromptSubmit", Command: binary + " usage-hook", Name: "usage"},
 		{Event: "SessionEnd", Command: binary + " internal clear-kill", Name: "clear-kill"},
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: binary + " internal explore-deny", Name: "explore-deny"},

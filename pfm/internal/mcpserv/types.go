@@ -2,7 +2,6 @@
 package mcpserv
 
 import (
-	"hostops/pfm/internal/chatgroup"
 	pfmengine "hostops/pfm/internal/engine"
 )
 
@@ -308,71 +307,6 @@ type LoadOutput struct {
 	Count      int        `json:"count"`
 	TotalLines int        `json:"total_lines"`
 	TotalBytes int        `json:"total_bytes"`
-}
-
-type GroupInput struct {
-	Group string `json:"group"`
-}
-
-type GroupListInput struct{}
-
-type GroupInviteInput struct {
-	Group  string `json:"group"`
-	Target string `json:"target" jsonschema:"live chat selector to invite"`
-}
-
-type GroupReadInput struct {
-	Group string `json:"group"`
-	Peek  int    `json:"peek,omitempty" jsonschema:"return the last N messages without advancing the caller cursor"`
-}
-
-type GroupSendInput struct {
-	Group   string `json:"group"`
-	Message string `json:"message,omitempty"`
-	To      string `json:"to,omitempty" jsonschema:"optional member-label glob controlling doorbells only"`
-	File    string `json:"file,omitempty" jsonschema:"send a durable pointer to a readable regular file"`
-	Caption string `json:"caption,omitempty"`
-}
-
-type GroupReceiptOutput struct {
-	Status      string `json:"status"`
-	Code        int    `json:"code"`
-	Group       string `json:"group,omitempty"`
-	Member      string `json:"member,omitempty"`
-	Path        string `json:"path,omitempty"`
-	Message     string `json:"message,omitempty"`
-	Existing    bool   `json:"existing,omitempty"`
-	MemberCount int    `json:"member_count,omitempty"`
-}
-
-type GroupListOutput struct {
-	Groups []chatgroup.Summary `json:"groups"`
-	Count  int                 `json:"count"`
-	Member string              `json:"member"`
-}
-
-type GroupReadOutput struct {
-	Group    string   `json:"group"`
-	Member   string   `json:"member,omitempty"`
-	Messages []string `json:"messages"`
-	Count    int      `json:"count"`
-	Cursor   int      `json:"cursor"`
-	Total    int      `json:"total"`
-	Peek     bool     `json:"peek"`
-}
-
-type GroupSendOutput struct {
-	Status        string            `json:"status"`
-	Code          int               `json:"code"`
-	Group         string            `json:"group,omitempty"`
-	Sender        string            `json:"sender,omitempty"`
-	Number        int               `json:"number,omitempty"`
-	Record        string            `json:"record,omitempty"`
-	Target        string            `json:"target,omitempty"`
-	TargetMatches int               `json:"target_matches,omitempty"`
-	Nudges        []chatgroup.Nudge `json:"nudges,omitempty"`
-	SpillPath     string            `json:"spill_path,omitempty"`
-	Message       string            `json:"message,omitempty"`
 }
 
 // IssueInput is one agent complaint filed against Professor itself. Reporter

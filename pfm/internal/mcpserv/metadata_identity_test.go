@@ -18,7 +18,6 @@ import (
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
-	"hostops/pfm/internal/shared"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -236,53 +235,6 @@ func TestWorkflowToolsUseRequestIdentityAndPreserveCompleteData(t *testing.T) {
 	service := metadataIdentityService(t)
 	protocol := connectInMemory(t, service.Server())
 	alpha := mcp.Meta{"threadId": "thread-a"}
-	beta := mcp.Meta{"threadId": "thread-b"}
-
-	created := callToolWithMeta[GroupReceiptOutput](
-		t, protocol.clientSession, "chat_group_create", alpha, GroupInput{Group: "stress"},
-	)
-	if created.Status != "ok" || created.Member != "Codex A" || created.MemberCount != 1 {
-		t.Fatalf("group create = %+v", created)
-	}
-	joined := callToolWithMeta[GroupReceiptOutput](
-		t, protocol.clientSession, "chat_group_subscribe", beta, GroupInput{Group: "stress"},
-	)
-	if joined.Status != "ok" || joined.Member != "Codex B" || joined.MemberCount != 2 {
-		t.Fatalf("group subscribe = %+v", joined)
-	}
-	sent := callToolWithMeta[GroupSendOutput](
-		t, protocol.clientSession, "chat_group_send", alpha,
-		GroupSendInput{Group: "stress", Message: "one complete ledger record", To: "Codex B"},
-	)
-	if sent.Status != "ok" || sent.Number != 1 || sent.TargetMatches != 1 || len(sent.Nudges) != 1 || sent.Nudges[0].Status != "nudged" {
-		t.Fatalf("group send = %+v", sent)
-	}
-	ledger, err := service.backend.sharedState.CommsSince(context.Background(), 0, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ledger) != 1 || ledger[0].Kind != shared.KindGroup || ledger[0].GroupName != "stress" ||
-		ledger[0].Members != `["Codex B"]` || ledger[0].Target != "Codex B" {
-		t.Fatalf("group+nudge comms ledger = %#v, want one group row and zero inject rows", ledger)
-	}
-	read := callToolWithMeta[GroupReadOutput](
-		t, protocol.clientSession, "chat_group_read", beta, GroupReadInput{Group: "stress"},
-	)
-	if read.Count != 1 || read.Cursor != 1 || !strings.Contains(read.Messages[0], "one complete ledger record") {
-		t.Fatalf("group read = %+v", read)
-	}
-	peek := callToolWithMeta[GroupReadOutput](
-		t, protocol.clientSession, "chat_group_read", beta, GroupReadInput{Group: "stress", Peek: 1},
-	)
-	if peek.Count != 1 || !peek.Peek || peek.Cursor != 1 {
-		t.Fatalf("group peek = %+v", peek)
-	}
-	listed := callToolWithMeta[GroupListOutput](
-		t, protocol.clientSession, "chat_group_ls", alpha, GroupListInput{},
-	)
-	if listed.Count != 1 || listed.Member != "Codex A" || listed.Groups[0].Unread != 0 {
-		t.Fatalf("group ls = %+v", listed)
-	}
 
 	loadRoot := t.TempDir()
 	wantText := "first line\nsecond line\n"

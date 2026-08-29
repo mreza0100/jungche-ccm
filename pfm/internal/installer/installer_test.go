@@ -239,7 +239,6 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
     "PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"`+home+`/.local/bin/cc-fleet dream hook agent-inject"}]}],
     "UserPromptSubmit":[
       {"matcher":"","hooks":[{"type":"command","command":"bash ~/.claude/bin/bb-hook.sh"}]},
-      {"matcher":"","hooks":[{"type":"command","command":"bash ~/.claude/commands/chat/group.sh hook"}]},
       {"matcher":"","hooks":[{"type":"command","command":"bash /fixture/cc-usage-hook.sh"}]}
     ]
   }
@@ -358,7 +357,6 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		home + "/.local/bin/pfm statusline",
 		home + "/.local/bin/pfm usage-hook",
 		home + "/.local/bin/pfm internal clear-kill",
-		home + "/.local/bin/pfm chat group hook",
 		home + "/.local/bin/pfm internal launcher-repair",
 	} {
 		if !strings.Contains(settings, wanted) {
@@ -392,7 +390,6 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	secondary := readFixture(t, secondarySettings)
 	if strings.Contains(secondary, "chat bb") ||
-		!strings.Contains(secondary, home+"/.local/bin/pfm chat group hook") ||
 		!strings.Contains(secondary, home+"/.local/bin/pfm internal clear-kill") ||
 		!strings.Contains(secondary, "secondary-keep") {
 		t.Fatalf("secondary settings did not receive the complete hook wiring:\n%s", secondary)

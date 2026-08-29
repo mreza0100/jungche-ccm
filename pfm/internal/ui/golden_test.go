@@ -305,12 +305,6 @@ func cosmosGoldenSnapshot(width int, noSky bool) Snapshot {
 			Message: "QA: cosmos goldens are pinned",
 		},
 		{
-			AtNS: cosmosNowNS - int64(5*time.Minute), Kind: shared.KindGroup,
-			SenderUUID: snapshot.Rows[1].ID, GroupName: "wave-cosmos",
-			Members: `["123456789012345678901234567890X","Agent 界面 needle 列对齐测试名字"]`,
-			Message: "the ledger carries full text",
-		},
-		{
 			AtNS: cosmosNowNS - int64(10*time.Minute), Kind: shared.KindSpawn,
 			SenderUUID: snapshot.Rows[0].ID, Target: snapshot.Rows[4].Name,
 			Message: "begin the child seat",

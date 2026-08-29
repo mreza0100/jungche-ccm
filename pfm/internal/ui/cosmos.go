@@ -123,7 +123,7 @@ func cosmosOrbits(edges []compose.CosmosEdge, nodes map[string]compose.CosmosNod
 		}
 		parent, parentSeen := nodes[edge.From]
 		child, childSeen := nodes[edge.To]
-		if !parentSeen || !childSeen || parent.Group || child.Group {
+		if !parentSeen || !childSeen {
 			continue
 		}
 		if parent.Home != child.Home {
@@ -296,15 +296,7 @@ func (model *Model) mergeCosmosSeats() {
 	hadSeats := len(previous) != 0
 	next := make(map[string]*cosmosSeat, len(model.cosmos.Nodes))
 	newKeys := make(map[string]bool, len(model.cosmos.Nodes))
-	chats := make([]compose.CosmosNode, 0, len(model.cosmos.Nodes))
-	groups := make([]compose.CosmosNode, 0, len(model.cosmos.Nodes))
-	for _, node := range model.cosmos.Nodes {
-		if node.Group {
-			groups = append(groups, node)
-		} else {
-			chats = append(chats, node)
-		}
-	}
+	chats := model.cosmos.Nodes
 	assign := func(nodes []compose.CosmosNode, offset float64) {
 		for index, node := range nodes {
 			target := offset
@@ -323,10 +315,9 @@ func (model *Model) mergeCosmosSeats() {
 	}
 	if model.classicSky {
 		// The first cosmos' seating, kept verbatim: every chat evenly on ONE
-		// shared ring starting at the top, groups on the inner ring — no
-		// per-star systems, no moon parking.
+		// shared ring starting at the top — no per-star systems, no moon
+		// parking.
 		assign(chats, -math.Pi/2)
-		assign(groups, math.Pi/6)
 	} else {
 		nodeMap := cosmosNodeMap(model.cosmos.Nodes)
 		parents, _ := cosmosOrbits(model.cosmos.Edges, nodeMap)
@@ -354,7 +345,6 @@ func (model *Model) mergeCosmosSeats() {
 		for _, home := range homes {
 			assign(byHome[home], -math.Pi/2)
 		}
-		assign(groups, math.Pi/6)
 		// A moon's seat is only the fallback for the day its parent vanishes:
 		// while the parent renders, cosmosLayout overrides the moon's position
 		// with the parent-anchored orbit, and the ring target parked here is
@@ -420,17 +410,9 @@ func (model *Model) layoutCosmosSeats() {
 	if ry < 6 {
 		ry = 6
 	}
-	nodes := make(map[string]compose.CosmosNode, len(model.cosmos.Nodes))
-	for _, node := range model.cosmos.Nodes {
-		nodes[node.Key] = node
-	}
-	for key, seat := range model.cosmosSeats {
-		radius := 1.0
-		if nodes[key].Group {
-			radius = 0.34
-		}
-		seat.X = cx + rx*radius*math.Cos(seat.Angle)
-		seat.Y = cy + ry*radius*math.Sin(seat.Angle)
+	for _, seat := range model.cosmosSeats {
+		seat.X = cx + rx*math.Cos(seat.Angle)
+		seat.Y = cy + ry*math.Sin(seat.Angle)
 	}
 }
 
@@ -789,7 +771,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// Deepest moons draw first so that where a system crowds, the parent's
 	// glyph and label overwrite the moon's — the anchor of a system stays
 	// readable, the way the bigger body wins an eclipse.
-	ordered := append(groupsOnly(model.cosmos.Nodes), chatsOnly(model.cosmos.Nodes)...)
+	ordered := append([]compose.CosmosNode(nil), model.cosmos.Nodes...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return orbitDepth(ordered[i].Key) > orbitDepth(ordered[j].Key)
 	})
@@ -805,9 +787,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// burns (see drawCosmosSun).
 	population := make(map[string]int)
 	for _, node := range model.cosmos.Nodes {
-		if !node.Group {
-			population[node.Home]++
-		}
+		population[node.Home]++
 	}
 	for _, home := range starOrder {
 		point := starPoints[home]
@@ -861,15 +841,6 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 				color, bold = scaleRGB(base, 0.35), false
 			}
 		}
-		if model.skyEnabled && node.Group && !node.Dead {
-			// A hub is a little station: three faint satellites on a slow
-			// orbit. Text cells win over braille, so the glyph and label
-			// stay untouched above them.
-			for index := 0; index < 3; index++ {
-				orbit := clock*0.8 + cosmosPhase(node.Key) + float64(index)*2*math.Pi/3
-				canvas.Dot(int(point.x+3*math.Cos(orbit)*1.6), int(point.y+3*math.Sin(orbit)), scaleRGB(base, 0.5))
-			}
-		}
 		canvas.SetCell(colX, colY, cosmosNodeGlyph(node), color, true)
 		glyphStamps = append(glyphStamps, struct {
 			x, y  int
@@ -881,7 +852,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		// same way and prints into its siblings. Moons refine it one tier
 		// down: away from their parent planet.
 		rightward := point.x >= cx
-		if anchor, ok := starPoints[node.Home]; ok && !node.Group {
+		if anchor, ok := starPoints[node.Home]; ok {
 			rightward = point.x >= anchor.x
 		}
 		if parentKey := moonParents[node.Key]; parentKey != "" && !model.classicSky {
@@ -1034,9 +1005,7 @@ func clipCosmosLabel(label string, rightward bool, colX, cols int) string {
 func cosmosStarPoints(nodes map[string]compose.CosmosNode, cx, cy, rx, ry float64) ([]string, map[string]cosmosPoint) {
 	seen := make(map[string]bool)
 	for _, node := range nodes {
-		if !node.Group {
-			seen[node.Home] = true
-		}
+		seen[node.Home] = true
 	}
 	order := make([]string, 0, len(seen))
 	for home := range seen {
@@ -1099,14 +1068,6 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 			phase := cosmosPhase(key)
 			angle += 0.035 * math.Sin(clock*0.45+phase)
 			breath = 1 + 0.015*math.Sin(clock*0.31+phase*1.7)
-		}
-		if nodes[key].Group {
-			radius := 0.34 * breath
-			points[key] = cosmosPoint{
-				x: cx + rx*radius*math.Cos(angle),
-				y: cy + ry*radius*math.Sin(angle),
-			}
-			continue
 		}
 		if classic {
 			// The first cosmos: one shared ring around the galactic centre,
@@ -1295,26 +1256,6 @@ func cosmosNodeMap(nodes []compose.CosmosNode) map[string]compose.CosmosNode {
 	return result
 }
 
-func chatsOnly(nodes []compose.CosmosNode) []compose.CosmosNode {
-	result := make([]compose.CosmosNode, 0, len(nodes))
-	for _, node := range nodes {
-		if !node.Group {
-			result = append(result, node)
-		}
-	}
-	return result
-}
-
-func groupsOnly(nodes []compose.CosmosNode) []compose.CosmosNode {
-	result := make([]compose.CosmosNode, 0, len(nodes))
-	for _, node := range nodes {
-		if node.Group {
-			result = append(result, node)
-		}
-	}
-	return result
-}
-
 func newestInboundFlash(edges []compose.CosmosEdge, nowNS int64) map[string]float64 {
 	latest := make(map[string]int64)
 	for _, edge := range edges {
@@ -1350,9 +1291,6 @@ func newestOutboundFlash(edges []compose.CosmosEdge, nowNS int64) map[string]flo
 }
 
 func cosmosNodeColor(node compose.CosmosNode) RGB {
-	if node.Group {
-		return rgbFromHex(configuredCosmosPalette.CosmosHub)
-	}
 	if id, err := pfmengine.Parse(node.Engine); err == nil {
 		return rgbFromHex(configuredCosmosPalette.StatsEngine[id])
 	}
@@ -1360,9 +1298,6 @@ func cosmosNodeColor(node compose.CosmosNode) RGB {
 }
 
 func cosmosNodeGlyph(node compose.CosmosNode) rune {
-	if node.Group {
-		return '⬡'
-	}
 	switch pfmengine.ID(node.Engine) {
 	case pfmengine.Codex:
 		return '▲'

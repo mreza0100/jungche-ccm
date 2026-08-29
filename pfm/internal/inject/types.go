@@ -42,9 +42,6 @@ const (
 	// FullScrollback asks Capture for the entire retained buffer, chat.sh's
 	// `capture-pane -S -`, instead of the visible fold.
 	FullScrollback = -1
-	// OriginGroupNudge marks the doorbell delivery for a logical group send.
-	// The group bus records that send once, so the inject ledger skips nudges.
-	OriginGroupNudge = "group-nudge"
 )
 
 // Target is one resolved tmux destination.

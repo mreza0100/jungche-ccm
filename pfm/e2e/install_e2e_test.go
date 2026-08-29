@@ -57,7 +57,6 @@ var managedSettings = []string{
 }
 
 var expectedHooks = []string{
-	"chat group hook",
 	"usage-hook",
 	"internal explore-deny",
 	"internal epic-inject",

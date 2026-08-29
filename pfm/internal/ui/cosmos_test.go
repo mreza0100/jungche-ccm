@@ -335,11 +335,10 @@ func TestCosmosEveryHomeIsAStar(t *testing.T) {
 		"chat:name:a": {Key: "chat:name:a", Home: ".professor"},
 		"chat:name:b": {Key: "chat:name:b", Home: "atlas"},
 		"chat:name:c": {Key: "chat:name:c", Home: "/tmp"},
-		"chat:name:g": {Key: "chat:name:g", Group: true},
 	}
 	order, points = cosmosStarPoints(multi, 100, 50, 60, 30)
 	if len(order) != 3 {
-		t.Fatalf("want three stars (groups are not stars), got %v", order)
+		t.Fatalf("want three stars, got %v", order)
 	}
 	distinct := map[cosmosPoint]bool{}
 	for _, home := range order {
