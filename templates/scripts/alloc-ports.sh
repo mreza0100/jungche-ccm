@@ -3,6 +3,9 @@
 #
 # Usage:
 #   ./.claude/scripts/alloc-ports.sh alloc <worktree-id>   → prints BE_PORT=N FE_PORT=M TEST_PG_PORT=P TEST_LS_PORT=Q PULSE_PORT=R WEB_PORT=S AI_PORT=T
+#   Registry column 6 (emitted as PULSE_PORT for positional compatibility) is the
+#   metrics {DATABASE} port — the {INFRA_PROJECT} Makefile reads it as METRICS_PG_PORT.
+#   The Pulse analytics service is retired.
 #   ./.claude/scripts/alloc-ports.sh free  <worktree-id>   → releases the allocation
 #   ./.claude/scripts/alloc-ports.sh list                   → shows all allocations
 #
@@ -24,9 +27,10 @@ set -euo pipefail
 # lanes on one devbox all allocate from this SAME file, and each git worktree carries its
 # own copy of this script. `git rev-parse --path-format=absolute --git-common-dir` returns
 # the shared main checkout's .git dir from ANY worktree (same idiom the Makefile's
-# PORTS_REGISTRY already uses); a physical
-# dirname($0)-based resolution instead gives each worktree its OWN nested
-# .worktrees/.ports — invisible to Make's canonical resolution and to every other worktree.
+# PORTS_REGISTRY already uses); the physical
+# dirname($0)-based resolution this used to use instead gave each worktree its OWN nested
+# .worktrees/.ports — invisible to Make's canonical resolution and to every other worktree —
+# BUG-PIPELINE-PORTS-REGISTRY-MISMATCH.
 SCRIPT_CHECKOUT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 GIT_COMMON_DIR="$(git -C "$SCRIPT_CHECKOUT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$SCRIPT_CHECKOUT_ROOT/.git")"
 ROOT="$(dirname "$GIT_COMMON_DIR")"
@@ -197,7 +201,7 @@ cmd_list() {
     echo "No port allocations."
     return 0
   fi
-  printf "%-40s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n" "WORKTREE" "BE_PORT" "FE_PORT" "TEST_PG" "TEST_LS" "PULSE" "WEB" "AI_HTTP"
+  printf "%-40s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n" "WORKTREE" "BE_PORT" "FE_PORT" "TEST_PG" "TEST_LS" "METRICS_PG" "WEB" "AI_HTTP"
   while IFS= read -r line; do
     local id be fe tpg tls pulse web ai
     id=$(echo "$line" | awk '{print $1}')

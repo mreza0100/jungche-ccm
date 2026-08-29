@@ -20,6 +20,7 @@ set -euo pipefail
 
 MODE="${1:-mark}"
 INPUT=$(cat 2>/dev/null || true)
+PFM_BIN=$(command -v pfm 2>/dev/null || echo "$HOME/.local/bin/pfm")
 
 case "$MODE" in
   mark)
@@ -32,7 +33,7 @@ case "$MODE" in
     esac
     REPO_ROOT=$(git -C "$(dirname "$FILE_PATH")" rev-parse --show-toplevel 2>/dev/null) \
       || REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-    command -v pfm >/dev/null 2>&1 || exit 0
+    [[ -x "$PFM_BIN" ]] || exit 0
     mkdir -p "$REPO_ROOT/tmp"
     touch "$REPO_ROOT/tmp/professor_codex_dirty"
     ;;
@@ -40,8 +41,8 @@ case "$MODE" in
     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
     FLAG="$REPO_ROOT/tmp/professor_codex_dirty"
     [[ -f "$FLAG" ]] || exit 0
-    if OUT=$(pfm codex build "$REPO_ROOT" 2>&1) \
-       && CHK=$(pfm codex check "$REPO_ROOT" 2>&1); then
+    if OUT=$("$PFM_BIN" codex build "$REPO_ROOT" 2>&1) \
+       && CHK=$("$PFM_BIN" codex check "$REPO_ROOT" 2>&1); then
       rm -f "$FLAG"
       exit 0
     fi

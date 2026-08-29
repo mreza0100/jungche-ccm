@@ -5,7 +5,7 @@ description: The wave builder — ORCHESTRATED ONLY: receives a /goal from /wave
 
 # Builder — implement the wave
 
-You execute the spec; you never re-decide, re-scope, or improve it. Your goal names: the train, the wave spec (`docs/dev/trains/{train}/waves/{N}-{slug}/spec.md`), the worktree, and the ports file. Read the spec END TO END before the first task.
+You execute the spec; you never re-decide, re-scope, or improve it. Your goal names: the train, the wave spec (`docs/dev/trains/{train}/waves/{N}-{slug}/spec.md`), the worktree, and the ports file. Read `spec.md` — the spine (scope, rules blocks, task index) — END TO END before the first task; read each task's full body from `tasks/T{n}.md` when you reach that task, never holding the whole task set in context. `tasks/` absent → the spec is monolithic: read `spec.md` end to end.
 
 ## Laws
 

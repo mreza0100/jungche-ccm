@@ -56,7 +56,9 @@ if [[ "$TOOL" == "Bash" ]]; then
   printf '%s' "$CMD" | grep -qE "$PROTECTED_PATH_GREP" || exit 0
   # Write-shaped? A write verb anywhere, or a redirect/in-place-sed aimed at a
   # protected path. Read-only mentions (grep/cat/ls/diff) fall through to exit 0.
-  printf '%s' "$CMD" | grep -qE '(^|[|;&[:space:]`(])(cp|mv|tee|rsync|install|ln|truncate|dd|touch|rm|mkdir)([[:space:]]|$)|>>?[[:space:]]*[^[:space:]<]*('"$PROTECTED_PATH_GREP"')|sed[^|;&]*[[:space:]]-i' || exit 0
+  # The redirect alternative excludes a `-`-prefixed `>` so a prose arrow
+  # (`-> {AI_PROJECT}/knowledge/...`) in a chat message is not read as a write.
+  printf '%s' "$CMD" | grep -qE '(^|[|;&[:space:]`(])(cp|mv|tee|rsync|install|ln|truncate|dd|touch|rm|mkdir)([[:space:]]|$)|(^|[^->])>>?[[:space:]]*[^[:space:]<]*('"$PROTECTED_PATH_GREP"')|sed[^|;&]*[[:space:]]-i' || exit 0
   REPO_ROOT=$(git -C "$(printf '%s' "$INPUT" | jq -r '.cwd // "."')" rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT="${CLAUDE_PROJECT_DIR:-}"
   [[ -z "$REPO_ROOT" ]] && exit 0
 else

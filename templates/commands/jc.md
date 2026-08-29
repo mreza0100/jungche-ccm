@@ -46,7 +46,7 @@ Ambiguous → start diagnostic; escalate to the fix pipeline if investigation re
 Orient before drilling in:
 
 - **Always:** `docs/agents/map/_index.md` + the subsystem's topic file(s).
-- **As the query needs:** `docs/agents/architecture/_index.md` (cross-project integration); the `docs/agents/api/` cluster (inter-service contracts — **grep it, never read in full**); `docs/agents/graph/db/postgres.mmd` (full schema — grep the canonical table/column name before any query, migration, or schema change); per roster project, `{project}/docs/{architecture,developer-reference}/_index.md` + topic file (internals, dev patterns) and `qa-reference.md` (test patterns); `$CDOCS/officer/$REFS/officer.md` (compliance, if privacy/{REGULATION}).
+- **As the query needs:** `docs/agents/architecture/_index.md` (cross-project integration); the `docs/agents/api/` cluster (inter-service contracts — **grep it, never read in full**); `docs/agents/graph/db/postgres.mmd` (full schema — grep the canonical table/column name before any query, migration, or schema change); per roster project, `{project}/docs/{architecture,developer-reference}/_index.md` + topic file (internals, dev patterns) and `qa-reference.md` (test patterns); `docs/business/compliance/officer.md` (compliance, if privacy/{REGULATION}).
 
 **The map is a guide, not gospel** — updated after merges, may lag hotfixes. For anything you'll act on, verify against source: the file exists, the function name greps, the schema shape matches. Flag discrepancies and state what's actually true.
 

@@ -13,7 +13,7 @@ A wave carries every layer of one feature together — contracts, schema, and ev
 
 ## R1 — Walk the code
 
-Read: root `CLAUDE.md`, `docs/facts/_index.md`, child CLAUDE.md of the touched projects, `$CDOCS/officer/$REFS/officer.md` _(when the Officer archetype is installed)_; grep how the roster's projects connect on the touched subsystems; introspect the live DB for canonical names. Fan out read-only `Explore` (Sonnet) readers, one per subsystem cluster, each returning per-task cards with file:line evidence:
+Read: root `CLAUDE.md`, `docs/facts/_index.md`, child CLAUDE.md of the touched projects, `$CDOCS/officer/$REFS/officer.md` _(when the Officer archetype is installed)_; grep how the roster's projects connect on the touched subsystems; introspect the live DB for canonical names. Fan out read-only `tracer` agents, one per subsystem cluster, each returning per-task cards with file:line evidence:
 
 - Code referenced: paths/components/chains the task names or implies; nonexistent = say so. A path cited as a data source is opened to confirm it contains that data. A production behavior a task relies on as a precondition — an "existing" code path, a CLI verb or flag, an exit code — is verified in code at card time and cited with its anchor; absent = the wave gains the task that builds it, ordered before its dependent.
 - What exists today / what's missing.
@@ -21,7 +21,7 @@ Read: root `CLAUDE.md`, `docs/facts/_index.md`, child CLAUDE.md of the touched p
 - Incumbent patterns: how this codebase already solves the task's mechanism classes.
 - Status: `READY` / `NEEDS-CLARIFICATION` / `NEEDS-USER-SPEC`.
 
-Readers retrieve; you judge and author.
+Tracers retrieve raw maps; you judge and author.
 
 ## R2 — Ask the user until clear
 
@@ -61,7 +61,7 @@ Write `## RND-Validated Mandatory Rules` before the task list: every validated p
 ## R4 — Review + user gate
 
 - **Officer (MANDATORY on sacred ground):** a wave touching {SENSITIVE_DATA}, consent, retention, auth, or a role boundary gets a fresh-context `/officer` Advisory pass (opus agent); its flags fold in as `[WATCH:]` tags. Anything mandating a new consent scope or schema goes to the user, never auto-encoded. _(When the Officer archetype is installed.)_
-- **Architect (always):** fresh-context `Agent(subagent_type: "architect")` on the spec path only. Present findings to the user verbatim; apply what they approve.
+- **Architect (always):** fresh-context `Agent(subagent_type: "architect")` on the spec path only, briefed for its zero-gap walk. Gap findings (false edge, missing file-plan entry, unpinned external field, undecided branch) fold in as spec deltas before the spec queues; judgment findings go to the user verbatim, apply what they approve. An amendment or consolidation after this pass re-runs it — verification covers the text that dispatches, never an earlier draft.
 - **User gate:** present the Scope/Deferred boundary plus one line per task (routing + the key technical and product decisions made for them). Loop until approved; approval queues the spec. Running the train (`/wave:orchestrator`) is their separate decision.
 
 **Legal fence (sacred):** DPIA, DPA, RoPA, privacy policy, consent docs, anything under `$CDOCS/officer/$REFS/` or of legal character — you never edit one and the spec never carries a task or clause ordering any agent to; a paper need is listed in the R4 summary as a user-owned item.

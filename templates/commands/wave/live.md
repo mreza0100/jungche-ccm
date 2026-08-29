@@ -16,7 +16,7 @@ Read `.claude/output-styles/jc.md` now and adopt it for all responses while this
 
 A task list runs here; a single coherent change goes to `/jc`.
 
-**Lane mode (an on-main lane under a `/wave:orchestrator` train):** maintain `docs/dev/waves/{wave-name}/w-status.md` — after every W-step completion append one line `W{n} — {artifact path | commit SHA | gate verdict}` AND ping the orchestrator with that same line; an in-thread reply the orchestrator never sees is a silent lane. Standalone runs skip all of it.
+**Lane mode (an on-main lane under a `/wave:orchestrator` train):** maintain `docs/dev/waves/{wave-name}/w-status.md` — after every W-step completion append one line `W{n} — {artifact path | commit SHA | gate verdict}`. Every W-step completion PINGS the orchestrator — the ping quotes the appended line — AND appends that same line to `tmp/wave-sensor/events.log` (guaranteed wake); an in-thread reply the orchestrator never sees is a silent lane. Standalone runs skip all of it.
 
 The fix machinery the steps below cite is the jc-core card, `docs/commands/jc/references/jc-core.md`; missing or stale → fall back to `/jc` rather than stalling.
 

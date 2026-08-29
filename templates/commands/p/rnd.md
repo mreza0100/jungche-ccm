@@ -9,7 +9,15 @@ Take a goal — an outcome to achieve, not a topic to survey — and reach it by
 
 ## NEVER touch real code (the one inviolable boundary)
 
-RND works ONLY inside its `.professor/RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:builder`) judges that proposal and applies the real change only after the user ratifies it, having seen the completed RND result: whatever instruction authorized the RND itself (e.g. "fix it", "RND this and fix", "fix it with my steering") authorizes the research and the proposal, never the landing. Present the deliverable and wait for that post-RND ratification before any real file changes. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
+RND works ONLY inside its sandbox (§ Sandbox layout). It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:builder`) judges that proposal and applies the real change only after the user ratifies it, having seen the completed RND result: whatever instruction authorized the RND itself (e.g. "fix it", "RND this and fix", "fix it with my steering") authorizes the research and the proposal, never the landing. Present the deliverable and wait for that post-RND ratification before any real file changes. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
+
+## Sandbox layout
+
+`.professor/RND/{family}/{N}-{goal}/` — `{family}` = the short name of the chain/call family the RND targets (illustrative: `extraction`, `classification`), or the system under study for a non-chain goal; `{goal}` drops the family prefix (`extraction/1-two-pass`, never `extraction/1-extraction-two-pass`); `{N}` = next integer inside that family dir (`ls` it to derive). Every artifact of one RND lives in its own numbered dir.
+
+## Self-contained harness — no pipeline dependency
+
+RND simulates what the production pipeline does; the harness itself carries ZERO mechanical or prompt dependency on that pipeline's code — no imported chain module, no copied or linked pipeline code, no replicated transform (slicer, filter, interleaver, template). Scope is purely the issue under study: every transformation an input undergoes is written in the sandbox and visible there. An inherited production mechanic smuggles its behavior into the experiment as an invisible confound — the observation stops being attributable to the thing under test. Production enters exactly twice, both times as a black box: the Step 0 baseline (invoked whole, verbatim) and the final in-process monkey-patch validation of `PROPOSED_DIFF.md`.
 
 ## When to load
 
@@ -41,7 +49,7 @@ Output the plan to the user before executing, so they can redirect before you in
 
 ### Step 0 — Reproduce the baseline first (gate)
 
-Before trying any improvement, run the exact thing you intend to improve — the production chain, query, or system, invoked verbatim per the depth mandate — and confirm your harness produces the output it produces today. If your reproduction diverges, fix the harness until they match: a delta measured against a harness that doesn't match production measures your harness's drift, not a real gain.
+Before trying any improvement, run the exact thing you intend to improve — the production chain, query, or system, invoked whole as a black box, never rebuilt or partially copied into your harness — and record what it produces today. Every experimental delta is measured against that recorded baseline: a baseline reconstructed inside your harness measures your harness's drift, not a real gain.
 
 ### The depth mandate — non-negotiable
 
@@ -49,9 +57,9 @@ RND's value comes from stressing solutions against reality, not from confirming 
 
 - **Real-world-sized inputs.** Long documents: hundreds of segments, multi-source, production-length. Queries: realistic row counts. LLM chains: production length and complexity. Toy fixtures prove the plumbing connects, not that the building survives an earthquake — 3 items where production handles 300 validates wiring, and confidence stops there.
 - **Adversarial inputs by design.** For every approach, actively try to break it: malformed data, boundary values, missing fields, contradictory inputs, Unicode edge cases, empty-but-valid, valid-but-pathological. Finding where it fails is worth more than confirming the happy path.
-- **Production code paths verbatim.** LLM/AI chains: load the production templates via `{AI_PROJECT}`'s prompt loader, invoke the real chain module under `{AI_PROJECT}/chains/`, run its real output parsers and post-filters end to end. Queries: real schema, realistic data shapes. Endpoints: hit the actual endpoint. A hand-written prompt that "looks like" production is a sketch and a fake LLM proves nothing — mocking the thing under test is writing a letter to yourself and feeling validated when you agree. A step genuinely too expensive to run is documented as omitted with confidence lowered, never silently substituted.
+- **Real model, real calls.** The experiment calls the actual LLM at production model + config — own client or provider SDK, per § Self-contained harness — and a fake LLM proves nothing: mocking the thing under test is writing a letter to yourself and feeling validated when you agree. Queries: real schema, realistic data shapes. Endpoints: hit the actual endpoint. A step genuinely too expensive to run is documented as omitted with confidence lowered, never silently substituted.
 - **Test the artifact you intend to ship.** Validate a proposed code change in-process: import the production module, monkey-patch the target function or attribute at runtime from the sandbox, run it. A sandbox copy that "behaves like" the patch validates your understanding of the fix, not the fix — a `# simulates the fixed version` comment documents that shortcut, it does not absolve it.
-- **Sandbox only.** Prototype code, test scripts, and result artifacts live in `.professor/RND/{goal-name}/`; no real project file changes, no git branch or worktree (RND never uses `isolation: "worktree"` agents). Clean up `__pycache__` and build artifacts before reporting.
+- **Sandbox only.** Prototype code, test scripts, and result artifacts live in the sandbox (§ Sandbox layout); no real project file changes, no git branch or worktree (RND never uses `isolation: "worktree"` agents). Clean up `__pycache__` and build artifacts before reporting.
 - **Live data between approaches.** When approach N consumes approach M's output, run M live in the same execution and pipe the result. A hardcoded literal of a prior LLM emission (`APPROACH_1_OUTPUT = [...]`) is unreproducible — the model is non-deterministic — and rots the moment the upstream prompt or seed changes.
 
 ### Per-approach execution
@@ -75,7 +83,7 @@ Feed the returned angles into the next iteration.
 
 - Prompt engineering: draft the candidate in the sandbox, call the real LLM, evaluate.
 - Algorithm / code: implement it in the sandbox, run it (Bash), measure the result.
-- LLM/AI chains: import and invoke the actual chain with `get_llm()` — real model, real structured-output parsing.
+- LLM/AI chains: rebuild only the call under study in the sandbox, hit the real model at production model + config, parse the structured output yourself.
 - Data query: write it, run it against realistic shapes and row counts, evaluate the output shape.
 - Research question: search, read, grep, synthesize, evaluate completeness.
 - UI/UX pattern: prototype the pattern, evaluate against usability criteria.
@@ -99,6 +107,6 @@ A prompt-engineering RND usually finds the failing instruction already IN the pr
 
 ## Phase 3 — DELIVER
 
-When the loop ends, report under the heading `## RND Result`: the goal stated precisely; the winning approach; the validated fix written to `.professor/RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here, landed by the Professor (or `/jc` / `/wave:builder`) only after user ratification; why that approach beat the others; the adversarial and large inputs it survived (e.g. a 500-segment document, malformed nested JSON, an empty array input, concurrent write state); every approach tried with its outcome and what it taught; approaches planned then discarded, with the reason; which failures triggered 360° sweeps and what blind spots those revealed.
+When the loop ends, report under the heading `## RND Result`: the goal stated precisely; the winning approach; the validated fix written to the sandbox's `PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here, landed by the Professor (or `/jc` / `/wave:builder`) only after user ratification; why that approach beat the others; the adversarial and large inputs it survived (e.g. a 500-segment document, malformed nested JSON, an empty array input, concurrent write state); every approach tried with its outcome and what it taught; approaches planned then discarded, with the reason; which failures triggered 360° sweeps and what blind spots those revealed.
 
 If the loop exhausted without full satisfaction, report under `## RND Result — Best Effort`: the goal, the closest result reached, the gap against what the goal required, and one concrete next step — a different goal framing, a new approach category, or the user decision needed.

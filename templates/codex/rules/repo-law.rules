@@ -39,10 +39,10 @@ prefix_rule(
 # Shipped COMMENTED OUT because it is not in the working live config, and this
 # file does not carry claims it has not earned. In the live pipeline git is NOT
 # gated here: it binds as LAW — every role card states that read-only git
-# (status/log/diff/show) is the role's, while commits, merges, pushes and branch
-# changes are gitter's alone. The generated registry includes that one writer,
-# so a repo-wide Git deny would disable the authorized role along with everyone
-# else.
+# (status/diff/log/show/rev-parse) is the role's, while commits, merges, pushes
+# and branch changes are gitter's alone. The generated registry includes that
+# one writer, so a repo-wide Git deny would disable the authorized role along
+# with everyone else.
 #
 # Uncomment only if this installation intentionally disables every Git writer,
 # including gitter. `codex execpolicy check` is the only way to prove the pin;

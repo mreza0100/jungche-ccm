@@ -214,6 +214,16 @@ is_ancestor() {
   return 1
 }
 
+# A port answering a probe is not proof OUR process is alive — a stale listener
+# from a prior run (not tracked in $PID_FILE) can answer the same probe. Health
+# checks call this to require BOTH the port responding AND the PID this run
+# recorded for the service being alive before reporting GREEN.
+service_pid_alive() {
+  local key="$1" pid
+  pid=$(awk -v k="$key" '$1==k {print $2}' "$PID_FILE" 2>/dev/null | tail -1)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
 clean_ports() {
   local port
   for port in $(all_ports); do
@@ -337,37 +347,44 @@ probe_health() {
         local path="${health#http:}"
         local code
         code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}${path}" 2>/dev/null || echo "000")
-        if [ "$code" = "200" ]; then
-          ok "$label healthy"; echo "GREEN"
-        elif [ "$code" = "503" ]; then
-          warn "$label degraded (warming up — self-heals in ~30s)"; echo "YELLOW"
-        else
-          # Process alive but not serving yet = YELLOW; truly dead = RED.
-          local pid
-          pid=$(awk -v k="$key" '$1==k {print $2}' "$PID_FILE" 2>/dev/null | tail -1)
-          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            warn "$label process alive but HTTP not yet responding (port $port)"; echo "YELLOW"
+        if service_pid_alive "$key"; then
+          if [ "$code" = "200" ]; then
+            ok "$label healthy"; echo "GREEN"
+          elif [ "$code" = "503" ]; then
+            warn "$label degraded (warming up — self-heals in ~30s)"; echo "YELLOW"
           else
-            fail "$label health check failed (HTTP $code)"; echo "RED"
+            warn "$label process alive but HTTP not yet responding (port $port)"; echo "YELLOW"
           fi
+        elif [ "$code" = "200" ] || [ "$code" = "503" ]; then
+          # A port answering while the PID this run recorded is dead is a
+          # DIFFERENT process (a stale listener from a prior run) — never GREEN.
+          fail "$label process we started is dead — port $port is answering for a DIFFERENT process"; echo "RED"
+        else
+          fail "$label health check failed (HTTP $code)"; echo "RED"
         fi
         ;;
       tcp)
+        local responds=false
         if curl -sf "http://localhost:$port" -o /dev/null 2>/dev/null; then
-          ok "$label responding"; echo "GREEN"
+          responds=true
         else
           sleep 3
-          if curl -sf "http://localhost:$port" -o /dev/null 2>/dev/null; then
+          curl -sf "http://localhost:$port" -o /dev/null 2>/dev/null && responds=true
+        fi
+        if service_pid_alive "$key"; then
+          if $responds; then
             ok "$label responding"; echo "GREEN"
           else
             warn "$label not yet responding (may still be bundling)"; echo "YELLOW"
           fi
+        elif $responds; then
+          fail "$label process we started is dead — port $port is answering for a DIFFERENT process"; echo "RED"
+        else
+          fail "$label not responding (process is dead, port is silent)"; echo "RED"
         fi
         ;;
       proc|*)
-        local pid
-        pid=$(awk -v k="$key" '$1==k {print $2}' "$PID_FILE" 2>/dev/null | tail -1)
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        if service_pid_alive "$key"; then
           ok "$label alive"; echo "GREEN"
         else
           fail "$label process dead"; echo "RED"
@@ -445,7 +462,11 @@ cmd_kill() {
 cmd_up() {
   ensure_dirs
 
-  # Check for already running servers — detect partial failures
+  # Check for already running servers — every roster service must be
+  # verified, not just the ones with a pid-file entry: a service absent from
+  # $PID_FILE entirely (never started, or pruned by an earlier partial run)
+  # is exactly as unstarted as a dead PID and must not be silently skipped by
+  # a loop that only ever saw the lines that exist.
   if [ -f "$PID_FILE" ]; then
     local alive_count=0 dead_count=0
     local dead_names="" alive_entries=""
@@ -460,11 +481,35 @@ cmd_up() {
       fi
     done < "$PID_FILE"
 
+    # Fold in roster keys with no line at all in $PID_FILE — same bucket as a
+    # dead entry: both need the resurrect treatment below.
+    local entry key
+    for entry in "${PROJECTS[@]}"; do
+      IFS='|' read -r key _ _ _ _ _ _ _ <<< "$entry"
+      if ! grep -q "^${key} " "$PID_FILE"; then
+        dead_count=$((dead_count + 1))
+        dead_names="${dead_names} ${key}"
+      fi
+    done
+
+    # ALREADY_RUNNING may only be claimed once every roster server has BOTH a
+    # live recorded PID AND a responding probe — the same bar probe_health()
+    # enforces everywhere else. A live PID whose port hasn't opened yet is
+    # still starting, not proof there is nothing to do.
+    local fully_verified=false
     if [ "$alive_count" -gt 0 ] && [ "$dead_count" -eq 0 ]; then
-      # All registered services alive — nothing to do
+      fully_verified=true
+      for entry in "${PROJECTS[@]}"; do
+        IFS='|' read -r key _ _ _ _ _ _ _ <<< "$entry"
+        [ "$(probe_health "$key" | tail -1)" = "GREEN" ] || { fully_verified=false; break; }
+      done
+    fi
+
+    if $fully_verified; then
+      # Every roster server verified up — nothing to do.
       echo "ALREADY_RUNNING=true"
       return 0
-    elif [ "$alive_count" -gt 0 ] && [ "$dead_count" -gt 0 ]; then
+    elif [ "$alive_count" -gt 0 ]; then
       # Partial failure — some alive, some dead. Resurrect the fallen.
       # Deduplicate dead names (e.g., two stale entries → one resurrection)
       dead_names=$(echo "$dead_names" | tr ' ' '\n' | sort -u | tr '\n' ' ')
@@ -506,10 +551,17 @@ cmd_up() {
       # Run health checks on all services (same as fresh start)
       echo ""
       echo "---REPORT---"
-      report_statuses
+      local _statuses
+      _statuses="$(report_statuses)"
+      echo "$_statuses"
       emit_credentials
       echo "ERRORS=none"
       echo "---END---"
+
+      # D2: a report is not a success — exit non-zero when any roster service
+      # is RED, so a caller keying on exit code never reads a dead service as
+      # a clean start.
+      echo "$_statuses" | grep -q '_STATUS=RED' && return 1
       return 0
     else
       # All dead — clean up and proceed with full startup
@@ -638,7 +690,9 @@ cmd_up() {
 
   echo ""
   echo "---REPORT---"
-  report_statuses
+  local _statuses
+  _statuses="$(report_statuses)"
+  echo "$_statuses"
   emit_credentials
 
   # ── Step 7: Scan logs for errors ──
@@ -661,6 +715,12 @@ cmd_up() {
     echo "ERRORS=none"
   fi
   echo "---END---"
+
+  # D2: a report is not a success — exit non-zero when any roster service is
+  # RED, so a caller keying on exit code never reads a dead service as a
+  # clean start.
+  echo "$_statuses" | grep -q '_STATUS=RED' && return 1
+  return 0
 }
 
 # Resolve a server's port / log by key (used by partial-resurrect path).

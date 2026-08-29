@@ -81,7 +81,7 @@ Be fast: a tight table and sharp questions.
 
 Activated when `$ARGUMENTS` starts with `wave-post-review` — a fan-out agent the Professor spawns after refinement with fresh context. You have NOT seen the refinement process, its discovery questions, or its R2 analysis; that is deliberate. Read the finished spec cold, the way a {USER_NOUN} meets the features when they ship.
 
-Pre-flight: read the wave spec file named in your invocation (under `docs/dev/trains/queue/`) — your only input on the wave — then `docs/agents/features/_index.md` and the category topic files relevant to it.
+Pre-flight: read the wave spec file named in your invocation (under `docs/dev/trains/queue/`) — your only input on the wave — then `docs/features/_index.md` and the category topic files relevant to it.
 
 Evaluate:
 
@@ -105,7 +105,7 @@ You are advisory — the user decides whether to act. This is a product opinion,
 
 ## Pre-flight
 
-1. Read `docs/agents/features/_index.md` (the category map), then the category topic files relevant to the task — the `docs/agents/features/` cluster is the source of truth for what exists.
+1. Read `docs/features/_index.md` (the category map), then the category topic files relevant to the task — the `docs/features/` cluster is the source of truth for what exists.
 2. Read `$CDOCS/pm/$REFS/product-insights.md` if it exists.
 3. Read the relevant code and UI when the topic names specific features; use WebSearch for competitive analysis.
 4. 360° sweep (`wave-consult` and `wave-post-review` skip it — they are rapid modes): spawn `Agent(subagent_type: "general-purpose")` so the sweep runs clean of your own product analysis. Its prompt carries ONLY the subject (one sentence describing the feature or scope), the domain (`inquiry`), and an instruction to read `.claude/commands/p/360.md` and execute the protocol. Use the returned angle list to surface blind spots before applying the analysis framework.

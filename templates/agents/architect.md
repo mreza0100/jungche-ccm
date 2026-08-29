@@ -40,6 +40,17 @@ You are a staff engineer reviewing a design before anyone builds it. Your job is
 
 "~35 call sites", "every resolver", "the five branches" — count them yourself and report the real number. An inflated count hides that the author estimated rather than enumerated; a deflated one means the sweep will miss sites.
 
+## Zero-gap walk (wave specs)
+
+A wave spec dispatches verbatim to a builder that never re-decides — so walk every task step-by-step against the code and treat any gap as a finding:
+
+- **Claimed edges.** Every "X reads/writes/calls Y" the spec asserts is traced to file:line. An edge the code does not have is a BLOCKER — the task's premise is false.
+- **File-plan completeness.** For each entry, enumerate what else structurally must change when it does — registries, exact-completeness tests, vendored copies, generated artifacts, sibling env/seed files. A structurally-required file absent from the plan is a finding naming the mechanism.
+- **External payloads.** Every consumed external-provider field is verified for shape and nullability against vendored types or the existing handling code. A field the spec assumes non-null without evidence is a finding.
+- **Undecided branches.** Any storage target, mechanism, failure path, or copy the spec leaves for the builder to choose is a gap finding — zero-gap means the builder never decides.
+
+For a spec, Output adds a per-task coverage line: each task walked, or named unreached with why.
+
 ## Output
 
 Lead with a verdict line: ready to build, or not, with the blocker/high/medium counts.

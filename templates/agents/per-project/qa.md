@@ -110,7 +110,7 @@ The entire test surface MUST be green before merge. No scope-gating, no shortcut
 
 REDIRECT every test runner to a log file and filter the FILE (`{cmd} > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log`) — the `settings.json` hook does not reach subagents, and a LIVE pipe hangs an integration run before its first worker spawns (0 CPU, 0 children, no output — indistinguishable from "still running") — keeps failures, summaries, coverage totals; never `tail`/`head`/`grep` test output.
 
-The integration/e2e suite runs against a live data layer and can take a long time. That is the cost of touching {project}; pay it. Failures are bugs (route through the fix loop). Hangs are bugs (`BUG-HUNG-TEST` per `build.md` § Fix Loop Escalation — kill any process at 0% CPU for >2 min). Never report PASS by skipping tests.
+The integration/e2e suite runs against a live data layer at its configured parallelism (`{PARALLEL_FLAG}` — a test-health invariant) and can take a long time. That is the cost of touching {project}; pay it. NEVER lower the worker count to make it pass: a profile that fails at full parallelism is an unhealthy test — make it parallel-safe (self-contained scenarios; per-worker isolation), never pin it to serial. Failures are bugs (route through the fix loop). Hangs are bugs (`BUG-HUNG-TEST` per `build.md` § Fix Loop Escalation — kill any process at 0% CPU for >2 min). Never report PASS by skipping tests or lowering parallelism.
 
 ### Scope: POST-MERGE (GATE-2)
 

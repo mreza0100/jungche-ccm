@@ -70,7 +70,7 @@ EOF
 The trailing `-- <paths>` is MANDATORY on a shared index (`main`): without it the commit ships whatever is staged at that instant, including a concurrent gitter's files. On an isolated `pipeline/` worktree it is optional.
 
 - `<type>`: `feat` / `fix` / `docs` / `merge` / `chore`. JC hotfixes use scope `jc`.
-- The `$(...)` construct emits the `Wave:` line only when the wave is active; the `Pipeline:`/`Wave:` trailers are grep targets — `git log --grep='Wave: ux-polish'` must keep working.
+- The `$(...)` construct emits the `Wave:` line only when the wave is active; the `Pipeline:`/`Wave:` trailers are grep targets — `git log --grep='Wave: {name}'` must keep working.
 
 ## Rules
 
