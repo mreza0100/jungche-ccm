@@ -100,36 +100,47 @@ func EnvOr(name, fallback string) string {
 	return fallback
 }
 
+// Home resolves the operator home every pfm path hangs from: the PFM_HOME
+// jail override first, then the OS home — except inside a test that never
+// set up its jail, which is refused.
+//
+// A test that never set up its jail would otherwise resolve to the
+// OPERATOR'S OWN home: the fleet.db their live chats are indexed in,
+// the ~/.claude/projects their transcripts live in. That is not a
+// hypothetical — one `go test ./...` run outside the fence has written
+// fixture transcripts into a real account and held write transactions
+// on a real fleet.db until the TUI could no longer open it.
+//
+// Resolving is silent by design: it computes pathnames and touches
+// nothing, so a jailed run and an escaped one are byte-identical here
+// and stay indistinguishable until something WRITES. This is the last
+// place the difference is visible, so a missing jail is an error here
+// rather than a surprise several layers down.
+func Home() (string, error) {
+	if home := os.Getenv(EnvHome); home != "" {
+		return home, nil
+	}
+	if testing.Testing() && os.Getenv(EnvRealHome) == "" {
+		return "", fmt.Errorf(
+			"refusing to resolve the operator's real home directory inside a test: "+
+				"point %s at a temporary directory (see internal/testjail), or set %s=1 "+
+				"if this test genuinely must read the host",
+			EnvHome, EnvRealHome,
+		)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	return home, nil
+}
+
 // Resolve returns the standard host paths with all K4 test-jail overrides
 // applied. It only computes pathnames; it does not access the filesystem.
 func Resolve() (Values, error) {
-	home := os.Getenv(EnvHome)
-	if home == "" {
-		// A test that never set up its jail would otherwise resolve to the
-		// OPERATOR'S OWN home: the fleet.db their live chats are indexed in,
-		// the ~/.claude/projects their transcripts live in. That is not a
-		// hypothetical — one `go test ./...` run outside the fence has written
-		// fixture transcripts into a real account and held write transactions
-		// on a real fleet.db until the TUI could no longer open it.
-		//
-		// Resolving is silent by design: it computes pathnames and touches
-		// nothing, so a jailed run and an escaped one are byte-identical here
-		// and stay indistinguishable until something WRITES. This is the last
-		// place the difference is visible, so a missing jail is an error here
-		// rather than a surprise several layers down.
-		if testing.Testing() && os.Getenv(EnvRealHome) == "" {
-			return Values{}, fmt.Errorf(
-				"refusing to resolve the operator's real home directory inside a test: "+
-					"point %s at a temporary directory (see internal/testjail), or set %s=1 "+
-					"if this test genuinely must read the host",
-				EnvHome, EnvRealHome,
-			)
-		}
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return Values{}, fmt.Errorf("resolve home directory: %w", err)
-		}
+	home, err := Home()
+	if err != nil {
+		return Values{}, err
 	}
 
 	roots := make(map[pfmengine.ID][]string, len(pfmengine.All()))

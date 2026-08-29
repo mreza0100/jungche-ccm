@@ -26,7 +26,7 @@ func TestCacheRoundTripDoesNotTouchDiskOrNetwork(t *testing.T) {
 	defer server.Close()
 
 	cacheDir := t.TempDir()
-	harvester := New(Options{
+	harvester := mustNew(t, Options{
 		CacheDir:  cacheDir,
 		Client:    &http.Client{Transport: localServerTransport{base: http.DefaultTransport, target: server.URL}},
 		Converter: &fakeConverter{},
@@ -68,7 +68,7 @@ func TestVolatileCacheTTLBackdatedStampAndZeroOverride(t *testing.T) {
 
 	cacheDir := t.TempDir()
 	client := &http.Client{Transport: localServerTransport{base: http.DefaultTransport, target: server.URL}}
-	harvester := New(Options{CacheDir: cacheDir, Client: client, Converter: &fakeConverter{}})
+	harvester := mustNew(t, Options{CacheDir: cacheDir, Client: client, Converter: &fakeConverter{}})
 	source := "http://example.test/ttl"
 	if result := harvester.Fetch(context.Background(), source); result.Error != "" {
 		t.Fatalf("seed fetch=%#v", result)
@@ -84,7 +84,7 @@ func TestVolatileCacheTTLBackdatedStampAndZeroOverride(t *testing.T) {
 	}
 
 	t.Setenv("HARVESTER_CACHE_TTL", "0")
-	noExpiry := New(Options{CacheDir: t.TempDir(), Client: client, Converter: &fakeConverter{}})
+	noExpiry := mustNew(t, Options{CacheDir: t.TempDir(), Client: client, Converter: &fakeConverter{}})
 	zeroSource := "http://example.test/never-stale"
 	if result := noExpiry.Fetch(context.Background(), zeroSource); result.Error != "" {
 		t.Fatalf("zero seed fetch=%#v", result)

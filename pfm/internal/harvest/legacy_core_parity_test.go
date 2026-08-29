@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hostops/pfm/internal/paths"
 )
 
 func TestLegacyTokenEstimatorAllTenBehaviors(t *testing.T) {
@@ -60,22 +62,29 @@ func TestLegacyCacheLocationPrecedenceAndTTL(t *testing.T) {
 	t.Chdir(nested)
 	t.Setenv("WEBFETCH_DIR", "")
 	t.Setenv("HARVESTER_CACHE_DIR", "")
-	if got := CacheRoot(); got != filepath.Join(root, ".cache") {
-		t.Fatalf("default cache root=%q", got)
+	jailHome := filepath.Join(root, "home")
+	t.Setenv(paths.EnvHome, jailHome)
+	if got, err := CacheRoot(); err != nil || got != filepath.Join(jailHome, ".professor", ".cache") {
+		t.Fatalf("default cache root=%q err=%v", got, err)
 	}
+	t.Setenv(paths.EnvHome, "")
+	if got, err := CacheRoot(); err == nil {
+		t.Fatalf("unjailed default cache root resolved to %q; want the real-home refusal", got)
+	}
+	t.Setenv(paths.EnvHome, jailHome)
 	t.Setenv("HARVESTER_CACHE_DIR", ".harvest-cache")
-	if got := CacheRoot(); got != filepath.Join(root, ".harvest-cache") {
-		t.Fatalf("relative cache root=%q", got)
+	if got, err := CacheRoot(); err != nil || got != filepath.Join(root, ".harvest-cache") {
+		t.Fatalf("relative cache root=%q err=%v", got, err)
 	}
 	abs := filepath.Join(root, "elsewhere")
 	t.Setenv("HARVESTER_CACHE_DIR", abs)
-	if got := CacheRoot(); got != abs {
-		t.Fatalf("absolute cache root=%q", got)
+	if got, err := CacheRoot(); err != nil || got != abs {
+		t.Fatalf("absolute cache root=%q err=%v", got, err)
 	}
 	legacy := filepath.Join(root, "legacy")
 	t.Setenv("WEBFETCH_DIR", legacy)
-	if got := CacheRoot(); got != legacy {
-		t.Fatalf("WEBFETCH_DIR cache root=%q", got)
+	if got, err := CacheRoot(); err != nil || got != legacy {
+		t.Fatalf("WEBFETCH_DIR cache root=%q err=%v", got, err)
 	}
 
 	t.Setenv("HARVESTER_CACHE_TTL", "3600")
@@ -145,7 +154,7 @@ func TestLegacyRefreshBypassesNegativeCache(t *testing.T) {
 		return nil, fmt.Errorf("fixture connection failure")
 	})
 	client := func() *http.Client { return &http.Client{Transport: transport} }
-	h := New(Options{CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: &fakeConverter{}})
+	h := mustNew(t, Options{CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: &fakeConverter{}})
 	source := "https://failure.example.test/page"
 	first := h.Fetch(context.Background(), source)
 	if first.Error == "" {

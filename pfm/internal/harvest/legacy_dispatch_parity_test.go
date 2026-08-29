@@ -69,7 +69,7 @@ func TestLegacyConcurrentFailuresShareOneInFlightFetch(t *testing.T) {
 		return nil, fmt.Errorf("fixture connection failure")
 	})
 	client := func() *http.Client { return &http.Client{Transport: transport} }
-	h := New(Options{ContactEmail: "test@example.org", CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) { return "", nil }), BrowserRung: browserOff()})
+	h := mustNew(t, Options{ContactEmail: "test@example.org", CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) { return "", nil }), BrowserRung: browserOff()})
 	start := make(chan struct{})
 	results := make(chan Result, 2)
 	for range 2 {
@@ -142,7 +142,7 @@ func TestLegacyPDFErrorBodiesNeverBecomeConvertedSuccess(t *testing.T) {
 	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir: t.TempDir(),
 		Client:   &http.Client{Transport: wallTransport},
 		Chrome:   &http.Client{Transport: wallTransport},
@@ -177,7 +177,7 @@ func TestLegacyEmptyPDFConversionKeepsOCRRecoveryHint(t *testing.T) {
 	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir: t.TempDir(),
 		Client:   &http.Client{Transport: pdfTransport},
 		Chrome:   &http.Client{Transport: pdfTransport},
@@ -203,7 +203,7 @@ func TestLegacyPlainTextPassesThroughVerbatimAndCaches(t *testing.T) {
 	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir: t.TempDir(),
 		Client:   &http.Client{Transport: plainTransport},
 		Chrome:   &http.Client{Transport: plainTransport},
@@ -231,7 +231,7 @@ func TestLegacyPlainTextPassesThroughVerbatimAndCaches(t *testing.T) {
 	if err := os.WriteFile(localPath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	local := New(Options{CacheDir: t.TempDir(), LocalRoots: []string{filepath.Dir(localPath)}, Converter: h.options.Converter}).Fetch(context.Background(), localPath)
+	local := mustNew(t, Options{CacheDir: t.TempDir(), LocalRoots: []string{filepath.Dir(localPath)}, Converter: h.options.Converter}).Fetch(context.Background(), localPath)
 	localBody, localReadErr := os.ReadFile(local.Path)
 	if local.Error != "" || !strings.HasPrefix(local.Content, "CHAPTER I\n\nNapoleon") || localReadErr != nil || !strings.Contains(string(localBody), body) {
 		t.Fatalf("local plain-text fetch=%#v", local)
@@ -244,7 +244,7 @@ func TestLegacyMisservedHTMLAsTextPlainStillUsesHTMLConverter(t *testing.T) {
 		return response(request, http.StatusOK, "text/plain", body), nil
 	})
 	var kinds []string
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir: t.TempDir(),
 		Client:   &http.Client{Transport: plainTransport},
 		Chrome:   &http.Client{Transport: plainTransport},
@@ -273,7 +273,7 @@ func TestLegacyDOISuccessCachesUnderCanonicalIdentifierBeforeProviderResolution(
 		documentCalls.Add(1)
 		return response(request, http.StatusOK, "application/pdf", "%PDF-1.7 fixture"), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		ContactEmail: "test@example.org",
 		CacheDir:     t.TempDir(),
 		Client:       &http.Client{Transport: documentTransport},
@@ -310,7 +310,7 @@ func TestLegacyPDFAddressMustContainPDFBytesLocallyAndRemotely(t *testing.T) {
 			t.Fatal(err)
 		}
 		var converts atomic.Int64
-		h := New(Options{
+		h := mustNew(t, Options{
 			CacheDir:   t.TempDir(),
 			LocalRoots: []string{filepath.Dir(path)},
 			Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) {
@@ -332,7 +332,7 @@ func TestLegacyPDFAddressMustContainPDFBytesLocallyAndRemotely(t *testing.T) {
 			return response(request, http.StatusNotFound, "application/json", `{}`), nil
 		})
 		var converts atomic.Int64
-		h := New(Options{
+		h := mustNew(t, Options{
 			CacheDir: t.TempDir(),
 			Client:   &http.Client{Transport: wallTransport},
 			Chrome:   &http.Client{Transport: wallTransport},
@@ -358,7 +358,7 @@ func TestLegacyPaywalledDOIUsesWaybackThenReturnsCompleteLegalSourceReceipt(t *t
 		oaTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return jsonResponse(request, `{}`), nil
 		})
-		h := New(Options{CacheDir: t.TempDir(), OA: &http.Client{Transport: oaTransport}, Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) {
+		h := mustNew(t, Options{CacheDir: t.TempDir(), OA: &http.Client{Transport: oaTransport}, Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) {
 			return "", nil
 		})})
 		result := h.Fetch(context.Background(), "10.1234/paywalled")
@@ -385,7 +385,7 @@ func TestLegacyPaywalledDOIUsesWaybackThenReturnsCompleteLegalSourceReceipt(t *t
 		pageTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			return response(request, http.StatusOK, "text/html", page), nil
 		})
-		h := New(Options{
+		h := mustNew(t, Options{
 			CacheDir: t.TempDir(),
 			Client:   &http.Client{Transport: pageTransport},
 			Chrome:   &http.Client{Transport: pageTransport},

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"hostops/pfm/internal/paths"
 )
 
 // Cache is a type-partitioned markdown cache. Images and archives do not
@@ -93,21 +95,28 @@ func (h *Harvester) SearchCache(pattern string, maxResults int, ignoreCase bool)
 
 func newCache(root string, ttl time.Duration) *Cache { return &Cache{root: root, ttl: ttl} }
 
-func defaultCacheDir() string {
+func defaultCacheDir() (string, error) {
 	if root := os.Getenv("WEBFETCH_DIR"); strings.TrimSpace(root) != "" {
-		return filepath.Clean(expandCachePath(root))
+		return filepath.Clean(expandCachePath(root)), nil
 	}
 	if root := os.Getenv("HARVESTER_CACHE_DIR"); strings.TrimSpace(root) != "" {
 		p := filepath.Clean(expandCachePath(root))
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(projectRoot(), p)
 		}
-		return p
+		return p, nil
 	}
-	// The Python worker keeps its default cache beside the project, not in a
-	// machine-global XDG directory. This also makes separate project checkouts
-	// independent and is important for the caller's cache-root contract.
-	return filepath.Join(projectRoot(), ".cache")
+	// The default cache lives in exactly ONE place: <home>/.professor/.cache
+	// (beside pfm's other home state such as ~/.professor/agents). It must
+	// never follow the process's working directory — the cwd-walking default
+	// this replaces grew a stray .cache in whatever project a chat happened
+	// to fetch from. A home that cannot be resolved is an error, never a
+	// fallback to some other directory.
+	home, err := paths.Home()
+	if err != nil {
+		return "", fmt.Errorf("resolve harvester cache home: %w", err)
+	}
+	return filepath.Join(home, ".professor", ".cache"), nil
 }
 
 func expandCachePath(raw string) string {
@@ -121,13 +130,15 @@ func expandCachePath(raw string) string {
 }
 
 // CacheRoot resolves the same precedence used by New: WEBFETCH_DIR, then
-// HARVESTER_CACHE_DIR (relative to the project root), then project-root .cache.
-func CacheRoot() string { return defaultCacheDir() }
+// HARVESTER_CACHE_DIR (relative to the project root), then the one default
+// <home>/.professor/.cache.
+func CacheRoot() (string, error) { return defaultCacheDir() }
 
-// projectRoot mirrors the Python worker's "walk until the project marker"
-// rule. A configured relative cache must not move merely because the caller
-// launched pfm from another directory. The Go project marker is go.mod;
-// falling back to the current directory keeps installed binaries usable.
+// projectRoot anchors an explicitly configured RELATIVE cache dir
+// (HARVESTER_CACHE_DIR) — it plays no part in the default. A configured
+// relative cache must not move merely because the caller launched pfm from
+// another directory. The Go project marker is go.mod; falling back to the
+// current directory keeps installed binaries usable.
 func projectRoot() string {
 	wd, err := os.Getwd()
 	if err != nil || wd == "" {

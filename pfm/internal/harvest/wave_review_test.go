@@ -86,7 +86,7 @@ func TestReviewOCRBackendFailureNeverRendersAsEmptyPDF(t *testing.T) {
 	missing := roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return response(nil, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		ContactEmail: "test@example.org",
 		CacheDir:     t.TempDir(),
 		Client:       &http.Client{Transport: pdfTransport},
@@ -114,7 +114,7 @@ func TestReviewExhaustedDOIReceiptNamesOnlyQueriedSources(t *testing.T) {
 		return response(nil, http.StatusNotFound, "application/json", `{}`), nil
 	})
 	newHarvester := func(email string) *Harvester {
-		return New(Options{
+		return mustNew(t, Options{
 			ContactEmail: email,
 			CacheDir:     t.TempDir(),
 			Client:       &http.Client{Transport: missing},

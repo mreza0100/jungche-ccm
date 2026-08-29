@@ -18,7 +18,7 @@ func TestLegacyUnresolvedBotChallengeIsNeverCached(t *testing.T) {
 	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		ContactEmail: "test@example.org",
 		CacheDir:     t.TempDir(),
 		Client:       &http.Client{Transport: wallTransport},
@@ -74,7 +74,7 @@ func TestCloudflare403BlockPageEscalatesInsteadOfCachingSuccess(t *testing.T) {
 	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir:    t.TempDir(),
 		Client:      &http.Client{Transport: wallTransport},
 		Chrome:      &http.Client{Transport: wallTransport},
@@ -137,7 +137,7 @@ func TestLegacyChallengeCanRecoverAtChromeAndPersistsTrace(t *testing.T) {
 	chrome := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusOK, "text/html", rich), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir:  t.TempDir(),
 		Client:    &http.Client{Transport: direct},
 		Chrome:    &http.Client{Transport: chrome},
@@ -174,7 +174,7 @@ func TestLegacyCitationPDFMetaRescueCachesThePublisherSource(t *testing.T) {
 	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir: t.TempDir(),
 		Client:   &http.Client{Transport: documentTransport},
 		Chrome:   &http.Client{Transport: documentTransport},
@@ -217,7 +217,7 @@ func TestLegacySelfReferentialOACandidateCannotRecurse(t *testing.T) {
 	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		ContactEmail: "test@example.org", // unpaywall is gated on an operator email
 		CacheDir:     t.TempDir(),
 		Client:       &http.Client{Transport: wallTransport},

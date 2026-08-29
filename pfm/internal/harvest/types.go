@@ -172,8 +172,10 @@ type fetchFlight struct {
 
 // New constructs a Harvester. A nil Converter is valid for callers that only
 // need archive listing, search, or raw transport tests; converted fetches then
-// report a useful error instead of silently returning bytes.
-func New(options Options) *Harvester {
+// report a useful error instead of silently returning bytes. It fails when no
+// CacheDir was given and the one default (<home>/.professor/.cache) cannot be
+// resolved — never by caching somewhere else.
+func New(options Options) (*Harvester, error) {
 	env := snapshotEnv()
 	if strings.TrimSpace(options.ContactEmail) != "" {
 		env.contactEmail = strings.TrimSpace(options.ContactEmail)
@@ -200,7 +202,11 @@ func New(options Options) *Harvester {
 		env.browser = *options.BrowserRung
 	}
 	if options.CacheDir == "" {
-		options.CacheDir = defaultCacheDir()
+		dir, err := defaultCacheDir()
+		if err != nil {
+			return nil, err
+		}
+		options.CacheDir = dir
 	}
 	if options.CacheTTL == 0 {
 		options.CacheTTL = cacheTTLFromEnv()
@@ -275,7 +281,7 @@ func New(options Options) *Harvester {
 	setUserAgent(binaryDirect, userAgent)
 	setUserAgent(jina, userAgent)
 	return &Harvester{options: options, client: client, chrome: chrome, binaryDirect: binaryDirect, binaryChrome: binaryChrome, jina: jina, oa: oa,
-		userAgent: userAgent, cache: newCache(options.CacheDir, options.CacheTTL), neg: newNegativeCache(negTTLFromEnv(), negTransientTTLFromEnv()), flights: make(map[string]*fetchFlight), env: env}
+		userAgent: userAgent, cache: newCache(options.CacheDir, options.CacheTTL), neg: newNegativeCache(negTTLFromEnv(), negTransientTTLFromEnv()), flights: make(map[string]*fetchFlight), env: env}, nil
 }
 
 // Fetch executes one request with default options.

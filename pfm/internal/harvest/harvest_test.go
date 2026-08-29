@@ -69,7 +69,7 @@ func TestFetchLadderDirectChromeJinaAndPrivateSkip(t *testing.T) {
 		}
 		return response(r, http.StatusOK, "text/plain", strings.Repeat("rich article text ", 60)), nil
 	}}
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir:  cacheDir,
 		Client:    &http.Client{Transport: direct},
 		Chrome:    &http.Client{Transport: chrome},
@@ -90,7 +90,7 @@ func TestFetchLadderDirectChromeJinaAndPrivateSkip(t *testing.T) {
 	private := &recordingTransport{respond: func(r *http.Request) (*http.Response, error) {
 		return response(r, http.StatusOK, "text/plain", strings.Repeat("private page ", 60)), nil
 	}}
-	h = New(Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: private}, Chrome: &http.Client{Transport: private}, Jina: &http.Client{Transport: private}, Converter: converter})
+	h = mustNew(t, Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: private}, Chrome: &http.Client{Transport: private}, Jina: &http.Client{Transport: private}, Converter: converter})
 	got = h.Fetch(context.Background(), "http://127.0.0.1/private")
 	if got.Error == "" || !strings.Contains(strings.ToLower(got.Error), "private") {
 		t.Fatalf("private fetch error = %q, want explicit local/private refusal", got.Error)
@@ -110,7 +110,7 @@ func TestCacheTypePartitionTTLAndRefresh(t *testing.T) {
 		return response(r, http.StatusOK, "text/html", strings.Repeat("body ", 150)), nil
 	})
 	cacheDir := t.TempDir()
-	h := New(Options{CacheDir: cacheDir, Client: &http.Client{Transport: tr}, Chrome: &http.Client{Transport: tr}, CacheTTL: time.Hour, Converter: &fakeConverter{}})
+	h := mustNew(t, Options{CacheDir: cacheDir, Client: &http.Client{Transport: tr}, Chrome: &http.Client{Transport: tr}, CacheTTL: time.Hour, Converter: &fakeConverter{}})
 	first := h.Fetch(context.Background(), "https://example.test/a")
 	if first.Error != "" || first.CacheStatus != "miss" {
 		t.Fatalf("first fetch = %#v", first)
@@ -176,7 +176,7 @@ func TestExistingLocalFileWinsOverISBNClassification(t *testing.T) {
 	if err := os.WriteFile(source, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	h := New(Options{CacheDir: t.TempDir(), Converter: &fakeConverter{}})
+	h := mustNew(t, Options{CacheDir: t.TempDir(), Converter: &fakeConverter{}})
 	result := h.Fetch(context.Background(), source)
 	if result.Error != "" {
 		t.Fatalf("existing local file was classified as a scholarly identifier: %s", result.Error)
@@ -199,7 +199,7 @@ func TestProviderEnvironmentIsSnapshottedAtNew(t *testing.T) {
 		seen = r.Clone(r.Context())
 		return jsonResponse(r, `{"records":[{"pmcid":"PMC1234567"}]}`), nil
 	})}
-	h := New(Options{CacheDir: t.TempDir(), OA: client})
+	h := mustNew(t, Options{CacheDir: t.TempDir(), OA: client})
 	t.Setenv("HARVESTER_CONTACT_EMAIL", "second@example.test")
 	_, err := h.resolver().ResolvePMID(context.Background(), "1234567")
 	if err != nil {
@@ -364,7 +364,7 @@ func TestExtensionlessSniffedKindCachesAndJinaEnvelopeIsStripped(t *testing.T) {
 		calls++
 		return response(r, http.StatusOK, "application/pdf", "%PDF-1.7\nbody"), nil
 	})
-	h := New(Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: pdfTransport}, Chrome: &http.Client{Transport: pdfTransport}, Converter: &fakeConverter{}})
+	h := mustNew(t, Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: pdfTransport}, Chrome: &http.Client{Transport: pdfTransport}, Converter: &fakeConverter{}})
 	first := h.Fetch(context.Background(), "https://example.test/download")
 	if first.Error != "" || first.Kind != "pdf" {
 		t.Fatalf("extensionless PDF = %#v", first)
@@ -380,7 +380,7 @@ func TestExtensionlessSniffedKindCachesAndJinaEnvelopeIsStripped(t *testing.T) {
 	jina := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return response(r, http.StatusOK, "text/plain", "Title: T\nMarkdown Content:\n# Body\ntext"), nil
 	})
-	h = New(Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: direct}, Chrome: &http.Client{Transport: direct}, Jina: &http.Client{Transport: jina}})
+	h = mustNew(t, Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: direct}, Chrome: &http.Client{Transport: direct}, Jina: &http.Client{Transport: jina}})
 	got := h.Fetch(context.Background(), "https://example.test/page")
 	if got.Error != "" || got.Kind != "html" || got.Content != "# Body\ntext" {
 		t.Fatalf("Jina envelope = %#v", got)
@@ -398,7 +398,7 @@ func TestGoogleDriveFileViewFetchesCompleteDownloadInsteadOfPreviewHTML(t *testi
 		}
 		return response(request, http.StatusOK, "text/html", strings.Repeat("<p>Drive preview page 1 through page 4 only</p>", 20)), nil
 	}}
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir:  t.TempDir(),
 		Client:    &http.Client{Transport: transport},
 		Chrome:    &http.Client{Transport: transport},
@@ -470,7 +470,7 @@ func TestTokenEstimateMatchesOracleRegimes(t *testing.T) {
 }
 
 func TestChromeTransportUsesUTLSAndRejectsMixedDNSAnswers(t *testing.T) {
-	h := New(Options{ResolvePublic: func(context.Context, string) ([]net.IP, error) {
+	h := mustNew(t, Options{CacheDir: t.TempDir(), ResolvePublic: func(context.Context, string) ([]net.IP, error) {
 		return []net.IP{net.ParseIP("203.0.113.10"), net.ParseIP("127.0.0.1")}, nil
 	}})
 	if !ChromeTransport(h.chrome) {
@@ -563,7 +563,7 @@ func TestRedirectAndMetadataInjectionAreBlocked(t *testing.T) {
 	tr := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": []string{"http://127.0.0.1/secret"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
 	})
-	h := New(Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: tr}, Chrome: &http.Client{Transport: tr}, Jina: &http.Client{Transport: tr}, Converter: &fakeConverter{}})
+	h := mustNew(t, Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: tr}, Chrome: &http.Client{Transport: tr}, Jina: &http.Client{Transport: tr}, Converter: &fakeConverter{}})
 	result := h.Fetch(context.Background(), "https://example.test/redirect")
 	if result.Error == "" || !strings.Contains(strings.ToLower(result.Error), "private") {
 		t.Fatalf("redirect result=%#v", result)
@@ -716,7 +716,7 @@ func TestArchiveNameLimitCountsUnicodeRunesAfterNFC(t *testing.T) {
 }
 
 func TestFetchBareTitleRefusesToGuess(t *testing.T) {
-	h := New(Options{CacheDir: t.TempDir(), OA: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	h := mustNew(t, Options{CacheDir: t.TempDir(), OA: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		t.Fatal("bare title must not query OA providers")
 		return nil, nil
 	})}})
@@ -730,7 +730,7 @@ func TestLocalizeImagesSkipsOverLimitResponse(t *testing.T) {
 	tr := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return response(r, http.StatusOK, "image/png", strings.Repeat("x", maxImageBytes+1)), nil
 	})
-	h := New(Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: tr}, Chrome: &http.Client{Transport: tr}})
+	h := mustNew(t, Options{CacheDir: t.TempDir(), Client: &http.Client{Transport: tr}, Chrome: &http.Client{Transport: tr}})
 	markdown, err := h.LocalizeImages(context.Background(), "![figure](https://example.test/too-large.png)", "https://example.test/article")
 	if err != nil || !strings.Contains(markdown, "too-large.png") {
 		t.Fatalf("localized over-limit image = %q err=%v", markdown, err)

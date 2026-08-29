@@ -729,7 +729,12 @@ func printHookDoctor(stdout io.Writer, home string, machine config.Config) int {
 }
 
 func printHarvestCacheDoctor(stdout io.Writer) int {
-	root := harvest.CacheRoot()
+	root, rootErr := harvest.CacheRoot()
+	if rootErr != nil {
+		// An unresolvable root is "we failed to look", never "0 entries".
+		fmt.Fprintf(stdout, "doctor: harvester_cache dir=? error=%v\n", rootErr)
+		return 1
+	}
 	entries := 0
 	walkErr := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {

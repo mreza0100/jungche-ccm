@@ -54,7 +54,7 @@ func wallHarvester(t *testing.T, converter Converter, browserRung *bool) *Harves
 	missing := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
-	return New(Options{
+	return mustNew(t, Options{
 		CacheDir:    t.TempDir(),
 		Client:      &http.Client{Transport: wall},
 		Chrome:      &http.Client{Transport: wall},
@@ -203,7 +203,7 @@ func nonChallengeTransport() *http.Client {
 func browserHarvester(t *testing.T, converter Converter) *Harvester {
 	t.Helper()
 	missing := nonChallengeTransport()
-	return New(Options{
+	return mustNew(t, Options{
 		CacheDir:    t.TempDir(),
 		Client:      missing,
 		Chrome:      nonChallengeTransport(),
@@ -332,7 +332,7 @@ func TestJinaTransportFailureKeepsTheEarlierStatus(t *testing.T) {
 	dead := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("fixture connection reset")
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		CacheDir:    t.TempDir(),
 		Client:      &http.Client{Transport: wall},
 		Chrome:      &http.Client{Transport: wall},

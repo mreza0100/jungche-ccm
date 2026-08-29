@@ -121,7 +121,7 @@ func TestWaveOCREscalationRescuesScannedPDF(t *testing.T) {
 	pdfTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return response(r, http.StatusOK, "application/pdf", "%PDF-1.7 scanned pages"), nil
 	})
-	h := New(Options{
+	h := mustNew(t, Options{
 		ContactEmail: "test@example.org",
 		CacheDir:     t.TempDir(),
 		Client:       &http.Client{Transport: pdfTransport},
@@ -170,7 +170,7 @@ func TestWavePMCOAPDFURLRewritesDeadFTP(t *testing.T) {
 
 func TestWaveStatsScoreboardRoundtrip(t *testing.T) {
 	dir := t.TempDir()
-	h := New(Options{CacheDir: dir})
+	h := mustNew(t, Options{CacheDir: dir})
 	h.recordStat("https://a.example/x", Result{Method: "jina"})
 	h.recordStat("https://b.example/y", Result{Error: "timeout", ErrorKind: "timeout"})
 	h.recordStat("https://c.example/z", Result{Method: "jina"})
@@ -207,7 +207,7 @@ func TestWaveStatsWrittenByRealFetch(t *testing.T) {
 		calls++
 		return response(r, http.StatusNotFound, "application/json", `{}`), nil
 	})}
-	h := New(Options{
+	h := mustNew(t, Options{
 		ContactEmail: "test@example.org",
 		CacheDir:     dir,
 		Client:       client,

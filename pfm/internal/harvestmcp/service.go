@@ -148,7 +148,7 @@ func newHarvester(runtime Runtime) (*harvest.Harvester, *harvestpy.Converter, er
 		browserRoot: browserRoot,
 		proxyURL:    runtime.ProxyURL,
 	}
-	return harvest.New(harvest.Options{
+	harvester, err := harvest.New(harvest.Options{
 		CacheDir:   runtime.CacheDir,
 		Client:     runtime.Client,
 		Chrome:     nil,
@@ -158,7 +158,11 @@ func newHarvester(runtime Runtime) (*harvest.Harvester, *harvestpy.Converter, er
 		LocalRoots: runtime.LocalRoots,
 		ProxyURL:   runtime.ProxyURL,
 		UserAgent:  runtime.UserAgent,
-	}), worker, nil
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("construct harvester: %w", err)
+	}
+	return harvester, worker, nil
 }
 
 // harvestStateRoot resolves the managed harvest-python state root. PFM_HARVEST_ROOT
