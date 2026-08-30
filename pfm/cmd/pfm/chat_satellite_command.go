@@ -566,11 +566,31 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		fmt.Fprintln(stderr, "pfm chat branch: --session-id is required and must be one safe line")
 		return 2
 	}
+	// A fork is a peer of its parent chat, not a fresh chat: it must land on
+	// the parent's own account and cache posture, never the machine primary
+	// or the invoking shell's environment. Resolve the parent row once, up
+	// front, and carry both facts through explicitly.
+	parent, parentFound, err := parentBranchRow(context.Background(), *id, runtimes...)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: resolve parent session: %v\n", err)
+		return 1
+	}
+	requestedAccount := *account
+	if requestedAccount == 0 && parentFound && parent.Account != 0 {
+		requestedAccount = parent.Account
+	}
 	primary := readPrimaryAccount(runtime.Paths, runtime.Config)
-	engine, selectedAccount, err := resolveRunEngineIDAccount(engine, *account, runtime.Config, primary)
+	engine, selectedAccount, err := resolveRunEngineIDAccount(engine, requestedAccount, runtime.Config, primary)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat branch: %v\n", err)
 		return 1
+	}
+	if *account == 0 && (!parentFound || parent.Account == 0) {
+		fmt.Fprintf(
+			stderr,
+			"pfm chat branch: parent account for session %s could not be resolved; forking on primary account %d\n",
+			transcript.Truncate(*id, 8), selectedAccount,
+		)
 	}
 	binary := runtime.Config.Claude.Binary
 	if engine == pfmengine.Codex {
@@ -608,7 +628,7 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 	plan, err := action.HeadlessFork(action.HeadlessForkRequest{
 		Engine: engine, SessionID: *id, Name: name, CWD: cwd,
 		Home: runtime.Paths.Home, PrimaryAccount: selectedAccount,
-		Cache1H: engine == pfmengine.Claude && initialCache1H(runtime.Config, selectedAccount),
+		Cache1H: engine == pfmengine.Claude && forkCache1H(parent, parentFound, runtime.Config, selectedAccount),
 		Model:   model, Config: runtime.Config,
 	})
 	if err != nil {
@@ -700,6 +720,46 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		}
 	}
 	return 0
+}
+
+// parentBranchRow scans the same composed rows `pfm ls` shows for the row
+// whose ID matches the session being forked. found is false, with a nil
+// error, when the scan ran cleanly and simply found no such row — a fork of
+// a session pfm has never indexed. A non-nil error means the scan itself
+// could not run (store open, gather failure, …); that is never silently
+// folded into "not found", because a probe that could not run must never
+// report absence.
+func parentBranchRow(ctx context.Context, id string, runtimes ...commandRuntime) (compose.Row, bool, error) {
+	rows, err := composedChatRows(ctx, io.Discard, runtimes...)
+	if err != nil {
+		return compose.Row{}, false, err
+	}
+	for _, row := range rows {
+		if row.ID == id {
+			return row, true, nil
+		}
+	}
+	return compose.Row{}, false, nil
+}
+
+// forkCache1H resolves the prompt-cache TTL for a FORK, which must match the
+// parent chat exactly — a branch is a peer of its parent, not downstream work.
+//
+// initialCache1H is deliberately NOT used here. It reads the invoking process's
+// environment, and every shell a chat spawns carries the
+// "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0" that synth.go re-exports to force
+// caching off downstream; a fork launched from inside a 1h chat would read that
+// as 5m and be born on the wrong window.
+//
+// A non-live parent is the honest unknown: C1H is observed from the live
+// process environment, so false on a dead row means "not observed", never "5m".
+// That case takes the account's configured posture, which is the same default a
+// fresh chat on that account would get.
+func forkCache1H(parent compose.Row, parentFound bool, config pfmconfig.Config, account int) bool {
+	if parentFound && isLiveKind(parent.Kind) {
+		return parent.C1H
+	}
+	return config.EffectiveClaude(account).Cache1H
 }
 
 func sanitizeBranchName(value string) string {

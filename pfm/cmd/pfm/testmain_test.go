@@ -100,5 +100,13 @@ func TestMain(m *testing.M) {
 		}
 		return results
 	}
+	// No jail has a real `claude` to spawn — captureHarnessPrompt's own doc
+	// comment marks that REAL-SESSION. This stub stands in for every test;
+	// whether a doctor fixture reads as matches/DRIFT/CHECK-FAILED still
+	// depends only on what baseline (if any) the fixture stages, via
+	// stageHarnessPromptBaseline in main_test.go.
+	harnessCaptureOverride = func(context.Context, pfmconfig.Config) (string, error) {
+		return harnessPromptFixtureCaptured, nil
+	}
 	os.Exit(testjail.Run(m))
 }

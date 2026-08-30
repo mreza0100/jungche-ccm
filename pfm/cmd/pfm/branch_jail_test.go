@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
-	"hostops/pfm/internal/store"
 )
 
 // TestChatBranchCreatesADetachedSeatWithoutTouchingTheCaller is the hard
@@ -73,24 +73,41 @@ func TestChatBranchCreatesADetachedSeatWithoutTouchingTheCaller(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(parentPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// The parent transcript is seeded the way a genuinely-indexed chat looks,
+	// never as a bare DB row: it is renamed for real — a "custom-title"
+	// record, exactly what Claude's own /rename slash command writes into
+	// the transcript (internal/index/claude.go's parseClaude reads it back
+	// the same way) — then indexed by one REAL scan, so its Size/MTimeNS/
+	// ParsedOffset in the store are the real post-parse values a genuinely
+	// indexed chat would carry. Only THEN does the file grow. That makes the
+	// scan `chat branch` triggers through parentBranchRow take the DELTA
+	// path (base = previous, per internal/index/sync_sources.go's
+	// shouldDelta) rather than a full reparse from a blank base — the
+	// title survives because it was actually indexed once, not because the
+	// second scan was skipped. A row seeded with Size:0/MTimeNS:0 (the
+	// prior fixture's direct UpsertTranscript) is a state the indexer can
+	// never actually produce, and every full reparse from a blank base
+	// legitimately drops a title the file itself does not encode.
 	if err := os.WriteFile(parentPath, []byte(
-		`{"type":"assistant","message":{"model":"claude-opus-5","usage":{}}}`+"\n",
+		`{"type":"custom-title","customTitle":"Parent seat"}`+"\n"+
+			`{"type":"assistant","message":{"model":"claude-opus-5","usage":{}}}`+"\n",
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
-	database, err := store.Open(store.WithWarningWriter(&bytes.Buffer{}))
+	if _, err := composedChatRows(context.Background(), io.Discard); err != nil {
+		t.Fatalf("prime a real index pass over the parent transcript: %v", err)
+	}
+	growth, err := os.OpenFile(parentPath, os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.UpsertTranscript(context.Background(), store.Transcript{
-		UUID: parentID, Path: parentPath,
-		CWD: "/work/project", CustomTitle: "Parent seat",
-	}); err != nil {
-		_ = database.Close()
+	if _, err := growth.WriteString(
+		`{"type":"user","cwd":"/work/project","message":{"content":"parent seat continues"}}` + "\n",
+	); err != nil {
+		_ = growth.Close()
 		t.Fatal(err)
 	}
-	if err := database.Close(); err != nil {
+	if err := growth.Close(); err != nil {
 		t.Fatal(err)
 	}
 
