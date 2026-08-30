@@ -86,6 +86,15 @@ var knownWindowDescriptors = []WindowDescriptor{
 	{Key: "seven_day_fable", Label: "7d-fable", Known: true},
 }
 
+// AllWindows returns every window this build knows how to render, in canonical
+// display order, whether or not the current response carries it. A renderer
+// that iterates only the PRESENT keys cannot distinguish "this window is at 0%"
+// from "this window's data never arrived" — the two render identically as
+// nothing at all. Callers that must keep those apart start here.
+func AllWindows() []WindowDescriptor {
+	return append([]WindowDescriptor(nil), knownWindowDescriptors...)
+}
+
 // DescribeWindows returns recognized present keys in canonical display order.
 // Provider metadata and unrecognized top-level keys are never windows.
 func DescribeWindows(keys []string) []WindowDescriptor {
@@ -336,6 +345,18 @@ func accountNumber(home, configDir string, accountDirs ...map[string]int) int {
 	return 1
 }
 
+// UsageCacheDir returns the usage cache directory nested under base using the
+// same "cc-usage-<uid>" naming DefaultCacheDir applies to its own base (a
+// jail home's "tmp" directory, or os.TempDir()). A caller that already holds
+// a jail-scoped base directory computed the identical way — e.g.
+// statusline's Runtime.CacheDir, which DefaultRuntime derives from the exact
+// same paths.EnvHome rule — uses this instead of re-deriving the directory
+// independently by reading the environment a second time, so the
+// "cc-usage-" naming stays owned in exactly one place.
+func UsageCacheDir(base string, uid int) string {
+	return filepath.Join(base, "cc-usage-"+strconv.Itoa(uid))
+}
+
 // DefaultCacheDir returns the shared usage cache directory every caller gets
 // when it doesn't override Options.CacheDir: PFM_HOME-anchored exactly like
 // every other jail override in this package, uid-scoped otherwise. The
@@ -344,9 +365,9 @@ func accountNumber(home, configDir string, accountDirs ...map[string]int) int {
 // second, per-process cache.
 func DefaultCacheDir() string {
 	if jailHome := os.Getenv(paths.EnvHome); jailHome != "" {
-		return filepath.Join(jailHome, "tmp", "cc-usage-"+strconv.Itoa(os.Getuid()))
+		return UsageCacheDir(filepath.Join(jailHome, "tmp"), os.Getuid())
 	}
-	return filepath.Join(os.TempDir(), "cc-usage-"+strconv.Itoa(os.Getuid()))
+	return UsageCacheDir(os.TempDir(), os.Getuid())
 }
 
 // CachePath returns the shared cache file for one Claude account number
@@ -354,6 +375,49 @@ func DefaultCacheDir() string {
 // writes, and the one `stats.LimitsSampler` reads and writes too.
 func CachePath(cacheDir string, account int) string {
 	return filepath.Join(cacheDir, fmt.Sprintf("acct-%d.json", account))
+}
+
+// CachedFableWindow reads pfm's own usage cache for account — the cache this
+// hook's own OAuth refresh (and the Limits tab's LimitsSampler) already
+// maintain — and runs the exact same fableWindow selector a live fetch uses.
+// It is the statusline render path's second source for the Fable window,
+// consulted only when a harness payload carried no scoped `limits` array at
+// all (see statusline.rateLimits.windowsAt).
+//
+// It never returns an error: a missing cache, an unreadable or malformed
+// file, an active backoff (another picker's already-recorded 429 or other
+// failure — treated as "no fresh data", not stale-but-usable), a cache older
+// than one hour, or a cache with no qualifying Fable entry all report
+// ok=false. One hour matches Evaluate's own "a stale cache remains usable for
+// about an hour" bound above, rather than inventing a second number for the
+// same file. A statusline read degrades to "window absent" on any of these —
+// it must never crash the render or fabricate a reading from a bad file.
+func CachedFableWindow(base string, uid, account int, now time.Time) (Window, bool) {
+	path := CachePath(UsageCacheDir(base, uid), account)
+	info, err := os.Stat(path)
+	if err != nil {
+		return Window{}, false
+	}
+	record, err := ReadCacheRecord(path)
+	if err != nil {
+		return Window{}, false
+	}
+	if record.Backoff != nil && now.Before(record.Backoff.RetryAfter) {
+		return Window{}, false
+	}
+	// Prefer the payload's own fetched_at when the file carries one (it is
+	// the cache's own recorded timestamp, per the honesty requirement); a
+	// cache written by this hook's raw refresh() has no such field, so fall
+	// back to the file's mtime, exactly what Evaluate already compares
+	// against for the same one-hour bound.
+	fetchedAt := info.ModTime()
+	if record.FetchedAt != nil {
+		fetchedAt = *record.FetchedAt
+	}
+	if now.Sub(fetchedAt) > time.Hour {
+		return Window{}, false
+	}
+	return record.Usage.fableWindow(now)
 }
 
 // CacheBackoff records a rate-limited or otherwise failed fetch so every

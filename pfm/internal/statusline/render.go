@@ -119,7 +119,7 @@ func (limits *rateLimits) UnmarshalJSON(content []byte) error {
 	return nil
 }
 
-func (limits rateLimits) windowsAt(now time.Time) (map[string]rateWindow, error) {
+func (limits rateLimits) windowsAt(now time.Time, runtime Runtime, account int) (map[string]rateWindow, error) {
 	windows := make(map[string]rateWindow, len(limits.Windows)+1)
 	for key, window := range limits.Windows {
 		windows[key] = window
@@ -136,6 +136,26 @@ func (limits rateLimits) windowsAt(now time.Time) (map[string]rateWindow, error)
 		windows[named.Key] = rateWindow{
 			UsedPercentage: *named.Window.Utilization,
 			ResetsAt:       resetAt.Unix(),
+		}
+	}
+	// The harness's own `limits` array — when it sent one at all — is
+	// authoritative for the Fable window; pfm's usage cache is a fallback for
+	// a harness that omitted the array entirely (limits.Scoped is nil only
+	// when the payload's "limits" key was absent, never when json decoded a
+	// present-but-empty array), not a second opinion on a payload that DID
+	// report and simply carries no Fable entry for this account.
+	if limits.Scoped == nil && account > 0 {
+		if fable, ok := usagehook.CachedFableWindow(runtime.CacheDir, runtime.UID, account, now); ok {
+			if resetAt, err := time.Parse(time.RFC3339, fable.ResetsAt); err == nil {
+				windows["seven_day_fable"] = rateWindow{
+					UsedPercentage: *fable.Utilization,
+					ResetsAt:       resetAt.Unix(),
+				}
+			}
+			// A cache entry whose resets_at fails to parse degrades to
+			// absent rather than failing the render — a cache-read problem
+			// must never propagate out of Render (unlike a malformed harness
+			// payload above, which is a hard decode error).
 		}
 	}
 	return windows, nil
@@ -158,7 +178,12 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 		directory = data.CWD
 	}
 	now := runtime.now()
-	resolvedLimits, err := data.RateLimits.windowsAt(now)
+	// account is resolved here, ahead of windowsAt, because the Fable
+	// window's cache fallback needs to know which account's cache file to
+	// read; accountBadge is pure and side-effect-free, so calling it before
+	// its other use below duplicates no logic, only the (cheap) lookup.
+	badge, account := accountBadge(runtime)
+	resolvedLimits, err := data.RateLimits.windowsAt(now, runtime, account)
 	if err != nil {
 		return "", fmt.Errorf("decode statusline rate limits: %w", err)
 	}
@@ -166,7 +191,6 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	data.RateLimits.Scoped = nil
 	writeBreadcrumb(runtime, data.TranscriptPath)
 
-	badge, account := accountBadge(runtime)
 	harvestRateLimits(runtime, now, account, data)
 
 	modelSymbol := "●"
@@ -229,11 +253,6 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	// the segment's own question to answer, and it answers it visibly.
 	if wide {
 		l2 += cacheWindowSegment(runtime, now, data.TranscriptPath)
-	}
-	totalTokens := data.ContextWindow.TotalInputTokens + data.ContextWindow.TotalOutputTokens
-	if totalTokens > 0 {
-		l2 += " " + dim + "(" + formatTokens(data.ContextWindow.TotalInputTokens) + "→" +
-			formatTokens(data.ContextWindow.TotalOutputTokens) + ")" + reset
 	}
 	if data.Cost.TotalCostUSD > 0 && runtime.Engine != pfmengine.Codex {
 		color := dim
@@ -363,16 +382,24 @@ func appendSegment(line, segment string) string {
 }
 
 func appendRateSegments(line string, now time.Time, data input) string {
-	keys := make([]string, 0, len(data.RateLimits.Windows))
-	for key := range data.RateLimits.Windows {
-		keys = append(keys, key)
+	// A response carrying no windows at all is an engine that does not report
+	// these quotas (Codex renders its own from a different source) — not a
+	// missing reading, so it renders nothing.
+	if len(data.RateLimits.Windows) == 0 {
+		return line
 	}
-	for _, descriptor := range usagehook.DescribeWindows(keys) {
-		window := data.RateLimits.Windows[descriptor.Key]
-		used := int(window.UsedPercentage)
-		if used <= 0 {
+	// Otherwise every known window renders, always. Skipping a window at 0%
+	// made an unused quota and a quota whose data never arrived look
+	// identical — both simply absent — so the one state worth seeing (a limit
+	// the response stopped reporting) arrived as silence. A window missing
+	// from a block that DID report renders with an explicit unknown marker.
+	for _, descriptor := range usagehook.AllWindows() {
+		window, present := data.RateLimits.Windows[descriptor.Key]
+		if !present {
+			line = appendSegment(line, makeBar(0, 5)+" "+dim+descriptor.Label+"-used:—"+reset)
 			continue
 		}
+		used := int(window.UsedPercentage)
 		segment := makeBar(used, 5) + " " + percentColor(used) +
 			descriptor.Label + "-used:" + strconv.Itoa(used) + "%" + reset
 		remaining := window.ResetsAt - now.Unix()

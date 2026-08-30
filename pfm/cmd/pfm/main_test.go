@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -700,6 +702,30 @@ func environmentValue(environment []string, key string) string {
 	return "\x00missing"
 }
 
+// harnessPromptFixtureCaptured is the fixed "live" prompt every jailed
+// doctor test observes through harnessCaptureOverride (set in TestMain).
+// Its content is arbitrary — the check only ever hashes it and compares
+// against whatever baseline stageHarnessPromptBaseline pins alongside it.
+const harnessPromptFixtureCaptured = "pfm jail fixture harness prompt\n"
+
+// stageHarnessPromptBaseline writes the managed baseline pin a wired machine
+// carries after `pfm install` — internal/installer/assets/prompts/harness-original.sha256,
+// staged verbatim by stageAssets — so a hand-built "wired" doctor fixture can
+// reach the same matches-baseline verdict a real install produces, without
+// re-deriving or re-pinning the real embedded asset.
+func stageHarnessPromptBaseline(t *testing.T, home string) {
+	t.Helper()
+	sum := sha256.Sum256([]byte(harnessPromptFixtureCaptured))
+	pin := hex.EncodeToString(sum[:]) + "  harness-prompt-fixture.md\n"
+	path := filepath.Join(home, ".local", "share", "pfm", "install", "prompts", "harness-original.sha256")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(pin), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func jailTest(t *testing.T) string {
 	t.Helper()
 
@@ -746,6 +772,7 @@ func jailTest(t *testing.T) string {
 	if err := os.Symlink(managedClaude, filepath.Join(root, "home", ".local", "bin", "claude")); err != nil {
 		t.Fatal(err)
 	}
+	stageHarnessPromptBaseline(t, jailedHome)
 	testPath := []string{filepath.Dir(canonical)}
 	for _, directory := range filepath.SplitList(os.Getenv("PATH")) {
 		if _, err := os.Stat(filepath.Join(directory, "pfm")); os.IsNotExist(err) {
