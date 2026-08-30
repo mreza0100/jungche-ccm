@@ -1,7 +1,7 @@
 ---
 # professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: wave:walker
-description: Wave walk that verifies the code works — a scout enumerates feature-flow/seam/invariant threads and schedules sensors over the API fields+gates the wave touched; Sonnet walkers confirm each thread reaches its terminal state, a zero-token rule engine diffs the extracted cards for disconnects and drift, judges adjudicate the flagged anomalies, one final judgment rules the walk. Pre-merge it is an optional /wave:orchestrator supplement where the entry-point census leaves reachability unmapped — never merge-gating (the `reviewer` agent gates); /wave:live runs it post-commit. Also standalone code investigation (args.goal) and claim-verification panels (args.claims, args.manifestPath). Fast mode ("walker fast <mission>", "fast walk") routes to the `tracer` agent — § Fast mode. Triggers — "wave walker", "/wave:walker", "walker fast", "fast walk".
+description: Wave walk that verifies the code works — read-only multi-agent verification of a wave's changed set, ending in one authoritative verdict and a written review. Auto-invoked pre-merge by /wave:orchestrator (branch mode) and post-commit by /wave:live (merge-SHA mode); the `reviewer` agent gates the merge, never this. Also standalone code investigation (args.goal) and claim-verification panels (args.claims, args.manifestPath). Fast mode routes to the `tracer` agent — § Fast mode. Triggers — "wave walker", "/wave:walker", "walker fast", "fast walk".
 argument-hint: [report path | fast <mission>]
 ---
 

@@ -1,7 +1,7 @@
 ---
 # professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: wave:orchestrator
-description: End-to-end wave-train runner — /wave:orchestrator {builder-chat} {waves | all} [builders N]: the scheduler agent writes the train under docs/dev/trains/{name}/, the user approves the table, then per wave — gitter SETUP, fire the builder seat via the chat_goal tool, at BUILD-GREEN run census + merge-gating `reviewer` in parallel with the builder's QA chain, verify spec conformance, gitter MERGE, post-merge tests on main. STATE.md ledger lines only. Resume: /wave:orchestrator resume {train}. Trigger — "/wave:orchestrator", "run the train".
+description: End-to-end wave-train runner — /wave:orchestrator {builder-chat} {waves | all} [builders N]: the scheduler agent writes the train under docs/dev/trains/{name}/, the user approves the table, then per wave — gitter SETUP, fire the builder seat, wait for BUILD-GREEN and DONE, census + merge-gating `reviewer`, gitter MERGE, post-merge tests on main. STATE.md ledger lines only. Resume: /wave:orchestrator resume {train}. Trigger — "/wave:orchestrator", "run the train".
 ---
 
 # Orchestrator — run the train
