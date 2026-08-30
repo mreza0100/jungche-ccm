@@ -2,7 +2,7 @@
 name: deep-rr
 version: "3.2.4"
 repo: "https://github.com/mreza0100/rr"
-description: Launches Research and Report (RR) — a deterministic background Workflow that runs an unbounded, best-first, brainer-steered web crawl, DERIVES an answer over a quote-pinned, independence-clustered claim ledger with computed confidence, and writes a cited multi-section report with a verdict and plan. Use when the user wants a researched answer or a topic landscape ("research X", "look into X", "deep-rr X", "deep-rr fast X") and a single web search is not enough. Modes: goal (answer one question) and collect (inventory a topic); "deep-rr fast X" answers inline now via one quick sub-agent instead of the background Workflow. Runs in the background, returns a completion notification, and persists to RR/{slug}/. Mid-run, check progress/findings via midrun.js; a crashed run resumes from its last checkpoint.
+description: Launches Research and Report (RR) — a background Workflow that crawls the web best-first and derives a cited, confidence-scored report from a quote-pinned claim ledger. Use when one web search won't do: "research X", "look into X", "deep-rr X". Modes: goal (one question), collect (inventory a topic); "deep-rr fast X" answers inline instead. Persists to RR/{slug}/; resumable, progress via midrun.js.
 ---
 
 # Research and Report (RR)

@@ -1,6 +1,7 @@
 ---
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: wave:builder
-description: The wave builder — ORCHESTRATED ONLY: receives a /goal from /wave:orchestrator naming the train, wave spec, worktree, and ports, then implements the wave task-by-task exactly per the zero-gap spec — per task dispatch the spec's named build agents, verify, gitter checkpoint, one STATE.md ledger line; at wave end reports BUILD-GREEN (fires the orchestrator's reviewer early), runs one qa-{project} fix chain per touched project (QA fixes, fresh QA verifies — the qa agent's fix chain), then full suites — and reports DONE with evidence. A genuine spec gap = stop and ask the orchestrator, never improvise. Post-merge fix orders run the same QA fix chain on main.
+description: The wave builder — ORCHESTRATED ONLY: receives a /goal from /wave:orchestrator naming the train, wave spec, worktree, and ports; implements task-by-task per the zero-gap spec (spec-named build agents, verify, gitter checkpoint, one STATE.md line each), reports BUILD-GREEN, runs one qa-{project} fix chain per touched project plus full suites, reports DONE with evidence. A genuine spec gap = stop and ask the orchestrator, never improvise. Post-merge fix orders run the same QA fix chain on main.
 ---
 
 # Builder — implement the wave

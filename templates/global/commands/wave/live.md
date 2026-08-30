@@ -1,6 +1,7 @@
 ---
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: wave:live
-description: Batch a set of tasks live on `main` — grouping and parallelism without worktrees or the per-wave orchestration ceremony. Filesystem-safe parallel sub-agent builds, end-of-wave qa-{project} agents writing tests, one /documenter + gitter commit, then /wave:walker with inline remediation. Trigger — /wave:live [file|tasks] (empty → root wave.md). Use for related changes that don't need worktree isolation.
+description: Batch a set of tasks live on `main` — grouping and parallelism for related changes that don't need worktree isolation: parallel sub-agent builds, end-of-wave qa-{project} agents write tests, one /documenter + gitter commit, then /wave:walker with inline remediation. Trigger — /wave:live [file|tasks] (empty → root wave.md).
 argument-hint: [task file | inline tasks]
 ---
 
@@ -32,11 +33,13 @@ The fix machinery the steps below cite is the jc-core card, `docs/commands/jc/re
 
 ## W3 — Execute on `main`
 
-Spawn one implementation agent per task, briefed with its exact task section, the files it owns, the project's child `CLAUDE.md`, and "implement code only — the QA phase writes the tests." Run disjoint agents concurrently; run serial tasks one at a time, re-checking each task's assumptions against the prior result before it starts. Implementation follows the jc-core card § Step 3 (Build with sub-agents — adapt to the project's structure — and Rules while fixing); each agent typechecks its own project before returning.
+Spawn one implementation agent per task, briefed with five fields: the goal and the artifact it returns, the boundary of what is and is NOT in scope, the exact files and symbols to start from, the tier and effort, and what its own failure looks like. Each brief carries the task's exact section, the files it owns, the project's child `CLAUDE.md`, and "implement code only — the QA phase writes the tests." Run disjoint agents concurrently in ONE message; run serial tasks one at a time, re-checking each task's assumptions against the prior result before it starts. Implementation follows the jc-core card § Step 3 (Build with sub-agents — adapt to the project's structure — and Rules while fixing); each agent typechecks its own project before returning.
+
+Dispatched agents and reports received must match, and the count appears in the W7 report. A missing report is a named coverage hole, never a silent omission.
 
 ## W4 — QA writes the tests
 
-The full suites run on the single-tenant canonical test stack: take the boundary mutex `tmp/wave-boundary.lock` for the W4 span (atomic `mkdir`; write `{wave-name} {PID} {timestamp}` to a `holder` file inside; release at W5) — a held lock is another seat's gate, so wait for its release rather than squatting the stack behind it. Once every task has landed, spawn each modified project's registered `qa-{project}` agent in POST-MERGE mode — tests run against `main`, no worktree or pipeline `$DOCS`, findings reported in the return. Each adds the regression + unit coverage for this wave's changes in its project and runs the full suite under the jc-core card § Step 4c zero-tolerance — every failure blocking, pre-existing included. Fix all breakage before proceeding.
+The full suites run on the single-tenant canonical test stack: take the boundary mutex `tmp/wave-boundary.lock` for the W4 span (atomic `mkdir`; write `{wave-name} {PID} {timestamp}` to a `holder` file inside; release at W5) — a held lock is another seat's gate, so wait for its release rather than squatting the stack behind it. Once every task has landed, spawn each modified project's registered `qa-{project}` agent in POST-MERGE mode — tests run against `main`, no worktree or pipeline `$DOCS`, findings reported in the return. Each adds the regression + unit coverage for this wave's changes in its project and runs the full suite under the jc-core card § Step 4c zero-tolerance — every failure blocking, pre-existing included. A regression test counts only after it was watched FAILING against the unfixed code; a filtered or skipped run is a named gap, never a pass. Fix all breakage before proceeding.
 
 ## W5 — Cleanup → docs → commit
 
@@ -46,7 +49,7 @@ The full suites run on the single-tenant canonical test stack: take the boundary
 
 ## W6 — Review & remediate
 
-Write a lightweight review input to `docs/dev/waves/{wave-name}/review.md` — the manifest's task list plus the W5 commit SHAs (the walk's scout runs `git show {sha}` for these JC commits). Invoke the walker workflow: `Workflow({ scriptPath, args: { reportPath: 'docs/dev/waves/{wave-name}/review.md', invariants, project } })` — scriptPath and `args.project` read from `.claude/commands/wave/walker-invariants.md` § Engine Config, the same file this step already opens for `invariants`, and passed verbatim; never `{name}`: name-lookup serves a stale session-start snapshot. `invariants` is transcribed per `walker.md` § Walk args (mechanical transcription; an empty registry match → omit). It returns `{ verdict, actionItems, review }` plus the `ledger`.
+Write a lightweight review input to `docs/dev/waves/{wave-name}/review.md` — the manifest's task list plus the W5 commit SHAs (the walk's scout runs `git show {sha}` for these JC commits). Invoke the walker workflow: `Workflow({ scriptPath, args: { reportPath: 'docs/dev/waves/{wave-name}/review.md', invariants, project } })` — scriptPath and `args.project` read from `.claude/commands/wave/walker-invariants.md` § Engine Config, the same file this step already opens for `invariants`, and passed verbatim; never `{name}`: name-lookup serves a stale session-start snapshot. `invariants` is transcribed per `walker.md` § Entry points (mechanical transcription; an empty registry match → omit). It returns `{ verdict, actionItems, review }` plus the `ledger`.
 
 Group every code finding in `### /jc Action Items` by its file or project (a finding with no single owner file groups by its named project). Run ONE `/jc` boundary-lite lane per group — diagnose → fix every finding in the group → re-test that group's affected suites once → cleanup (jc-core card §§ 2–5); /jc's own Step 7 commits each group via `gitter` — never suppressed under boundary-lite — one commit per group, or one commit total when every group lands together. Re-run `/documenter` if a fix changed documented behavior. Surface the review's owner-tagged deferrals (`/pm`, `/officer`, the user); never park a fixable defect. Present the verdict.
 

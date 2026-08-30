@@ -1,6 +1,8 @@
 ---
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: wave:refine
-description: Wave refinement — walks the code and writes ONE zero-gap, feature-scoped wave spec (every layer of the feature in one wave, tasks ordered inside-out — schema/contracts first, then each project outward to the surface) to docs/dev/trains/queue/{YYYY-MM-DD}-{slug}.md; asks the user only what the code cannot answer; partitioning and cross-spec ordering belong to the scheduler agent (via /wave:orchestrator). Also invoked BY the scheduler agent in merge mode (two+ approved specs in, one unified spec out, non-interactive). Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and builds it itself under .professor/RND/POC/{name}/ — no worktree, no gitter, no QA gates. Triggers: "refine", "refine this", "/wave:refine", "refine tasks", "refine poc".
+description: Wave refinement — walks the code and writes ONE zero-gap, feature-scoped wave spec to docs/dev/trains/queue/{YYYY-MM-DD}-{slug}.md, asking the user only what the code cannot answer; partitioning and cross-spec ordering belong to the scheduler agent. Also invoked BY the scheduler in merge mode (two+ approved specs in, one unified spec out, non-interactive). Subcommand `poc <goal>` refines a proof-of-concept spec and builds it itself under .professor/RND/POC/{name}/ — no worktree, no gitter, no QA gates. Triggers: "refine", "refine this", "/wave:refine", "refine tasks", "refine poc".
+argument-hint: [tasks | poc <goal>]
 ---
 
 # Refine — write the wave spec
@@ -35,10 +37,10 @@ Settle every technical branch before writing: transport, data placement, mechani
 
 - **Routing** — the exact roster project set the task touches + the conditional build agents (`db-admin-{project}` on data-model change, `ui-ux-{project}` on visual work).
 - **Data model** — every table, column with exact type, index, enum, constraint.
-- **Contracts** — exact {API_PROTOCOL} schema, resolver/handler signatures, {QUEUE} message schemas, {REALTIME_PROTOCOL} event payloads.
+- **Contracts** — exact API schema, resolver/handler signatures, queue message schemas, realtime event payloads.
 - **File plan** — every file to create/edit with the functions/exports it gains and their signatures. DELETE only for grep-verified single-purpose files; otherwise `EDIT (strip X by def-boundaries)`. A dropped column/enum/table names its full coupling including raw-SQL string references; a removed config field names its env-var scrub set. A removal spanning >10 files or >3 layers is declared a fan-out candidate.
-- **Behavior** — success/failure/edge paths, UX, copy, scope.
-- **{SENSITIVE_DATA} channels** — every place the task moves {SUBJECT_NOUN} content. Content reaches the access-controlled DB and nowhere else; a clause routing it to a log, metric label, error string, or telemetry payload surfaces at the R4 gate as its own plain-words line or does not ship. Escalations carry the pointer, never the text.
+- **Behavior** — success/failure/edge paths, UX, copy, scope. Every new check names what it reports when the check itself is broken.
+- **Sensitive-data channels** — every place the task moves protected domain content. Content reaches the access-controlled DB and nowhere else; a clause routing it to a log, metric label, error string, or telemetry payload surfaces at the R4 gate as its own plain-words line or does not ship. Escalations carry the pointer, never the text.
 
 ### Spec format
 
@@ -60,7 +62,7 @@ Write `## RND-Validated Mandatory Rules` before the task list: every validated p
 
 ## R4 — Review + user gate
 
-- **Officer (MANDATORY on sacred ground):** a wave touching {SENSITIVE_DATA}, consent, retention, auth, or a role boundary gets a fresh-context `/officer` Advisory pass (opus agent); its flags fold in as `[WATCH:]` tags. Anything mandating a new consent scope or schema goes to the user, never auto-encoded. _(When the Officer archetype is installed.)_
+- **Officer (MANDATORY on sacred ground):** a wave touching sensitive data, consent, retention, auth, or a role boundary gets a fresh-context `/officer` Advisory pass (opus agent); its flags fold in as `[WATCH:]` tags. Anything mandating a new consent scope or schema goes to the user, never auto-encoded. _(When the Officer archetype is installed.)_
 - **Architect (always):** fresh-context `Agent(subagent_type: "architect")` on the spec path only, briefed for its zero-gap walk. Gap findings (false edge, missing file-plan entry, unpinned external field, undecided branch) fold in as spec deltas before the spec queues; judgment findings go to the user verbatim, apply what they approve. An amendment or consolidation after this pass re-runs it — verification covers the text that dispatches, never an earlier draft.
 - **User gate:** present the Scope/Deferred boundary plus one line per task (routing + the key technical and product decisions made for them). Loop until approved; approval queues the spec. Running the train (`/wave:orchestrator`) is their separate decision.
 

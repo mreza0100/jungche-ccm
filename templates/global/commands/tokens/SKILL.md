@@ -1,6 +1,7 @@
 ---
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: tokens
-description: "Attributes runtime token spend for BOTH harnesses — Claude Code (per sub-agent, per workflow run, from local JSONL transcripts) and the Codex CLI (per session thread, from ~/.codex rollouts) — ranking the heaviest burners with estimated USD cost. Answers 'which agent burned the most tokens', 'what did this workflow/wave/pipeline cost', 'what did Codex cost this week', 'token breakdown', 'per-operation tokens', and any retrospective spend analysis. Claude flags: (none)/--all (session scope), --by-workflow (per-run cost), --filter <substr> (isolate a label), --session <id>, --detail <id> (per-call), --project <slug>/--root <dir> (transcript roots), --json. Codex flags: --codex, --since <YYYY-MM-DD>, --by-day, --top <n>, --all (every project), --codex-root <dir>. Triggered by 'token ledger', 'token attribution', 'heaviest token burner', 'which agent burned the most tokens', 'what did the run/workflow/wave cost', 'codex spend', 'codex token usage', 'token breakdown', 'per-agent tokens', 'per-operation tokens'. Complements /context-meter: that audits STATIC context size, this covers RUNTIME spend attribution — route static-budget questions to context-meter, after-the-fact spend questions here."
+description: "Runtime token-spend attribution for both harnesses — Claude Code sub-agents and Workflow runs (local JSONL transcripts) and Codex CLI session threads (`--codex`, ~/.codex rollouts) — ranked heaviest-first with estimated USD cost. Modes: `--all`, `--by-workflow`, `--filter <substr>`, `--detail <id>`, `--by-day`; `--help` lists every flag. Triggers: 'token ledger', 'token attribution', 'heaviest token burner', 'which agent burned the most tokens', 'what did the run/workflow/wave cost', 'codex spend', 'token breakdown'. Static context size routes to /context-meter; after-the-fact spend here."
 ---
 
 # Token Ledger
@@ -8,10 +9,10 @@ description: "Attributes runtime token spend for BOTH harnesses — Claude Code 
 Run from the monorepo root (the project slug derives from cwd); read-only over transcripts, no network:
 
 ```bash
-node .claude/commands/tokens/token-ledger.mjs [flags]
+node ~/.claude/commands/tokens/token-ledger.mjs [flags]
 ```
 
-`--help` prints the full flag list; `tokens/README.md` carries the mechanics and schema notes.
+`--help` prints the full flag list; `~/.claude/commands/tokens/README.md` carries the mechanics and schema notes.
 
 ## Which invocation answers which question
 
@@ -30,9 +31,9 @@ Only a Workflow-engine run — a script under `.claude/workflows/` or a skill-em
 Same script, same PRICING table, reading `~/.codex/sessions/**/rollout-*.jsonl` plus `archived_sessions/`. One row per session thread; because a Codex subagent writes its own rollout, subagents are attributed individually by their agent role.
 
 ```bash
-node .claude/commands/tokens/token-ledger.mjs --codex --since <YYYY-MM-DD>            # this repo, per session
-node .claude/commands/tokens/token-ledger.mjs --codex --since <YYYY-MM-DD> --by-day   # daily spend
-node .claude/commands/tokens/token-ledger.mjs --codex --all --top 0                   # every project, every row
+node ~/.claude/commands/tokens/token-ledger.mjs --codex --since <YYYY-MM-DD>            # this repo, per session
+node ~/.claude/commands/tokens/token-ledger.mjs --codex --since <YYYY-MM-DD> --by-day   # daily spend
+node ~/.claude/commands/tokens/token-ledger.mjs --codex --all --top 0                   # every project, every row
 ```
 
 Scope defaults to the repo you are standing in; `--all` spans every project and adds a PROJECT column. `--since` reads the rollout filename stamp (local time). The session table caps at 25 rows — `--top 0` prints all.

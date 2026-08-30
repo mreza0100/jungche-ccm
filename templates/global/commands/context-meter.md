@@ -1,6 +1,7 @@
 ---
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: context-meter
-description: "Audits Claude Code context consumption across CLAUDE.md, agents, commands, skills, and MCP servers, then ranks the heaviest offenders against {PROJECT_NAME}'s size limits and reports prioritized token savings (`--verbose` for per-file detail). Triggered by 'context budget', 'token budget', 'context-budget', 'context meter', 'context-meter', 'audit context', 'what's eating my context', or after adding/growing an agent, command, or skill."
+description: "Audits Claude Code context consumption across CLAUDE.md, agents, commands, skills, and MCP servers — the machine-global roster included — ranks the heaviest offenders against the framework's size limits, and reports savings by tokens reclaimed (`--verbose` for per-file detail). Report-only; trims route through /pfm. Triggered by 'context budget', 'token budget', 'context-budget', 'context meter', 'context-meter', 'audit context', 'what's eating my context', or after adding/growing an agent, command, or skill."
 ---
 
 # Context Budget
@@ -9,12 +10,14 @@ Measure what every loaded pipeline component costs in context, find the bloat, a
 
 ## Measure
 
-`/context` is the ground-truth meter — its live breakdown outranks any wc-derived estimate, and the always-loaded floor is read off it every run, never carried as a number in this file or recalled from a past audit. Estimate off-meter surfaces at `words × 1.3` for prose, `chars / 4` for code/tables; report bytes (exact) beside the token estimate (the budget that matters). The byte sweeps may run on a cheap child (`Explore`/haiku); the judgment over the numbers stays with the auditor.
+`/context` is the ground-truth meter — its live breakdown outranks any wc-derived estimate, and the always-loaded floor is read off it every run, never carried as a number in this file or recalled from a past audit. Estimate off-meter surfaces at `words × 1.3` for prose, `chars / 4` for code/tables; report bytes (exact) beside the token estimate (the budget that matters). The byte sweeps may run on a cheap haiku child; the judgment over the numbers stays with the auditor.
 
-Enumerate every surface from disk — rosters and counts are derived per run:
+Enumerate every surface from disk — rosters and counts are derived per run. The roster spans BOTH the repo's `.claude/` and the machine-global `~/.claude/` (whose command/skill dirs are symlinks into the blueprint); a repo-only sweep misses half of what loads and reports a falsely small floor:
 
 ```bash
-find .claude/agents {project}/.claude/agents .claude/commands .claude/skills -name '*.md' -not -path '*/worktrees/*' -exec wc -c {} + | sort -rn | head -25
+find .claude/agents {project}/.claude/agents .claude/commands .claude/skills \
+     ~/.claude/commands ~/.claude/skills ~/.claude/agents -name '*.md' \
+     -not -path '*/worktrees/*' -exec wc -c {} + | sort -rn | head -25
 wc -l CLAUDE.md {project}/CLAUDE.md $(find .claude -name SKILL.md -not -path '*/worktrees/*') | sort -rn
 ```
 
@@ -22,7 +25,7 @@ Flag a file when:
 
 - `CLAUDE.md`, root or child: over 200 lines; a child that restates root rules rather than holding only its delta
 - `.claude/agents/*.md` and `{project}/.claude/agents/*.md`: over 15 KB, or `description` over 30 words — every agent description loads into every spawn
-- `.claude/commands/**/*.md`, nested command dirs included (`pfm/`, `wave/`, `quality/`, `audit/`, `p/`, `h/`): over 35 KB
+- `.claude/commands/**/*.md`, nested command dirs included (`pfm/`, `wave/`, `quality/`, `audit/`, `rnd/`, `h/`): over 35 KB
 - `SKILL.md`, under `.claude/skills/*/` and embedded in command dirs: over 500 lines, or `description` plus when-to-use over 1,536 chars combined
 - The injected fleet prompt bills against the always-loaded floor (main-loop only; subagents never receive it)
 - `.mcp.json`: a server wrapping a CLI already on PATH (`gh`) — schemas are deferred, so tool count costs little until fetched
