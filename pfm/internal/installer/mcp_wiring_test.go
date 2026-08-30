@@ -87,6 +87,14 @@ func TestMCPInstallCreatesClientJSONWithoutClaimingABackup(t *testing.T) {
 	}
 }
 
+// TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients pins a fresh
+// install's default client wiring (required test #10 for the identity-blind
+// "chat" transport fix). It used to hard-assert an HTTP URL for "chat" — that
+// was the very defect this wave fixes (a self-addressed chat_* call over the
+// shared HTTP daemon can never carry _meta.threadId, so it always failed);
+// the observable contract changed on purpose, and harvester is now enabled
+// alongside chat so both the new stdio shape and the unchanged HTTP shape are
+// pinned in the same run.
 func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T) {
 	home := t.TempDir()
 	canonical := filepath.Join(home, ".claude")
@@ -102,7 +110,7 @@ func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T)
 		Home:          home,
 		ConfigDir:     canonical,
 		ConfigDirs:    []string{canonical, secondary},
-		MCPEnabled:    map[string]bool{"chat": true, "harvester": false},
+		MCPEnabled:    map[string]bool{"chat": true, "harvester": true},
 		MCPPort:       8456,
 		MCPConfigPath: configPath,
 		Runner:        runner,
@@ -136,12 +144,27 @@ func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T)
 		t.Fatalf("credential file exists in an unauthenticated MCP install: %v", err)
 	}
 	var clients map[string]any
-	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".mcp.json"))), &clients); err != nil {
+	clientJSON := readFixture(t, filepath.Join(home, ".mcp.json"))
+	if err := json.Unmarshal([]byte(clientJSON), &clients); err != nil {
 		t.Fatal(err)
 	}
-	clientJSON := readFixture(t, filepath.Join(home, ".mcp.json"))
-	if !strings.Contains(clientJSON, "127.0.0.1:8456/mcp/chat") {
-		t.Fatalf("client registration missing chat URL: %s", clientJSON)
+	// Claude's "chat" server gets the stdio shape (regression test #10 for the
+	// task B fix): a self-addressed chat_* call over the shared HTTP daemon
+	// can never carry a caller identity, so a fresh install must not wire
+	// Claude to it by default. Every other server (harvester) keeps the HTTP
+	// shape unchanged — asserted immediately below.
+	servers, _ := clients["mcpServers"].(map[string]any)
+	chatEntry, _ := servers["chat"].(map[string]any)
+	if chatEntry["type"] != "stdio" || chatEntry["command"] != home+"/.local/bin/pfm" {
+		t.Fatalf("chat client registration is not the stdio shape: %#v", chatEntry)
+	}
+	if args, ok := chatEntry["args"].([]any); !ok || len(args) != 3 ||
+		args[0] != "mcp" || args[1] != "chat" || args[2] != "serve" {
+		t.Fatalf("chat client stdio args=%v, want [mcp chat serve]", chatEntry["args"])
+	}
+	harvesterEntry, _ := servers["harvester"].(map[string]any)
+	if harvesterEntry["type"] != "http" || harvesterEntry["url"] != "http://127.0.0.1:8456/mcp/harvester" {
+		t.Fatalf("harvester client registration lost its HTTP shape: %#v", harvesterEntry)
 	}
 	for _, forbidden := range []string{"Authorization", "Bearer", "headers"} {
 		if strings.Contains(clientJSON, forbidden) {
@@ -290,6 +313,150 @@ func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
 	}
 	if _, ok := servers["chat"]; ok {
 		t.Fatal("uninstall retained PFM's owned chat registration")
+	}
+}
+
+// TestMCPInstallMigratesAnOwnedHTTPChatClientToStdio pins required test #11:
+// pfm's own PREVIOUS HTTP "chat" registration (the shape every install wrote
+// before this wave) is recognized as owned and migrated to the new stdio
+// shape on the next apply, rather than being frozen in place forever or
+// treated as a manual conflict.
+func TestMCPInstallMigratesAnOwnedHTTPChatClientToStdio(t *testing.T) {
+	home := t.TempDir()
+	canonical := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
+	writeFixture(t, filepath.Join(home, ".mcp.json"),
+		`{"mcpServers":{"chat":{"type":"http","url":"http://127.0.0.1:8377/mcp/chat"}}}`)
+	writeFixture(t, filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName), `{"clients":["chat"]}`)
+	options := Options{
+		Mode: ModeApply, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
+		MCPPort: 8377, Runner: &fakeRunner{},
+	}
+	var applied strings.Builder
+	options.Stdout = &applied
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatalf("migrate an owned HTTP chat registration: %v\n%s", err, applied.String())
+	}
+	if strings.Contains(applied.String(), "preserve conflicting manual MCP client chat") {
+		t.Fatalf("pfm's own previous HTTP chat registration was treated as a manual conflict:\n%s", applied.String())
+	}
+	var document map[string]any
+	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".mcp.json"))), &document); err != nil {
+		t.Fatal(err)
+	}
+	servers, _ := document["mcpServers"].(map[string]any)
+	chatEntry, _ := servers["chat"].(map[string]any)
+	if chatEntry["type"] != "stdio" || chatEntry["command"] != home+"/.local/bin/pfm" {
+		t.Fatalf("owned HTTP chat client was not migrated to the stdio shape: %#v", chatEntry)
+	}
+}
+
+// TestMCPInstallPreservesAForeignChatClientRegistration pins required test
+// #12: a chat registration that is neither pfm's HTTP shape nor its stdio
+// shape — the operator's real hand-edit from the root-cause report, a bare
+// "pfm" command instead of the installer's own absolute path — stays a
+// manual conflict, preserved untouched with the same skip message as every
+// other foreign registration.
+func TestMCPInstallPreservesAForeignChatClientRegistration(t *testing.T) {
+	home := t.TempDir()
+	canonical := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
+	foreign := `{"mcpServers":{"chat":{"type":"stdio","command":"pfm","args":["mcp","chat","serve"]}}}`
+	writeFixture(t, filepath.Join(home, ".mcp.json"), foreign)
+	options := Options{
+		Mode: ModeApply, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
+		MCPPort: 8377, Runner: &fakeRunner{},
+	}
+	var applied strings.Builder
+	options.Stdout = &applied
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatalf("apply over a foreign chat registration: %v\n%s", err, applied.String())
+	}
+	if !strings.Contains(applied.String(), "preserve conflicting manual MCP client chat") {
+		t.Fatalf("a bare \"pfm\" chat command was not treated as a manual conflict:\n%s", applied.String())
+	}
+	if got := readFixture(t, filepath.Join(home, ".mcp.json")); got != foreign {
+		t.Fatalf(".mcp.json chat entry changed=%s, want untouched %s", got, foreign)
+	}
+	var ownership mcpOwnership
+	ownershipPath := filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName)
+	if err := json.Unmarshal([]byte(readFixture(t, ownershipPath)), &ownership); err != nil {
+		t.Fatal(err)
+	}
+	if len(ownership.Clients) != 0 {
+		t.Fatalf("owned clients=%v, want none — the only enabled server was a preserved manual conflict", ownership.Clients)
+	}
+}
+
+// TestMCPInstallRecognizesAnOwnedStdioChatClientWithoutRewriteOrConflict
+// pins required test #13: once a chat registration already matches the
+// stdio shape a previous apply wrote, a later apply must recognize it as
+// pfm's own — no spurious rewrite (no backup file, unchanged bytes) and no
+// "manual conflict" skip — the whole point of isPFMStdioClient existing
+// alongside isPFMHTTPClient.
+func TestMCPInstallRecognizesAnOwnedStdioChatClientWithoutRewriteOrConflict(t *testing.T) {
+	home := t.TempDir()
+	canonical := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
+	clientPath := filepath.Join(home, ".mcp.json")
+	owned := `{"mcpServers":{"chat":{"type":"stdio","command":"` + home + `/.local/bin/pfm","args":["mcp","chat","serve"]}}}`
+	writeFixture(t, clientPath, owned)
+	writeFixture(t, filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName), `{"clients":["chat"]}`)
+	options := Options{
+		Mode: ModeApply, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
+		MCPPort: 8377, Runner: &fakeRunner{},
+	}
+	var applied strings.Builder
+	options.Stdout = &applied
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatalf("apply over an already-owned stdio chat registration: %v\n%s", err, applied.String())
+	}
+	if strings.Contains(applied.String(), "preserve conflicting manual MCP client chat") {
+		t.Fatalf("an owned stdio chat registration was treated as a manual conflict:\n%s", applied.String())
+	}
+	if !strings.Contains(applied.String(), "ok      "+clientPath+" wiring") {
+		t.Fatalf("an already-correct stdio chat registration was rewritten instead of recognized:\n%s", applied.String())
+	}
+	if got := readFixture(t, clientPath); got != owned {
+		t.Fatalf(".mcp.json changed=%s, want byte-identical %s", got, owned)
+	}
+	if matches, _ := filepath.Glob(clientPath + ".pre-professor-*"); len(matches) != 0 {
+		t.Fatalf("a spurious backup was written for an unchanged, already-owned registration: %v", matches)
+	}
+}
+
+// TestMCPInstallCodexChatStaysOnHTTPDespiteClaudeStdio pins required test
+// #14: the Claude/Codex asymmetry is deliberate (Codex's own MCP client
+// attaches _meta.threadId on every call, so HTTP resolves callers correctly
+// there), and must stay pinned on its own so a later "harmonize the two
+// clients" pass does not silently regress Codex onto the costlier stdio
+// transport it never needed.
+func TestMCPInstallCodexChatStaysOnHTTPDespiteClaudeStdio(t *testing.T) {
+	home := t.TempDir()
+	canonical := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
+	options := Options{
+		Mode: ModeApply, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
+		MCPPort: 8377, Runner: &fakeRunner{},
+	}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	codexConfig := readFixture(t, filepath.Join(home, ".codex", "config.toml"))
+	if !strings.Contains(codexConfig, "[mcp_servers.chat]") ||
+		!strings.Contains(codexConfig, `url = "http://127.0.0.1:8377/mcp/chat"`) {
+		t.Fatalf("Codex chat registration lost its HTTP shape:\n%s", codexConfig)
+	}
+	if strings.Contains(codexConfig, "command") || strings.Contains(codexConfig, "stdio") {
+		t.Fatalf("Codex chat registration picked up the Claude-only stdio shape:\n%s", codexConfig)
+	}
+	clientJSON := readFixture(t, filepath.Join(home, ".mcp.json"))
+	if !strings.Contains(clientJSON, `"type": "stdio"`) {
+		t.Fatalf("Claude chat registration is not stdio, so this test cannot pin the asymmetry:\n%s", clientJSON)
 	}
 }
 

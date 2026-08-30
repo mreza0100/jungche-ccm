@@ -107,13 +107,10 @@ func (installer *engine) writeMCPClientJSON(names []string) ([]string, error) {
 	changed := false
 	wired := make([]string, 0, len(names))
 	for _, name := range names {
-		wanted := map[string]any{
-			"type": "http",
-			"url":  installer.mcpURL(name),
-		}
+		wanted := installer.mcpClientRegistration(name)
 		if current, present := servers[name]; present && !sameJSONValue(current, wanted) {
 			registration, object := current.(map[string]any)
-			if !object || !previouslyOwned[name] || !installer.isPFMHTTPClient(name, registration) {
+			if !object || !previouslyOwned[name] || !installer.isPFMClient(name, registration) {
 				installer.skip("preserve conflicting manual MCP client " + name)
 				continue
 			}
@@ -158,6 +155,76 @@ func (installer *engine) previouslyOwnedMCPClients() map[string]bool {
 		owned[name] = true
 	}
 	return owned
+}
+
+// mcpClientRegistration is the registration writeMCPClientJSON wants for name
+// on the Claude side. Every server except "chat" keeps the shared HTTP
+// daemon: Codex's own client attaches _meta.threadId on every call, so HTTP
+// resolves callers correctly there too (see writeMCPCodeConfig, unchanged),
+// and the daemon is the cheaper choice for a server callers don't need to
+// self-identify against. "chat" is different: a self-addressed chat_* call
+// carries no thread id from Claude, and the daemon serves every chat on the
+// box from one process, so it can never derive who's calling (mcpserv's
+// callerForRequest, fail-closed by design). `pfm mcp chat serve` run over
+// stdio is launched by exactly one chat and inherits its identity instead
+// (main.go sets AllowAmbientIdentity for that path only) — the only
+// transport that can ever answer a self-addressed chat_* call correctly.
+func (installer *engine) mcpClientRegistration(name string) map[string]any {
+	if name == "chat" {
+		return map[string]any{
+			"type":    "stdio",
+			"command": installer.mcpChatCommand(),
+			"args":    []string{"mcp", "chat", "serve"},
+		}
+	}
+	return map[string]any{
+		"type": "http",
+		"url":  installer.mcpURL(name),
+	}
+}
+
+// mcpChatCommand is the absolute path to the pfm binary this install owns —
+// the same canonical ~/.local/bin/pfm path canonicalBinaryOwnershipContent
+// records and updateCodexHooks already migrates hook commands to. The
+// installer knows this path (it is what it stages and records ownership of),
+// so the stdio "chat" registration uses it rather than a bare "pfm" that
+// depends on the launching shell's PATH containing the install dir.
+func (installer *engine) mcpChatCommand() string {
+	return filepath.Join(installer.options.Home, ".local", "bin", "pfm")
+}
+
+// isPFMClient recognizes a registration as pfm's OWN, in whichever of the two
+// shapes mcpClientRegistration produces for name, so writeMCPClientJSON can
+// tell "ours, safe to maintain" from "a manual conflict, preserve as-is."
+func (installer *engine) isPFMClient(name string, registration map[string]any) bool {
+	return installer.isPFMHTTPClient(name, registration) || installer.isPFMStdioClient(name, registration)
+}
+
+// isPFMStdioClient recognizes pfm's own stdio "chat" registration — the
+// shape mcpClientRegistration now writes — so a later install can maintain
+// it (e.g. correct a changed binary path) instead of forever treating it as
+// a manual conflict, mirroring isPFMHTTPClient for the HTTP shape every
+// other server still uses. A registration that merely LOOKS similar (a
+// hand-written entry using a bare "pfm" command, say) does not match this
+// exact shape and is correctly left as a manual conflict — recognizing only
+// what this installer itself would write is the whole point.
+func (installer *engine) isPFMStdioClient(name string, registration map[string]any) bool {
+	if name != "chat" || len(registration) != 3 {
+		return false
+	}
+	if registration["type"] != "stdio" || registration["command"] != installer.mcpChatCommand() {
+		return false
+	}
+	args, ok := registration["args"].([]any)
+	if !ok || len(args) != 3 {
+		return false
+	}
+	for index, want := range []string{"mcp", "chat", "serve"} {
+		if got, ok := args[index].(string); !ok || got != want {
+			return false
+		}
+	}
+	return true
 }
 
 func (installer *engine) isPFMHTTPClient(name string, registration map[string]any) bool {
