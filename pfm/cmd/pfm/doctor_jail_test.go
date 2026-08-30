@@ -45,6 +45,7 @@ func TestDoctorFreshTargetHomeIsClean(t *testing.T) {
 	if err := os.Symlink(managedClaude, filepath.Join(canonicalDir, "claude")); err != nil {
 		t.Fatal(err)
 	}
+	stageHarnessPromptBaseline(t, home)
 
 	t.Setenv("HOME", home)
 	t.Setenv("PFM_HOME", home)

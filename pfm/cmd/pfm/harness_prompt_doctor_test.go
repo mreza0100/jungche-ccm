@@ -2,13 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"hostops/pfm/internal/config"
 )
 
 func TestHarnessPromptVerdictThreeOutcomes(t *testing.T) {
@@ -93,5 +98,114 @@ func TestJoinSystemBlocksMatchesBaselineRendering(t *testing.T) {
 
 	if _, err := joinSystemBlocks([]byte(`{"model":"x"}`)); err == nil {
 		t.Fatal("a request with no system prompt must error, not hash empty content")
+	}
+}
+
+// TestPrintHarnessPromptDoctorHonorsCaptureOverride pins the seam
+// configuredHarnessCapture adds: printHarnessPromptDoctor's baseline read and
+// verdict comparison stay real end to end, only the capture step is swapped —
+// exactly what makes the six formerly jail-broken doctor tests (main_test.go,
+// doctor_jail_test.go, launch_command_test.go, doctor_external_test.go) able
+// to reach match, DRIFT, and CHECK FAILED without a real `claude` binary.
+func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
+	saved := harnessCaptureOverride
+	t.Cleanup(func() { harnessCaptureOverride = saved })
+
+	stageBaseline := func(t *testing.T, home, captured, name string) {
+		t.Helper()
+		sum := sha256.Sum256([]byte(captured))
+		pin := hex.EncodeToString(sum[:]) + "  " + name + "\n"
+		path := filepath.Join(home, ".local", "share", "pfm", "install", "prompts", "harness-original.sha256")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(pin), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refuseCapture := func(t *testing.T) func(context.Context, config.Config) (string, error) {
+		return func(context.Context, config.Config) (string, error) {
+			t.Fatal("capture must not run before the baseline is readable and well-formed")
+			return "", nil
+		}
+	}
+
+	cases := []struct {
+		name     string
+		setup    func(t *testing.T, home string)
+		wantWarn bool
+		want     string
+	}{
+		{
+			name: "missing baseline never reaches the capture step",
+			setup: func(t *testing.T, home string) {
+				harnessCaptureOverride = refuseCapture(t)
+			},
+			wantWarn: true,
+			want:     "doctor: harness-prompt: baseline unreadable",
+		},
+		{
+			name: "malformed baseline is distinct from missing and never captures",
+			setup: func(t *testing.T, home string) {
+				path := filepath.Join(home, ".local", "share", "pfm", "install", "prompts", "harness-original.sha256")
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("not-two-fields\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				harnessCaptureOverride = refuseCapture(t)
+			},
+			wantWarn: true,
+			want:     "doctor: harness-prompt: baseline malformed",
+		},
+		{
+			name: "override content matching the staged baseline reports clean",
+			setup: func(t *testing.T, home string) {
+				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
+				harnessCaptureOverride = func(context.Context, config.Config) (string, error) {
+					return "captured-fixture\n", nil
+				}
+			},
+			wantWarn: false,
+			want:     "doctor: harness-prompt: matches baseline fixture-baseline.md",
+		},
+		{
+			name: "override content diverging from the staged baseline reports DRIFT",
+			setup: func(t *testing.T, home string) {
+				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
+				harnessCaptureOverride = func(context.Context, config.Config) (string, error) {
+					return "a different live prompt\n", nil
+				}
+			},
+			wantWarn: true,
+			want:     "doctor: harness-prompt: DRIFT",
+		},
+		{
+			name: "override capture error reports CHECK FAILED, never DRIFT or matches",
+			setup: func(t *testing.T, home string) {
+				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
+				harnessCaptureOverride = func(context.Context, config.Config) (string, error) {
+					return "", errors.New("no API request reached the capture sink")
+				}
+			},
+			wantWarn: true,
+			want:     "doctor: harness-prompt: CHECK FAILED to run",
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := t.TempDir()
+			testCase.setup(t, home)
+			var stdout bytes.Buffer
+			code := printHarnessPromptDoctor(context.Background(), &stdout, home, config.Config{})
+			if warned := code != 0; warned != testCase.wantWarn {
+				t.Fatalf("code=%d warned=%v, want warned=%v\noutput=%s", code, warned, testCase.wantWarn, stdout.String())
+			}
+			if !strings.Contains(stdout.String(), testCase.want) {
+				t.Fatalf("output=%q, want substring %q", stdout.String(), testCase.want)
+			}
+		})
 	}
 }

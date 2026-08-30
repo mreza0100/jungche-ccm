@@ -38,13 +38,29 @@ func printHarnessPromptDoctor(ctx context.Context, stdout io.Writer, home string
 		fmt.Fprintf(stdout, "doctor: harness-prompt: baseline malformed at %s — run pfm install\n", baselinePath)
 		return 1
 	}
-	captured, captureErr := captureHarnessPrompt(ctx, machine)
+	captured, captureErr := configuredHarnessCapture(ctx, machine)
 	line, warn := harnessPromptVerdict(fields[0], fields[1], captured, captureErr)
 	fmt.Fprintln(stdout, line)
 	if warn {
 		return 1
 	}
 	return 0
+}
+
+// harnessCaptureOverride is nil in production; printHarnessPromptDoctor then
+// runs the real capture below. A jail has no genuine `claude` binary to spawn
+// — that is REAL-SESSION territory (TESTPLAN.md), never jailable — so the
+// command-package TestMain supplies a deterministic stub here, the same
+// pattern as dependencyProbeOverride and hookProbeOverride. Only the CAPTURE
+// step is ever swapped; the baseline read and the verdict comparison stay
+// real, so a test still exercises the actual match/DRIFT/CHECK-FAILED logic.
+var harnessCaptureOverride func(context.Context, config.Config) (string, error)
+
+func configuredHarnessCapture(ctx context.Context, machine config.Config) (string, error) {
+	if harnessCaptureOverride != nil {
+		return harnessCaptureOverride(ctx, machine)
+	}
+	return captureHarnessPrompt(ctx, machine)
 }
 
 // harnessPromptVerdict is the pure comparator: baseline hash + name, the
