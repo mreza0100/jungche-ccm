@@ -279,11 +279,11 @@ func withDefaults(options Options) Options {
 	if options.LockMaxHold == 0 {
 		options.LockMaxHold = 60 * time.Second
 	}
-	if options.ClaudeAutoFileMax == 0 {
-		options.ClaudeAutoFileMax = ClaudeAutoFileMax
+	if options.ClaudeInlineMax == 0 {
+		options.ClaudeInlineMax = ClaudeInlineMax
 	}
-	if options.CodexAutoFileMax == 0 {
-		options.CodexAutoFileMax = CodexAutoFileMax
+	if options.CodexInlineMax == 0 {
+		options.CodexInlineMax = CodexInlineMax
 	}
 	if options.CommandChunkRunes == 0 {
 		options.CommandChunkRunes = CommandChunkRunes
@@ -602,7 +602,7 @@ const rearmPreamblePadding = 200
 // text genuinely lands there. Do not "harmonize" the two call sites — they
 // answer different questions about different channels.
 func (engine *Engine) rearmThresholdBytes(target Target) int {
-	budget := engine.autoFileThreshold(target.Engine) - rearmPreamblePadding
+	budget := engine.inlineThreshold(target.Engine) - rearmPreamblePadding
 	if budget < 0 {
 		budget = 0
 	}
@@ -936,9 +936,16 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 	base.Unsigned = prepared.Unsigned
 	base.AutoFilePath = prepared.AutoFilePath
 	commandTransport := isHarnessCommand(request.Message)
-	pasteTransport := request.FileBacked && prepared.AutoFilePath == "" && !commandTransport
-	pacedLiteral := commandTransport ||
-		utf8.RuneCountInString(message) > engine.autoFileThreshold(target.Engine)
+	// pasteTransport now covers both shapes that need byte-safe bracketed
+	// paste: an explicit --file body (any size, unconditionally — a literal
+	// newline in send-keys -l submits the composer early) and an ordinary
+	// message over the engine's inline threshold, which prepareMessage used
+	// to spill to a file pointer before this ladder ever saw it — see its
+	// own comment. prepared.AutoFilePath is therefore always empty here for
+	// a live delivery; it is populated below ONLY as a rescue, if this
+	// attempt cannot be proven.
+	pasteTransport := !commandTransport &&
+		(request.FileBacked || utf8.RuneCountInString(message) > engine.inlineThreshold(target.Engine))
 	var sendErr error
 	if pasteTransport {
 		sendErr = engine.tmux.SendPaste(
@@ -947,7 +954,7 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 			target.Pane,
 			message,
 		)
-	} else if pacedLiteral {
+	} else if commandTransport {
 		base.LiteralChunks, sendErr = engine.sendPacedLiteral(
 			ctx,
 			target,
@@ -1039,6 +1046,12 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 			target.Pane,
 			engine.options.EnterTries,
 		)
+		if pasteTransport {
+			if rescuePath, note := engine.pasteRescue(target, request, prepared); note != "" {
+				base.AutoFilePath = rescuePath
+				base.Message += " — " + note
+			}
+		}
 		return base, nil
 	}
 
@@ -1083,6 +1096,12 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 			proofErr,
 		)
 		base.Proof = fmt.Sprintf("[pane capture failed: %v]", proofErr)
+		if pasteTransport {
+			if rescuePath, note := engine.pasteRescue(target, request, prepared); note != "" {
+				base.AutoFilePath = rescuePath
+				base.Message += " — " + note
+			}
+		}
 		return base, nil
 	}
 	proofInput := lastComposerLine(proof)
@@ -1100,6 +1119,12 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 			target.Pane,
 		)
 		base.Proof = lastNonEmptyLines(proof, engine.options.ProofLines)
+		if pasteTransport {
+			if rescuePath, note := engine.pasteRescue(target, request, prepared); note != "" {
+				base.AutoFilePath = rescuePath
+				base.Message += " — " + note
+			}
+		}
 		return base, nil
 	}
 	base.Status = "delivered"
@@ -1115,16 +1140,15 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 			engineName(target.Engine),
 			base.LiteralChunks,
 		)
-	case queueing && prepared.AutoFilePath != "":
-		base.Message = fmt.Sprintf(
-			"queued AUTO-FILE pointer into %q — full body saved at %s; busy %s accepted the pointer without interruption (Enter confirmed, input cleared)",
-			target.Pane,
-			prepared.AutoFilePath,
-			engineName(target.Engine),
-		)
 	case queueing && request.FileBacked:
 		base.Message = fmt.Sprintf(
 			"queued FILE-BACKED into %q — busy %s accepted the bracketed-paste block without interruption (Enter confirmed, input cleared)",
+			target.Pane,
+			engineName(target.Engine),
+		)
+	case queueing && pasteTransport:
+		base.Message = fmt.Sprintf(
+			"queued PASTE into %q — busy %s accepted the bracketed-paste block without interruption (Enter confirmed, input cleared)",
 			target.Pane,
 			engineName(target.Engine),
 		)
@@ -1140,15 +1164,14 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 			target.Pane,
 			base.LiteralChunks,
 		)
-	case prepared.AutoFilePath != "":
-		base.Message = fmt.Sprintf(
-			"injected LIVE AUTO-FILE pointer into %q — full body saved at %s (Enter confirmed, input cleared)",
-			target.Pane,
-			prepared.AutoFilePath,
-		)
 	case request.FileBacked:
 		base.Message = fmt.Sprintf(
 			"injected LIVE FILE-BACKED into %q — bracketed-paste body submitted (Enter confirmed, input cleared)",
+			target.Pane,
+		)
+	case pasteTransport:
+		base.Message = fmt.Sprintf(
+			"injected LIVE PASTE into %q — bracketed-paste body submitted (Enter confirmed, input cleared)",
 			target.Pane,
 		)
 	default:
@@ -1187,11 +1210,49 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 			target.Pane,
 			proofExpectation(queueing),
 		)
+		if pasteTransport {
+			if rescuePath, note := engine.pasteRescue(target, request, prepared); note != "" {
+				base.AutoFilePath = rescuePath
+				base.Message += " — " + note
+			}
+		}
 	}
 	if blindProof {
 		base.Message += " (proof caveat: no composer line was visible in capture or scrollback; submission was confirmed, but the screen proof is blind)"
 	}
 	return base, nil
+}
+
+// pasteRescue is the auto-file fallback for the one case paste transport
+// genuinely cannot serve: a bracketed-paste delivery that could not be
+// proven. It never redelivers — retyping a different message into a
+// composer already left in an unknown state would be worse than the
+// original failure — it only preserves request.Message byte-exact to the
+// canonical auto-file store, the SAME store and pruning prepareMessage's own
+// resume-path spill uses, so the caller (and whoever reads the transcript
+// later) has a durable, honestly-reported copy to recover from instead of
+// silently losing the text. A persist failure is folded into the returned
+// note rather than swallowed, per this repo's own error-handling rule.
+func (engine *Engine) pasteRescue(target Target, request Request, prepared PreparedMessage) (path, note string) {
+	if prepared.AutoFilePath != "" {
+		// Never actually true on the live path today — prepareMessage no
+		// longer spills there (see its own comment) — kept as a guard
+		// against double-rescuing if a future caller shape changes that.
+		return "", ""
+	}
+	name := filepath.Base(target.SocketPath)
+	if target.Pane != "" {
+		name += "-" + target.Pane
+	}
+	stored, warnings, err := engine.persistBody(request.Message, name)
+	if err != nil {
+		return "", fmt.Sprintf("AUTO-FILE RESCUE FAILED: could not preserve the unproven body to a rescue file: %v", err)
+	}
+	note = fmt.Sprintf("AUTO-FILE RESCUE: the full body was preserved at %s — read it fully", stored)
+	for _, warning := range warnings {
+		note += " — WARNING: " + warning
+	}
+	return stored, note
 }
 
 func engineName(value string) string {

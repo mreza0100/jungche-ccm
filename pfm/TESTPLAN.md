@@ -412,8 +412,8 @@ tonight's four bugs all live in.
 | `chat_inject` `/compact` without `then` → refused code 6                                                  | JAIL                                                           | `inject/engine.go:683-694`                                         |                                                                   |
 | `chat_inject` a `then` steer that is itself `/compact` → refused code 1                                   | JAIL                                                           | `inject/engine.go:668-682`                                         |                                                                   |
 | `chat_inject` a 2,147-rune `/compact` focus → paced literal chunks, full transcript body, command fires   | JAIL+tmux                                                      | `inject/engine.go`, `then_test.go`, `tmux_jail_test.go`            |                                                                   |
-| `chat_inject` long bodies cross the measured per-engine boundary into an auto-file pointer by RUNE count  | JAIL+tmux                                                      | `inject/body.go`, `inject/engine_test.go`                          |                                                                   |
-| `chat_inject` has no absolute body cap; prose above the former cap becomes a byte-exact auto-file pointer | JAIL                                                           | `inject/body.go`, `engine_test.go`                                 |                                                                   |
+| `chat_inject` long bodies cross the measured per-engine inline boundary into bracketed paste (proven by tail match or placeholder), by RUNE count — not a pointer | JAIL+tmux | `inject/body.go`, `inject/engine_test.go` | |
+| `chat_inject` has no absolute body cap; prose above the inline boundary travels whole, byte-exact, through bracketed paste | JAIL                                                           | `inject/body.go`, `engine_test.go`                                 |                                                                   |
 | `chat_capture` `tail_lines` 1..1000, `max_bytes` 1..4Mi, rune-safe tail cut                               | JAIL+tmux                                                      | `mcpserv/server.go:209-271`                                        |                                                                   |
 | `chat_whoami` takes NO arguments; identity from this process only                                         | JAIL+tmux                                                      | `mcpserv/server.go:177-207`, `mcpserv/types.go:95-97`              |                                                                   |
 | `chat_whoami` failure returns `not_found` + message, never an error                                       | JAIL                                                           | `mcpserv/server.go:186-195`                                        |                                                                   |
@@ -436,11 +436,11 @@ tonight's four bugs all live in.
 | `chat open <name                                                                                                                                                     | socket    | id                                                                          | self>` → attach action  | JAIL+tmux | `chat_command.go`, `attach_e2e_test.go` |     |
 | `chat inject` ladder: self → any-socket live session → label → Codex thread → id/path/excerpt                                                                        | JAIL+tmux | `headless_command.go`, `inject_resume.go`, `internal/inject/resolve`        | B1                      |
 | busy Codex and Claude inject through the safe composer queue without Esc; receipts distinguish queued from delivered                                                 | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`, `engine_test.go`              |                         |
-| `chat inject` stores an over-threshold body under `~/.local/state/pfm/inject-bodies/`, sends only a signed caption+path pointer, and names both facts in the receipt | JAIL+tmux | `internal/inject/body.go`, `engine_test.go`, `inject_cli_jail_test.go`      |                         |
-| a short `chat inject --file` keeps bracketed paste for byte-safe multi-line input; an over-threshold `--file` is copied into the canonical auto-file store           | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`                                |                         |
+| `chat inject` delivers an over-threshold ORDINARY body whole through bracketed paste; the `~/.local/state/pfm/inject-bodies/` auto-file store is now a RESCUE for an unproven paste, not the default, and names both facts in the receipt when it fires | JAIL+tmux | `internal/inject/body.go`, `engine_test.go`, `inject_cli_jail_test.go`      |                         |
+| a `chat inject --file` body of any size keeps bracketed paste for byte-safe multi-line input; the canonical auto-file store is a RESCUE for that body only if the paste cannot be proven                                                                | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`                                |                         |
 | `chat inject --file PATH TARGET` and compatibility `chat inject TARGET --file PATH` both deliver the file body; raw `--file PATH` is never message text              | JAIL+tmux | `headless_command.go`, `inject_cli_jail_test.go`                            |                         |
-| auto-file boundaries: one character under stays inline, one over becomes a pointer; an 8 KiB body never enters either composer                                       | JAIL+tmux | `TestInjectAutoFileBoundaryAndKillerBody`, CLI probe fixture                |                         |
-| a 5 KiB prose body is stored byte-exact, sends only its signed pointer, and prints both `AUTO-FILE` and pane proof                                                   | JAIL+tmux | `engine_test.go`, `tmux_jail_test.go`                                       |                         |
+| inline boundaries: one character under stays inline `SendLiteral`, one over goes through bracketed paste; the auto-file store no longer intercepts by size alone on the live path — see the edge-table derivation above                                 | JAIL+tmux | `TestInjectPasteBoundaryAndKillerBody`, CLI probe fixture                |                         |
+| a 5 KiB prose body travels byte-exact through bracketed paste and prints pane proof (tail match or placeholder); `AUTO-FILE` fires only if that proof fails                                                                                             | JAIL+tmux | `engine_test.go`, `tmux_jail_test.go`                                       |                         |
 | repeated `chat inject --then` waits busy→stable-idle and survives caller exit                                                                                        | JAIL+tmux | `internal/inject/then.go`, waiter jail tests                                |                         |
 | `/compact` without `--then`, or a `/compact` steer, is refused before delivery                                                                                       | JAIL      | `internal/inject`                                                           |                         |
 | a 2,147-rune `/compact` focus bypasses auto-file, is paced under one lock, fires byte-exact, and queues safely while busy                                            | JAIL+tmux | `then_test.go`, `tmux_jail_test.go`                                         |                         |
@@ -476,16 +476,25 @@ and does not reach the transcript/rollout on one Enter; the panes stayed alive.
 | Codex  | literal `send-keys -l`      | 1,000 chars               | 1,001 chars   | `[Pasted Content N chars]`; one Enter left the block in the composer |
 | Codex  | bracketed `paste-buffer -p` | 1,000 chars               | 1,001 chars   | `[Pasted Content N chars]`; one Enter left the block in the composer |
 
-The per-engine plain-prose auto-file boundary uses the smaller transport edge and rounds down at 90%:
-Claude `floor(801 × 0.9) = 720` runes; Codex `floor(1001 × 0.9) = 900` runes. The comparison is
-against the complete signed wire message, so a signature consumes part of the safety margin.
-Above the boundary, pfm writes the original body byte-exact with mode 0600, prunes `.md` bodies
-older than seven days, and sends a bounded first-line caption plus `read <path> fully`. A pointer
-that crosses a transport boundary is itself paced in safe literal chunks; body size never causes
-a sender-visible refusal. Slash commands do not become pointers: they travel byte-exact in locked
-512-rune literal chunks, with Enter only after the final chunk. An 8 KiB prose fixture proves the
-body travels only as the short pointer, while the 2,147-rune `/compact` fixture proves the complete
-command reaches the transcript and fires.
+The per-engine inline boundary (`ClaudeInlineMax`/`CodexInlineMax`, `internal/inject/types.go`,
+renamed from `ClaudeAutoFileMax`/`CodexAutoFileMax`) uses the smaller transport edge and rounds
+down at 90%: Claude `floor(801 × 0.9) = 720` runes; Codex `floor(1001 × 0.9) = 900` runes. The
+comparison is against the complete signed wire message, so a signature consumes part of the
+safety margin.
+
+On LIVE delivery this is the inline-`SendLiteral`-vs-bracketed-`SendPaste` boundary, not an
+inline-vs-file boundary: a message over it still reaches the pane whole, through tmux's bracketed
+paste (`load-buffer` + `paste-buffer -p`), proven by either a tail match in the capture or the
+composer's own collapsed-paste placeholder (`[Pasted text #N]` / `[Pasted Content N chars]`). The
+auto-file store (`~/.local/state/pfm/inject-bodies`, mode 0600, pruned past seven days) is now a
+RESCUE rather than the default: it fires only when a paste delivery cannot be proven, and the
+caller is told through both the receipt text and `Result.AutoFilePath` — never a silent swap. On
+the dormant/resume path (`PrepareForResume` — writing directly into a transcript, with no live
+composer for a paste transport to target) the boundary is still inline-vs-file, unchanged: an 8
+KiB body there still becomes a byte-exact pointer rather than one giant synthetic user turn.
+Slash commands never become pointers either way: they travel byte-exact in locked 512-rune literal
+chunks, with Enter only after the final chunk — the 2,147-rune `/compact` fixture proves the
+complete command reaches the transcript and fires.
 
 ## I — zsh shell surface: launchers and revivers
 

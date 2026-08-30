@@ -29,9 +29,12 @@ type PreparedMessage struct {
 	Warnings     []string
 }
 
-// PrepareForResume applies the same measured auto-file boundary as live
-// delivery. Dormant transcript injection is still transport: an 8 KiB body
-// belongs in a durable file, not as a giant synthetic user turn.
+// PrepareForResume applies the same measured composer edge live delivery
+// uses, but as its OWN inline-vs-file boundary: there is no live pane here
+// for a paste transport to target, so — unlike live delivery — an
+// over-threshold body still spills to a file pointer. Dormant transcript
+// injection is still transport: an 8 KiB body belongs in a durable file, not
+// as a giant synthetic user turn.
 func (engine *Engine) PrepareForResume(
 	ctx context.Context,
 	target, engineName, body string,
@@ -102,12 +105,27 @@ func (engine *Engine) prepareLiveMessage(
 	)
 }
 
+// prepareMessage decides, for the ONE caller that still needs a size cap at
+// all, whether signed is short enough to travel inline or must be persisted
+// and replaced with a pointer. resume distinguishes the two callers:
+//
+//   - Live delivery (prepareLiveMessage, resume=false) never spills here —
+//     an over-threshold live body routes through engine.go's transport
+//     ladder into bracketed SendPaste instead, which is byte-safe at any
+//     size and provable by a tail match or the composer's own paste
+//     placeholder. Spilling it here would silently swap the caller's text
+//     for a pointer before that transport ever got a chance to carry it —
+//     the exact defect this function used to have.
+//   - Dormant/resume delivery (PrepareForResume, resume=true) still spills
+//     above inlineThreshold: it writes directly into a transcript file, so
+//     there is no live composer for a paste transport to target, and an 8
+//     KiB body has no business becoming one giant synthetic user turn.
 func (engine *Engine) prepareMessage(
 	ctx context.Context,
 	target, engineName, body, signed string,
 	unsigned, interrupted, resume bool,
 ) (PreparedMessage, error) {
-	if utf8.RuneCountInString(signed) <= engine.autoFileThreshold(engineName) {
+	if !resume || utf8.RuneCountInString(signed) <= engine.inlineThreshold(engineName) {
 		return PreparedMessage{Message: signed, Unsigned: unsigned}, nil
 	}
 	path, warnings, err := engine.persistBody(body, target)
@@ -135,14 +153,18 @@ func (engine *Engine) prepareMessage(
 	}, nil
 }
 
-func (engine *Engine) autoFileThreshold(engineName string) int {
+// inlineThreshold is the measured composer edge (TESTPLAN.md's "Measured
+// composer edges" table): on the live path it is the inline-vs-paste
+// boundary, on the resume path the inline-vs-file boundary — see
+// prepareMessage's own comment for which caller means which.
+func (engine *Engine) inlineThreshold(engineName string) int {
 	// OpenCode inherits Codex's conservative bound: its composer paste edge is
 	// unverified, so it gets the smaller of the two measured thresholds rather
 	// than an invented one.
 	if id, err := pfmengine.Parse(engineName); err == nil && id == pfmengine.Claude {
-		return engine.options.ClaudeAutoFileMax
+		return engine.options.ClaudeInlineMax
 	}
-	return engine.options.CodexAutoFileMax
+	return engine.options.CodexInlineMax
 }
 
 func (engine *Engine) persistBody(body, target string) (string, []string, error) {

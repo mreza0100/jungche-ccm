@@ -576,7 +576,15 @@ func TestChatSelfCompactRequiresSteerAndTargetsRequestingSeat(t *testing.T) {
 	}
 }
 
-func TestChatSelfCompactSchedulesBareSlashCommand(t *testing.T) {
+// TestChatSelfCompactComposesFocusIntoScheduledCommand is the Task D
+// regression test: chatSelfCompact validates focus (single line, non-empty,
+// no control characters) and MUST compose it onto the delivered command
+// rather than discarding it. Renamed from
+// ...SchedulesBareSlashCommand, which pinned exactly the defect being
+// fixed — against the pre-fix code this test fails with "scheduled compact
+// command = \"/compact\", want \"/compact preserve the signed MCP
+// acceptance verdict\"" (watched below).
+func TestChatSelfCompactComposesFocusIntoScheduledCommand(t *testing.T) {
 	recorder := &recordingCompactInjector{}
 	service := newService("test", &backend{
 		injector:             recorder,
@@ -593,10 +601,52 @@ func TestChatSelfCompactSchedulesBareSlashCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if recorder.scheduled.Message != "/compact" {
-		t.Fatalf("scheduled compact command = %q, want bare /compact", recorder.scheduled.Message)
+	want := "/compact preserve the signed MCP acceptance verdict"
+	if recorder.scheduled.Message != want {
+		t.Fatalf("scheduled compact command = %q, want %q", recorder.scheduled.Message, want)
 	}
 	if !reflect.DeepEqual(recorder.scheduled.Then, []string{"resume the acceptance test"}) {
 		t.Fatalf("scheduled continuation = %q", recorder.scheduled.Then)
+	}
+}
+
+// TestChatSelfCompactValidationRefusesBadFocus pins the validation
+// chatSelfCompact keeps exactly as-is while composing focus onto the
+// command (server.go's comment: "single-line, non-empty,
+// control-character-free is precisely what makes it safe to concatenate").
+// None of these cases may reach the injector.
+func TestChatSelfCompactValidationRefusesBadFocus(t *testing.T) {
+	tests := []struct {
+		name  string
+		focus string
+	}{
+		{name: "empty", focus: ""},
+		{name: "blank", focus: "   "},
+		{name: "multi-line", focus: "line one\nline two"},
+		{name: "carriage-return", focus: "line one\rline two"},
+		{name: "nul byte", focus: "wave three\x00closeout"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := &recordingCompactInjector{}
+			service := newService("test", &backend{
+				injector:             recorder,
+				allowAmbientIdentity: true,
+			})
+			_, _, err := service.chatSelfCompact(
+				context.Background(),
+				nil,
+				SelfCompactInput{
+					Focus: test.focus,
+					Then:  []string{"resume the acceptance test"},
+				},
+			)
+			if err == nil || !strings.Contains(err.Error(), "focus must be one non-empty line") {
+				t.Fatalf("focus %q error = %v, want the one-non-empty-line refusal", test.focus, err)
+			}
+			if recorder.scheduled.Message != "" || recorder.scheduled.Target != "" {
+				t.Fatalf("invalid focus %q reached the injector: %+v", test.focus, recorder.scheduled)
+			}
+		})
 	}
 }

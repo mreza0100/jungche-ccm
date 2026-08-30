@@ -478,20 +478,23 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		t.Fatalf("Codex long-body draft guard result=%+v", codexLongWithDraft)
 	}
 
+	// A megabyte body now reaches the pane byte-exact through bracketed
+	// paste instead of being replaced by an auto-file pointer: no file is
+	// spilled, and the receipt/proof say PASTE rather than AUTO-FILE. See
+	// TestInjectBodyAboveFormerAbsoluteCapUsesPaste for the byte-exact unit
+	// coverage; this end-to-end fixture proves the same contract over a
+	// real jailed MCP + tmux round trip.
 	oversizeBody := strings.Repeat("x", 1<<20)
 	oversize := callTool[InjectOutput](t, session, "chat_inject", InjectInput{
 		Target:  "Fixture Label",
 		Message: oversizeBody,
 	})
 	if oversize.Code != 0 || !oversize.Typed || oversize.Status != "delivered" ||
-		oversize.AutoFilePath == "" ||
-		!strings.Contains(oversize.Message, "AUTO-FILE") ||
-		!strings.Contains(oversize.Proof, "read "+oversize.AutoFilePath+" fully") {
+		oversize.AutoFilePath != "" ||
+		strings.Contains(oversize.Message, "AUTO-FILE") ||
+		!strings.Contains(oversize.Message, "PASTE") ||
+		!strings.Contains(oversize.Proof, strings.Repeat("x", 40)) {
 		t.Fatalf("oversize chat_inject = %+v", oversize)
-	}
-	storedOversize, err := os.ReadFile(oversize.AutoFilePath)
-	if err != nil || string(storedOversize) != oversizeBody {
-		t.Fatalf("oversize body bytes=%d err=%v", len(storedOversize), err)
 	}
 }
 

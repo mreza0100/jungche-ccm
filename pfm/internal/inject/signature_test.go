@@ -237,6 +237,46 @@ func TestUnderivableIdentityRefusesTheAutoFilePointerToo(t *testing.T) {
 	}
 }
 
+// TestUnderivableIdentityRefusesEvenWhenPasteWouldHaveCarriedIt pins Task
+// C's "keep the unsigned refusal intact" requirement for the NEW default
+// transport: an over-threshold body that would now route through bracketed
+// paste must still refuse before ANY transport is chosen when the sender is
+// underivable. refuseUnsigned fires inside prepareLiveMessage's own signing
+// attempt, before pasteTransport is ever decided in the engine.go ladder —
+// this proves the refusal governs "whatever is actually delivered" rather
+// than only the old, narrower auto-file-pointer path.
+func TestUnderivableIdentityRefusesEvenWhenPasteWouldHaveCarriedIt(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newSignatureEngine(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	// Far over ClaudeInlineMax (720): the paste transport is what this body
+	// would use if identity resolved.
+	body := strings.Repeat("unsigned long paste candidate ", 60)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code == 0 {
+		t.Fatalf("an unsigned over-threshold body was delivered: %+v", result)
+	}
+	if !strings.Contains(result.Message, "refusing to send an UNSIGNED message") {
+		t.Fatalf("refusal %q is not the unsigned refusal", result.Message)
+	}
+	if result.AutoFilePath != "" {
+		t.Fatalf("a refused send still reported an auto-file at %q", result.AutoFilePath)
+	}
+	if fake.pasted || len(fake.literals) != 0 {
+		t.Fatalf("a refused send still reached a transport: pasted=%v literals=%q", fake.pasted, fake.literals)
+	}
+}
+
 // TestSignatureUsesAncestryRecoveredIdentity covers chat.sh:65-96: an inject
 // from a codex-origin shell — no $TMUX, no session id in this process — still
 // signs, because the handle is recovered from the sender's own process chain.

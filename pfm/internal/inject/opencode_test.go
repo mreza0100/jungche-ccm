@@ -63,10 +63,10 @@ func TestEngineNameCoversOpencode(t *testing.T) {
 
 func TestAutoFileThresholdInheritsCodexBoundForOpencode(t *testing.T) {
 	engine := &Engine{options: withDefaults(Options{
-		ClaudeAutoFileMax: 500,
-		CodexAutoFileMax:  300,
+		ClaudeInlineMax: 500,
+		CodexInlineMax:  300,
 	})}
-	if got := engine.autoFileThreshold(string(pfmengine.Opencode)); got != 300 {
+	if got := engine.inlineThreshold(string(pfmengine.Opencode)); got != 300 {
 		t.Errorf("ox threshold = %d, want Codex's 300", got)
 	}
 }

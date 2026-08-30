@@ -230,8 +230,11 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 		_ = kill.Run()
 	})
 	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
-	// Five kilobytes must be harmlessly pointer-delivered; it must never be
-	// expanded into a giant composer paste or a truncated inline argument.
+	// Five kilobytes now travels whole through bracketed paste instead of
+	// being replaced by an auto-file pointer (Task C): it must reach the
+	// pane byte-exact, and it must never be typed as a truncated inline
+	// argument or leave the raw "--file PATH" flag text sitting in the
+	// composer as if it were the body.
 	longBody := "file-start " + strings.Repeat("0123456789abcdef", 320) + " file-end"
 	messagePath := filepath.Join(root, "long-message.txt")
 	if err := os.WriteFile(messagePath, []byte(longBody), 0o600); err != nil {
@@ -241,33 +244,33 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	stdout.Reset()
 	stderr.Reset()
 	code = run([]string{"chat", "inject", "--file", messagePath, fileSession}, &stdout, &stderr)
-	if code != 0 || !strings.Contains(stdout.String(), "AUTO-FILE") {
+	if code != 0 || strings.Contains(stdout.String(), "AUTO-FILE") ||
+		!strings.Contains(stdout.String(), "FILE-BACKED") {
 		t.Fatalf("file-backed exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
+	// The embedded receipt proof is bounded to the pane's tail lines, so for
+	// a multi-KB body it shows the END of the body, not "file-start" (which
+	// scrolled off) — the full-scrollback capture below (fileOutput) is what
+	// proves the complete body, not this bounded excerpt.
 	if !strings.Contains(stdout.String(), "delivery proof") ||
-		!strings.Contains(stdout.String(), "file-start") ||
-		!strings.Contains(stdout.String(), "read ") {
+		!strings.Contains(stdout.String(), "file-end") {
 		t.Fatalf("file-backed receipt omitted pane proof: %q", stdout.String())
 	}
+	// A delivery the pane already proves (tail match, below) must not ALSO
+	// spill a canonical body file — the auto-file store is a rescue for an
+	// unproven paste, not the default any more.
 	canonical, err := filepath.Glob(filepath.Join(
 		home, ".local", "state", "pfm", "inject-bodies", "*.md",
 	))
-	if err != nil || len(canonical) != 1 {
-		t.Fatalf("canonical inject bodies=%q err=%v", canonical, err)
-	}
-	stored, err := os.ReadFile(canonical[0])
-	if err != nil || string(stored) != longBody ||
-		!strings.Contains(stdout.String(), canonical[0]) {
-		t.Fatalf("canonical body=%d bytes err=%v receipt=%q", len(stored), err, stdout.String())
+	if err != nil || len(canonical) != 0 {
+		t.Fatalf("a proven paste delivery spilled a canonical body file: %q err=%v", canonical, err)
 	}
 	fileCapture := exec.Command("tmux", "-L", fileSocket, "capture-pane", "-t", fileSession, "-p", "-J", "-S", "-")
 	fileCapture.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
 	fileOutput, err := fileCapture.Output()
-	if err != nil || !strings.Contains(string(fileOutput), "file-start") ||
-		!strings.Contains(string(fileOutput), "read ") ||
-		strings.Contains(string(fileOutput), "file-end") ||
+	if err != nil || !strings.Contains(string(fileOutput), longBody) ||
 		strings.Contains(string(fileOutput), "--file "+messagePath) {
-		t.Fatalf("file-backed pointer missing or full body leaked: err=%v capture=%q", err, fileOutput)
+		t.Fatalf("file-backed body missing, truncated, or leaked the raw flag text: err=%v capture=%q", err, fileOutput)
 	}
 
 	// The old shell accepted the compatibility spelling with the target first.
@@ -280,7 +283,8 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	stdout.Reset()
 	stderr.Reset()
 	code = run([]string{"chat", "inject", fileSession, "--file", compatPath}, &stdout, &stderr)
-	if code != 0 || !strings.Contains(stdout.String(), "AUTO-FILE") {
+	if code != 0 || strings.Contains(stdout.String(), "AUTO-FILE") ||
+		!strings.Contains(stdout.String(), "FILE-BACKED") {
 		t.Fatalf("target-followed --file exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if strings.Contains(stdout.String(), compatPath) ||
@@ -290,29 +294,17 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	compatCapture := exec.Command("tmux", "-L", fileSocket, "capture-pane", "-t", fileSession, "-p", "-J", "-S", "-")
 	compatCapture.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
 	compatOutput, err := compatCapture.Output()
-	if err != nil || !strings.Contains(string(compatOutput), "compat-start") ||
-		!strings.Contains(string(compatOutput), "read ") ||
-		strings.Contains(string(compatOutput), "--file "+compatPath) ||
-		strings.Contains(string(compatOutput), "compat-end") ||
-		strings.Contains(string(compatOutput), compatBody) {
-		t.Fatalf("target-followed --file delivered wrong body: err=%v capture=%q", err, compatOutput)
+	if err != nil || !strings.Contains(string(compatOutput), compatBody) ||
+		strings.Contains(string(compatOutput), "--file "+compatPath) {
+		t.Fatalf("target-followed --file delivered the wrong body or leaked the raw flag text: err=%v capture=%q", err, compatOutput)
 	}
+	// Both file-backed deliveries in this test proved themselves on the pane
+	// (tail match); neither should have needed the auto-file rescue.
 	compatCanonical, err := filepath.Glob(filepath.Join(
 		home, ".local", "state", "pfm", "inject-bodies", "*.md",
 	))
-	if err != nil || len(compatCanonical) != 2 {
-		t.Fatalf("target-followed canonical bodies=%q err=%v", compatCanonical, err)
-	}
-	foundCompat := false
-	for _, path := range compatCanonical {
-		stored, readErr := os.ReadFile(path)
-		if readErr == nil && string(stored) == compatBody {
-			foundCompat = true
-			break
-		}
-	}
-	if !foundCompat {
-		t.Fatalf("target-followed --file did not persist the exact body: %q", compatCanonical)
+	if err != nil || len(compatCanonical) != 0 {
+		t.Fatalf("a proven paste delivery spilled a canonical body file: %q err=%v", compatCanonical, err)
 	}
 }
 

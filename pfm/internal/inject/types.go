@@ -27,12 +27,25 @@ const (
 	// was working, so nothing was typed. It is internal retry telemetry; the
 	// CLI maps it to CodeUndelivered and never exposes rc 7.
 	CodeBusy = 7
-	// ClaudeAutoFileMax and CodexAutoFileMax are 10% below the earliest
+	// ClaudeInlineMax and CodexInlineMax are 10% below the earliest
 	// empirically observed composer failure for each engine. Claude's smaller
 	// bracketed-paste edge is 801 characters; Codex's inline and paste edge is
-	// 1001. TESTPLAN.md records the authentic probe method and both transports.
-	ClaudeAutoFileMax = 720
-	CodexAutoFileMax  = 900
+	// 1001. TESTPLAN.md records the authentic probe method and both
+	// transports.
+	//
+	// On the LIVE delivery path (engine.go's transport ladder) this is the
+	// inline-SendLiteral-vs-bracketed-SendPaste boundary, not an
+	// inline-vs-file boundary: a message over it still reaches the pane
+	// whole, through paste, proven by either a tail match or the composer's
+	// own collapsed-paste placeholder — it no longer means "spill to a file
+	// pointer here". On the dormant/resume path (PrepareForResume, body.go),
+	// which writes directly into a transcript with no composer to paste
+	// into, it is still the inline-vs-file-pointer boundary it always was.
+	// Renamed from ClaudeAutoFileMax/CodexAutoFileMax when the live meaning
+	// changed — do not raise these numbers on a guess; they are re-measured
+	// only by the REAL-SESSION probe TESTPLAN.md's edge table describes.
+	ClaudeInlineMax = 720
+	CodexInlineMax  = 900
 	// CommandChunkRunes stays safely below both measured literal-paste edges.
 	// Slash commands bypass auto-file pointers, so every command byte reaches
 	// the TUI through paced literal sends and Enter lands only after the final
@@ -183,8 +196,8 @@ type Options struct {
 	LockTimeout       time.Duration
 	LockPoll          time.Duration
 	LockMaxHold       time.Duration
-	ClaudeAutoFileMax int
-	CodexAutoFileMax  int
+	ClaudeInlineMax   int
+	CodexInlineMax    int
 	CommandChunkRunes int
 	CommandChunkGap   time.Duration
 	LockRoot          string

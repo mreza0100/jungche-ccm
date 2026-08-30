@@ -116,6 +116,25 @@ func TestLastComposerLineUsesStructuralScreenOrder(t *testing.T) {
 	}
 }
 
+// TestDeliveryProvenPlaceholderOnlyCountsForPasteTransport pins Task C's
+// placeholder-proof rule directly at deliveryProven, the function the live
+// transport ladder's final proof check calls: a capture holding only the
+// composer's collapsed-paste placeholder (no trace of the message itself)
+// is a positive delivery signal for the paste transport, and must NOT be
+// silently widened into "any placeholder counts, however it got there" for
+// the literal transport, which never asked tmux to bracket anything.
+func TestDeliveryProvenPlaceholderOnlyCountsForPasteTransport(t *testing.T) {
+	before := "conversation\n❯ "
+	after := "conversation\n[Pasted text #1 +12 lines]\n❯ "
+	message := "the original long message body, never itself visible in the capture"
+	if !deliveryProven(before, after, message, false, true) {
+		t.Fatalf("collapsed-paste placeholder did not count as proof for the paste transport")
+	}
+	if deliveryProven(before, after, message, false, false) {
+		t.Fatalf("collapsed-paste placeholder incorrectly counted as proof for the literal transport")
+	}
+}
+
 func FuzzSelectorLine(f *testing.F) {
 	for _, seed := range []string{
 		"❯ 1. allow\n2. deny",

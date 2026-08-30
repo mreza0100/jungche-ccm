@@ -114,6 +114,58 @@ func TestScheduleAfterCurrentTurnDoesNotQueueACompactAsModelInput(t *testing.T) 
 	}
 }
 
+// TestScheduleAfterCurrentTurnComposedSelfCompactKeepsThenAndNoticeOnce pins
+// two invariants Task D's mcpserv focus-composition fix must not disturb:
+// isCompactCommand's "^/compact(\s|$)" match still recognises the composed
+// "/compact <focus>" form Target:"self" now carries (so the T1/notice logic
+// still treats it as a self-compaction), the caller's Then steers ride along
+// unchanged after the composed primary, and SelfCompactStopNotice — which
+// this engine appends, not the MCP layer — rides exactly once on the
+// result. This does not regress against the pre-fix bare "/compact": that
+// literal string also matches the same pattern (the "$" branch), so this is
+// a boundary pin, not a fix-defect regression.
+//
+// "self" resolves through engine.whoami (ambient tmux identity via
+// resolve.NewWhoami), never through the injected Resolver — see
+// engine.go's resolve() — so it is fixed here with fakeSelf, exactly as
+// TestSelfCompactScheduleTellsTheCallerToStop (then_edge_test.go) already
+// does. Leaving whoami at New()'s real ambient default is a jail leak: it
+// happened to resolve on a host already running inside a real tmux/chat
+// session, then correctly refused inside the isolated fence container
+// (Code 4, "self target has no live tmux seat") — watched directly.
+func TestScheduleAfterCurrentTurnComposedSelfCompactKeepsThenAndNoticeOnce(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ "}
+	spawner := &fakeSpawner{}
+	engine := newTestEngineWith(t, "cc-self-compact-schedule", fake, spawner)
+	engine.whoami = fakeSelf{identity: resolve.Identity{
+		Session:    "cc-self-compact-schedule",
+		SocketPath: filepath.Join("/tmp", "tmux-jail", "cc-self-compact-schedule"),
+		Pane:       "%1",
+		Engine:     "claude",
+		Source:     "test",
+	}}
+	then := []string{"resume the acceptance test", "confirm the ledger is clean"}
+	result, err := engine.ScheduleAfterCurrentTurn(context.Background(), Request{
+		Target:  "self",
+		Message: "/compact wave three closeout",
+		Then:    then,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Status != "scheduled" || result.Steers != len(then) {
+		t.Fatalf("scheduled self compact result = %+v", result)
+	}
+	if count := strings.Count(result.Message, SelfCompactStopNotice); count != 1 {
+		t.Fatalf("SelfCompactStopNotice appeared %d time(s) in %q, want exactly 1", count, result.Message)
+	}
+	calls := spawner.spawned()
+	wantSteers := append([]string{"/compact wave three closeout"}, then...)
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0].Steers, wantSteers) {
+		t.Fatalf("detached self-compact chain = %+v, want steers %q", calls, wantSteers)
+	}
+}
+
 func (fake *fakeTmux) Capture(
 	_ context.Context,
 	_, _ string,
@@ -307,8 +359,8 @@ func newTestEngineWith(
 			LockRoot:          t.TempDir(),
 			ThenLogRoot:       t.TempDir(),
 			Sender:            &Sender{Session: "sender", Label: "Operator", UUID: "1234567890"},
-			ClaudeAutoFileMax: ClaudeAutoFileMax,
-			CodexAutoFileMax:  CodexAutoFileMax,
+			ClaudeInlineMax:   ClaudeInlineMax,
+			CodexInlineMax:    CodexInlineMax,
 			CommandChunkRunes: CommandChunkRunes,
 			CommandChunkGap:   time.Nanosecond,
 		},
@@ -583,7 +635,15 @@ func TestInjectDoesNotRecordTypedButUndeliveredMessage(t *testing.T) {
 	}
 }
 
-func TestInjectBodyAboveFormerAbsoluteCapUsesAutoFile(t *testing.T) {
+// TestInjectBodyAboveFormerAbsoluteCapUsesPaste pins the fixed Task C
+// contract for the size that used to be the worst case for the old
+// auto-file spill: a body so large (1 MiB) that under the old code it was
+// unconditionally replaced by a file pointer. It must now still reach the
+// pane byte-exact through bracketed paste — the auto-file store is a
+// fallback for an UNPROVEN delivery, not a proactive size guard. Renamed
+// from ...UsesAutoFile, which would otherwise assert a behaviour this body
+// no longer exercises.
+func TestInjectBodyAboveFormerAbsoluteCapUsesPaste(t *testing.T) {
 	fake := &fakeTmux{capture: "› ", submitOnEnter: true}
 	engine := newTestEngine(t, "cx-former-absolute-cap", fake)
 	body := "former absolute cap payload\n" + strings.Repeat("x", 1<<20)
@@ -591,17 +651,25 @@ func TestInjectBodyAboveFormerAbsoluteCapUsesAutoFile(t *testing.T) {
 		Target:  "chat",
 		Message: body,
 	})
-	if err != nil || result.Code != 0 || result.AutoFilePath == "" ||
-		!strings.Contains(result.Message, "AUTO-FILE") || len(fake.literals) != 1 {
-		t.Fatalf("former absolute cap result=%+v literals=%d err=%v", result, len(fake.literals), err)
+	if err != nil || result.Code != 0 || result.AutoFilePath != "" ||
+		strings.Contains(result.Message, "AUTO-FILE") ||
+		!strings.Contains(result.Message, "PASTE") ||
+		!fake.pasted || len(fake.literals) != 1 {
+		t.Fatalf("former absolute cap result=%+v pasted=%v literals=%d err=%v", result, fake.pasted, len(fake.literals), err)
 	}
-	stored, readErr := os.ReadFile(result.AutoFilePath)
-	if readErr != nil || string(stored) != body {
-		t.Fatalf("former absolute cap body=%d bytes err=%v", len(stored), readErr)
+	if !strings.HasPrefix(fake.literals[0], body) {
+		t.Fatalf("paste transport did not carry the megabyte body byte-exact: got %d bytes, want prefix of %d bytes", len(fake.literals[0]), len(body))
 	}
 }
 
-func TestInjectAutoFileBoundaryAndKillerBody(t *testing.T) {
+// TestInjectPasteBoundaryAndKillerBody pins the inline-vs-paste boundary
+// (formerly inline-vs-auto-file): one rune under the threshold still goes by
+// plain SendLiteral, and everything over it — including a body that used to
+// be reduced to a pointer as a "killer" case — now reaches the pane
+// byte-exact through bracketed paste instead of being replaced. Renamed
+// from ...AutoFileBoundary..., which would otherwise assert a pointer
+// swap that no longer happens on the live path.
+func TestInjectPasteBoundaryAndKillerBody(t *testing.T) {
 	tests := []struct {
 		name      string
 		socket    string
@@ -625,8 +693,10 @@ func TestInjectAutoFileBoundaryAndKillerBody(t *testing.T) {
 			if err != nil || underResult.Code != 0 ||
 				len(underFake.literals) == 0 ||
 				underFake.literals[0] != underBody ||
-				strings.Contains(underResult.Message, "AUTO-FILE") {
-				t.Fatalf("one-under delivery result=%+v literals=%q err=%v", underResult, underFake.literals, err)
+				underFake.pasted ||
+				strings.Contains(underResult.Message, "AUTO-FILE") ||
+				strings.Contains(underResult.Message, "PASTE") {
+				t.Fatalf("one-under delivery result=%+v literals=%q pasted=%v err=%v", underResult, underFake.literals, underFake.pasted, err)
 			}
 
 			overFake := &fakeTmux{capture: underFake.capture, submitOnEnter: true}
@@ -637,23 +707,19 @@ func TestInjectAutoFileBoundaryAndKillerBody(t *testing.T) {
 				Target: "chat", Message: overBody,
 			})
 			if err != nil || overResult.Code != 0 ||
-				!strings.Contains(overResult.Message, "AUTO-FILE") ||
+				overResult.AutoFilePath != "" ||
+				strings.Contains(overResult.Message, "AUTO-FILE") ||
+				!strings.Contains(overResult.Message, "PASTE") ||
+				!overFake.pasted ||
 				len(overFake.literals) == 0 ||
-				strings.Contains(overFake.literals[0], overBody) ||
-				!strings.Contains(overFake.literals[0], "read ") ||
-				!strings.Contains(overFake.literals[0], " fully") {
+				overFake.literals[0] != overBody {
 				t.Fatalf("one-over delivery result=%+v literals=%q err=%v", overResult, overFake.literals, err)
 			}
 			files, globErr := filepath.Glob(filepath.Join(
 				os.Getenv("PFM_HOME"), ".local", "state", "pfm", "inject-bodies", "*.md",
 			))
-			if globErr != nil || len(files) != 1 {
-				t.Fatalf("canonical body files=%q err=%v", files, globErr)
-			}
-			stored, readErr := os.ReadFile(files[0])
-			if readErr != nil || string(stored) != overBody ||
-				!strings.Contains(overResult.Message, files[0]) {
-				t.Fatalf("stored body=%d bytes err=%v receipt=%q", len(stored), readErr, overResult.Message)
+			if globErr != nil || len(files) != 0 {
+				t.Fatalf("paste delivery that was proven must not also spill a file: files=%q err=%v", files, globErr)
 			}
 
 			killerFake := &fakeTmux{capture: overFake.capture, submitOnEnter: true}
@@ -664,18 +730,164 @@ func TestInjectAutoFileBoundaryAndKillerBody(t *testing.T) {
 				Target: "chat", Message: killerBody,
 			})
 			if err != nil || killerResult.Code != 0 ||
+				killerResult.AutoFilePath != "" ||
 				len(killerFake.literals) == 0 ||
-				len([]rune(killerFake.literals[0])) >= test.threshold ||
-				!strings.Contains(killerResult.Message, "AUTO-FILE") {
-				t.Fatalf("killer body was not reduced to a safe pointer: result=%+v literal=%q err=%v", killerResult, killerFake.literals, err)
+				killerFake.literals[0] != killerBody ||
+				!killerFake.pasted ||
+				strings.Contains(killerResult.Message, "AUTO-FILE") {
+				t.Fatalf("killer body was not delivered byte-exact via paste: result=%+v literal len=%d err=%v", killerResult, len(killerFake.literals[0]), err)
 			}
 		})
 	}
 }
 
+// TestMultiLineLongMessageSurvivesPasteByteExactWithoutMidBodyEnter pins
+// Task C item 6: a multi-line body over the inline threshold crosses as ONE
+// SendPaste call carrying every embedded newline byte-exact, and the
+// engine's own transport layer never decomposes it into a sequence of
+// per-line send-keys — the only SendKey calls it issues are the "Enter"s
+// from the explicit submit loop AFTER the single paste, never interleaved
+// mid-body. Whether a REAL pane treats an embedded newline as literal text
+// rather than an early Enter is a bracketed-paste property of the target
+// composer (Claude/Codex requesting the terminal mode via \e[?2004h); this
+// fake models tmux's argument boundary, not real terminal negotiation — see
+// the report's REAL-SESSION gap.
+func TestMultiLineLongMessageSurvivesPasteByteExactWithoutMidBodyEnter(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newTestEngine(t, "cc-multiline-paste", fake)
+	engine.options.DisableSignature = true
+	body := "line one\nline two\nline three\n" + strings.Repeat("padding line\n", 60)
+	result, err := engine.Inject(context.Background(), Request{
+		Target: "chat", Message: body,
+	})
+	if err != nil || result.Code != 0 {
+		t.Fatalf("multi-line paste result=%+v err=%v", result, err)
+	}
+	if !fake.pasted || len(fake.literals) != 1 || fake.literals[0] != body {
+		t.Fatalf(
+			"multi-line body did not cross as one byte-exact paste call: pasted=%v chunks=%d",
+			fake.pasted, len(fake.literals),
+		)
+	}
+	// "C-s" is the routine idle mash-guard sent before ANY delivery, typed
+	// and paste alike; it is not paste-specific. What matters here is that
+	// no OTHER key appears — in particular no extra "Enter" beyond the
+	// submit loop's own pair, which would signal the engine split the paste
+	// into a per-line typed sequence instead of the one SendPaste call
+	// already asserted above.
+	for _, key := range fake.keys {
+		if key != "Enter" && key != "C-s" {
+			t.Fatalf("unexpected key sent around a multi-line paste: %q (keys=%q)", key, fake.keys)
+		}
+	}
+}
+
+// TestSlashCommandOfAnyLengthUsesPacedLiteralNotPaste pins Task C item 9:
+// isHarnessCommand is checked BEFORE the size comparison in the transport
+// ladder (commandTransport short-circuits pasteTransport), so a "/"-prefixed
+// command far over the inline threshold still takes the paced-literal chunk
+// transport TESTPLAN.md:446 already pins — never paste, and never the
+// auto-file rescue.
+func TestSlashCommandOfAnyLengthUsesPacedLiteralNotPaste(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newTestEngine(t, "cc-command-any-length", fake)
+	engine.options.DisableSignature = true
+	command := "/status " + strings.Repeat("focus text ", 300) // far over ClaudeInlineMax (720)
+	result, err := engine.Inject(context.Background(), Request{
+		Target: "chat", Message: command,
+	})
+	if err != nil || result.Code != 0 {
+		t.Fatalf("command inject result=%+v err=%v", result, err)
+	}
+	if fake.pasted {
+		t.Fatalf("a slash command was routed into the paste transport: literals=%q", fake.literals)
+	}
+	if len(fake.literals) < 2 {
+		t.Fatalf("a command far over the chunk size was not paced into multiple literal chunks: %d", len(fake.literals))
+	}
+	if joined := strings.Join(fake.literals, ""); joined != command {
+		t.Fatalf("paced literal chunks lost bytes: got %d chars, want %d", len(joined), len(command))
+	}
+	if result.AutoFilePath != "" {
+		t.Fatalf("a command routed through the auto-file rescue: %+v", result)
+	}
+}
+
+// TestPasteRescuePersistsUnprovenDeliveryAndTellsTheCaller pins Task C item
+// 8: when a paste delivery cannot be proven (no tail match, no placeholder),
+// pasteRescue fires — the body is preserved to the SAME auto-file store the
+// resume path uses, AutoFilePath is populated, and the path is folded into
+// Result.Message, so the caller is told rather than silently handed a
+// pointer nobody mentioned.
+func TestPasteRescuePersistsUnprovenDeliveryAndTellsTheCaller(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "conversation\n❯ ",
+		submitOnEnter: true,
+		// The post-submit proof capture shows a cleared composer that
+		// carries neither the message tail nor a paste placeholder — an
+		// unprovable delivery.
+		proofCapture: "conversation continues elsewhere\n❯ ",
+	}
+	engine := newTestEngine(t, "cc-paste-rescue", fake)
+	body := strings.Repeat("unprovable paste body ", 60) // over ClaudeInlineMax (720)
+	result, err := engine.Inject(context.Background(), Request{
+		Target: "chat", Message: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fake.pasted {
+		t.Fatalf("expected the paste transport for an over-threshold body")
+	}
+	if result.Status != "delivered_unproven" || result.AutoFilePath == "" ||
+		!strings.Contains(result.Message, result.AutoFilePath) ||
+		!strings.Contains(result.Message, "AUTO-FILE RESCUE") {
+		t.Fatalf("unproven paste delivery did not rescue to a reported file: result=%+v", result)
+	}
+	stored, readErr := os.ReadFile(result.AutoFilePath)
+	if readErr != nil || string(stored) != body {
+		t.Fatalf("rescued body=%d bytes err=%v, want the exact original request message", len(stored), readErr)
+	}
+}
+
+// TestPasteRescueFailureIsReportedNotSwallowed covers pasteRescue's own
+// failure branch: when even the rescue write cannot land, the caller is told
+// "AUTO-FILE RESCUE FAILED" with the underlying error, never silently
+// dropped. The fence runs as root, so a chmod-based permission failure is a
+// no-op for every uid; ENOTDIR from a regular file occupying the rescue
+// root is fail-closed regardless of uid.
+func TestPasteRescueFailureIsReportedNotSwallowed(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "conversation\n❯ ",
+		submitOnEnter: true,
+		proofCapture:  "conversation continues elsewhere\n❯ ",
+	}
+	engine := newTestEngine(t, "cc-paste-rescue-fail", fake)
+	blocked := filepath.Join(t.TempDir(), "rescue-root-is-a-file")
+	if err := os.WriteFile(blocked, []byte("occupying the rescue root"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	engine.options.BodyRoot = blocked
+	body := strings.Repeat("unprovable paste body ", 60)
+	result, err := engine.Inject(context.Background(), Request{
+		Target: "chat", Message: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "delivered_unproven" || result.AutoFilePath != "" ||
+		!strings.Contains(result.Message, "AUTO-FILE RESCUE FAILED") {
+		t.Fatalf("rescue failure was not reported: result=%+v", result)
+	}
+}
+
 // TestLongProseAutoFilePreservesBodySignatureAndProof covers the other side
-// of the unlimited-inject contract: plain prose remains durable file-backed
-// transport, while only its short signed pointer crosses the TUI boundary.
+// of the unlimited-inject contract: plain prose over the inline threshold
+// now travels whole through bracketed paste — byte-exact body, signature,
+// and proof all survive — instead of being replaced by a short signed
+// pointer. The name is kept (rather than renamed to ...Paste...) because the
+// coverage it pins is unchanged: "long bodies deliver intact with signature
+// and proof"; only the transport carrying that guarantee changed.
 func TestLongProseAutoFilePreservesBodySignatureAndProof(t *testing.T) {
 	body := "long prose payload\n" + strings.Repeat("byte-exact body ", 400)
 	fake := &fakeTmux{
@@ -692,26 +904,29 @@ func TestLongProseAutoFilePreservesBodySignatureAndProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Code != 0 || result.Status != "delivered" ||
-		result.AutoFilePath == "" || result.Unsigned {
+		result.AutoFilePath != "" || result.Unsigned {
 		t.Fatalf("long prose result=%+v err=%v", result, err)
 	}
-	stored, err := os.ReadFile(result.AutoFilePath)
-	if err != nil || string(stored) != body {
-		t.Fatalf("canonical body changed: bytes=%d err=%v", len(stored), err)
+	if !fake.pasted {
+		t.Fatalf("long prose body did not use the bracketed-paste transport: literals=%q", fake.literals)
 	}
 	if len(fake.literals) != 1 {
-		t.Fatalf("auto-file pointer used unexpected transport chunks: %d", len(fake.literals))
+		t.Fatalf("paste delivery used unexpected transport chunks: %d", len(fake.literals))
 	}
-	pointer := fake.literals[0]
-	if strings.Contains(pointer, body) ||
-		!strings.Contains(pointer, "long prose payload — read "+result.AutoFilePath+" fully") ||
-		!strings.Contains(pointer, "to reply: chat_inject Operator <message>") {
-		t.Fatalf("pointer changed body/signature semantics: %q", pointer)
+	expectedSigned, expectedUnsigned := engine.signedMessage(context.Background(), body, false)
+	if expectedUnsigned {
+		t.Fatalf("test fixture produced an unsigned message; adjust the sender fixture")
 	}
-	if !strings.Contains(result.Message, "AUTO-FILE") ||
-		!strings.Contains(result.Message, result.AutoFilePath) ||
-		!strings.Contains(result.Proof, "long prose payload — read "+result.AutoFilePath+" fully") {
-		t.Fatalf("auto-file receipt/proof lacks pointer evidence: result=%+v", result)
+	delivered := fake.literals[0]
+	if delivered != expectedSigned ||
+		!strings.HasPrefix(delivered, body) ||
+		!strings.Contains(delivered, "to reply: chat_inject Operator <message>") {
+		t.Fatalf("paste transport changed body/signature semantics: got %d bytes, want %d bytes matching engine.signedMessage; delivered=%q", len(delivered), len(expectedSigned), delivered)
+	}
+	if strings.Contains(result.Message, "AUTO-FILE") ||
+		!strings.Contains(result.Message, "PASTE") ||
+		!strings.Contains(result.Proof, "USER: long prose payload") {
+		t.Fatalf("paste receipt/proof lost delivery evidence: result=%+v", result)
 	}
 }
 

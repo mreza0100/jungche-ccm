@@ -80,8 +80,13 @@ type InjectOutput struct {
 
 // SelfCompactInput safely compacts the requesting chat and carries the turns
 // that must resume work after compaction. Focus is retained in the tool-call
-// history for the compactor; Codex accepts no inline arguments on /compact,
-// so the detached TUI command itself is deliberately bare.
+// history for the compactor AND composed onto the delivered command
+// ("/compact " + focus) — the single-line, control-character-free
+// validation is exactly what makes that concatenation safe. A target known
+// to be Codex still receives the bare command: an earlier investigation
+// recorded that Codex accepts no inline arguments on /compact, and nothing
+// here re-tests it, so that constraint is held rather than assumed away.
+// See chatSelfCompact for the full reasoning and what would retire it.
 //
 // Focus and Then are the ONLY things that survive. A caller holding durable
 // state of its own — a ledger, a handoff file, a chat-specific memory — writes

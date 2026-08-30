@@ -294,29 +294,29 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 		Tmux:     verifiedChatTmux{command: "claude"},
 		Spawner:  &fakeSpawner{},
 		Options: Options{
-			Poll:              50 * time.Millisecond,
-			EnterGap:          50 * time.Millisecond,
-			EnterSettle:       200 * time.Millisecond,
-			ProofSettle:       150 * time.Millisecond,
-			BusyTries:         2,
-			InterruptTries:    2,
-			StashTries:        2,
-			SettleTries:       10,
-			EnterTries:        6,
-			LockTimeout:       5 * time.Second,
-			LockPoll:          20 * time.Millisecond,
-			LockMaxHold:       30 * time.Second,
-			LockRoot:          filepath.Join(jail.root, "chat-inject-locks"),
-			ThenLogRoot:       jail.root,
-			ThenMin:           100 * time.Millisecond,
-			ThenBusyTries:     10,
-			ThenIdlePoll:      100 * time.Millisecond,
-			ThenIdleTries:     80,
-			ThenIdleStable:    3,
-			ThenSettle:        100 * time.Millisecond,
-			Sender:            &Sender{Session: "sender", Label: "Operator", UUID: "abcdef123456"},
-			ClaudeAutoFileMax: ClaudeAutoFileMax,
-			CodexAutoFileMax:  CodexAutoFileMax,
+			Poll:            50 * time.Millisecond,
+			EnterGap:        50 * time.Millisecond,
+			EnterSettle:     200 * time.Millisecond,
+			ProofSettle:     150 * time.Millisecond,
+			BusyTries:       2,
+			InterruptTries:  2,
+			StashTries:      2,
+			SettleTries:     10,
+			EnterTries:      6,
+			LockTimeout:     5 * time.Second,
+			LockPoll:        20 * time.Millisecond,
+			LockMaxHold:     30 * time.Second,
+			LockRoot:        filepath.Join(jail.root, "chat-inject-locks"),
+			ThenLogRoot:     jail.root,
+			ThenMin:         100 * time.Millisecond,
+			ThenBusyTries:   10,
+			ThenIdlePoll:    100 * time.Millisecond,
+			ThenIdleTries:   80,
+			ThenIdleStable:  3,
+			ThenSettle:      100 * time.Millisecond,
+			Sender:          &Sender{Session: "sender", Label: "Operator", UUID: "abcdef123456"},
+			ClaudeInlineMax: ClaudeInlineMax,
+			CodexInlineMax:  CodexInlineMax,
 		},
 	})
 	if err != nil {
@@ -354,7 +354,13 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestJailedBusyCodexQueuesAndLongFileUsesAutoFilePointer(t *testing.T) {
+// TestJailedBusyCodexQueuesAndLongFileDeliversByPaste is the real-tmux
+// acceptance fixture for a --file body queued while the pane is busy.
+// Renamed from ...UsesAutoFilePointer: the long body now reaches the busy
+// pane byte-exact through bracketed paste, proven by the fixture's own
+// "BUSY-TYPED:" echo, and the auto-file store is never touched — see the
+// comment at the long-body assertion below.
+func TestJailedBusyCodexQueuesAndLongFileDeliversByPaste(t *testing.T) {
 	jail := newInjectTmuxJail(t)
 	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
 	// Deliberately keep a non-Codex socket spelling: the verified foreground
@@ -367,20 +373,20 @@ func TestJailedBusyCodexQueuesAndLongFileUsesAutoFilePointer(t *testing.T) {
 		Tmux:     verifiedChatTmux{command: "codex"},
 		Spawner:  &fakeSpawner{},
 		Options: Options{
-			Poll:              20 * time.Millisecond,
-			EnterGap:          20 * time.Millisecond,
-			EnterSettle:       100 * time.Millisecond,
-			ProofSettle:       50 * time.Millisecond,
-			SettleTries:       30,
-			EnterTries:        4,
-			LockTimeout:       5 * time.Second,
-			LockPoll:          20 * time.Millisecond,
-			LockMaxHold:       30 * time.Second,
-			LockRoot:          filepath.Join(jail.root, "queue-locks"),
-			ThenLogRoot:       jail.root,
-			Sender:            &Sender{Session: "sender", UUID: "abcdef123456"},
-			ClaudeAutoFileMax: ClaudeAutoFileMax,
-			CodexAutoFileMax:  CodexAutoFileMax,
+			Poll:            20 * time.Millisecond,
+			EnterGap:        20 * time.Millisecond,
+			EnterSettle:     100 * time.Millisecond,
+			ProofSettle:     50 * time.Millisecond,
+			SettleTries:     30,
+			EnterTries:      4,
+			LockTimeout:     5 * time.Second,
+			LockPoll:        20 * time.Millisecond,
+			LockMaxHold:     30 * time.Second,
+			LockRoot:        filepath.Join(jail.root, "queue-locks"),
+			ThenLogRoot:     jail.root,
+			Sender:          &Sender{Session: "sender", UUID: "abcdef123456"},
+			ClaudeInlineMax: ClaudeInlineMax,
+			CodexInlineMax:  CodexInlineMax,
 		},
 	})
 	if err != nil {
@@ -406,6 +412,12 @@ func TestJailedBusyCodexQueuesAndLongFileUsesAutoFilePointer(t *testing.T) {
 		t.Fatalf("busy fixture did not receive queued body: %q", capture)
 	}
 
+	// A file-backed body over the inline threshold now travels byte-exact
+	// through bracketed paste instead of being replaced by an auto-file
+	// pointer: the transport ladder proves it via the busy fixture's own
+	// "BUSY-TYPED:<text>" echo, so no pointer and no spilled file are
+	// expected here — the auto-file store is a fallback for an UNPROVEN
+	// delivery, not this proven one.
 	long := strings.Repeat("file-backed body ", 140)
 	fileQueued, err := engine.Inject(ctx, Request{
 		Target:     "queue-session",
@@ -416,18 +428,14 @@ func TestJailedBusyCodexQueuesAndLongFileUsesAutoFilePointer(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fileQueued.Code != 0 || fileQueued.Status != "queued" ||
-		!strings.Contains(fileQueued.Message, "AUTO-FILE") ||
-		fileQueued.AutoFilePath == "" {
+		strings.Contains(fileQueued.Message, "AUTO-FILE") ||
+		!strings.Contains(fileQueued.Message, "FILE-BACKED") ||
+		fileQueued.AutoFilePath != "" {
 		t.Fatalf("long file-backed queue result = %+v", fileQueued)
 	}
-	stored, err := os.ReadFile(fileQueued.AutoFilePath)
-	if err != nil || string(stored) != long {
-		t.Fatalf("canonical long body=%d bytes err=%v", len(stored), err)
-	}
 	capture, err = CommandTmux{}.Capture(ctx, socketPath, pane, false, FullScrollback)
-	if err != nil || !strings.Contains(capture, "read "+fileQueued.AutoFilePath+" fully") ||
-		strings.Contains(capture, long) {
-		t.Fatalf("busy fixture did not receive only the pointer: err=%v capture=%q", err, capture)
+	if err != nil || !strings.Contains(capture, long) {
+		t.Fatalf("busy fixture did not receive the full file-backed body byte-exact: err=%v capture=%q", err, capture)
 	}
 }
 
@@ -441,20 +449,20 @@ func TestJailedBusyClaudeQueuesWithoutControlKeys(t *testing.T) {
 		Tmux:     verifiedChatTmux{command: "claude"},
 		Spawner:  &fakeSpawner{},
 		Options: Options{
-			Poll:              20 * time.Millisecond,
-			EnterGap:          20 * time.Millisecond,
-			EnterSettle:       100 * time.Millisecond,
-			ProofSettle:       50 * time.Millisecond,
-			SettleTries:       30,
-			EnterTries:        4,
-			LockTimeout:       5 * time.Second,
-			LockPoll:          20 * time.Millisecond,
-			LockMaxHold:       30 * time.Second,
-			LockRoot:          filepath.Join(jail.root, "claude-queue-locks"),
-			ThenLogRoot:       jail.root,
-			Sender:            &Sender{Session: "sender", UUID: "abcdef123456"},
-			ClaudeAutoFileMax: ClaudeAutoFileMax,
-			CodexAutoFileMax:  CodexAutoFileMax,
+			Poll:            20 * time.Millisecond,
+			EnterGap:        20 * time.Millisecond,
+			EnterSettle:     100 * time.Millisecond,
+			ProofSettle:     50 * time.Millisecond,
+			SettleTries:     30,
+			EnterTries:      4,
+			LockTimeout:     5 * time.Second,
+			LockPoll:        20 * time.Millisecond,
+			LockMaxHold:     30 * time.Second,
+			LockRoot:        filepath.Join(jail.root, "claude-queue-locks"),
+			ThenLogRoot:     jail.root,
+			Sender:          &Sender{Session: "sender", UUID: "abcdef123456"},
+			ClaudeInlineMax: ClaudeInlineMax,
+			CodexInlineMax:  CodexInlineMax,
 		},
 	})
 	if err != nil {
@@ -506,26 +514,26 @@ func TestJailedLongCompactFocusFiresWithFullTranscript(t *testing.T) {
 		Tmux:     verifiedChatTmux{CommandTmux: CommandTmux{}, command: "claude"},
 		Spawner:  &fakeSpawner{},
 		Options: Options{
-			Poll:              10 * time.Millisecond,
-			EnterGap:          20 * time.Millisecond,
-			EnterSettle:       100 * time.Millisecond,
-			ProofSettle:       100 * time.Millisecond,
-			SettleTries:       500,
-			EnterTries:        6,
-			LockTimeout:       5 * time.Second,
-			LockPoll:          20 * time.Millisecond,
-			LockMaxHold:       30 * time.Second,
-			LockRoot:          filepath.Join(jail.root, "compact-locks"),
-			ThenLogRoot:       jail.root,
-			ThenMin:           100 * time.Millisecond,
-			ThenBusyTries:     10,
-			ThenIdlePoll:      100 * time.Millisecond,
-			ThenIdleTries:     80,
-			ThenIdleStable:    3,
-			ThenSettle:        100 * time.Millisecond,
-			Sender:            &Sender{Session: "sender", Label: "Operator", UUID: "abcdef123456"},
-			ClaudeAutoFileMax: ClaudeAutoFileMax,
-			CodexAutoFileMax:  CodexAutoFileMax,
+			Poll:            10 * time.Millisecond,
+			EnterGap:        20 * time.Millisecond,
+			EnterSettle:     100 * time.Millisecond,
+			ProofSettle:     100 * time.Millisecond,
+			SettleTries:     500,
+			EnterTries:      6,
+			LockTimeout:     5 * time.Second,
+			LockPoll:        20 * time.Millisecond,
+			LockMaxHold:     30 * time.Second,
+			LockRoot:        filepath.Join(jail.root, "compact-locks"),
+			ThenLogRoot:     jail.root,
+			ThenMin:         100 * time.Millisecond,
+			ThenBusyTries:   10,
+			ThenIdlePoll:    100 * time.Millisecond,
+			ThenIdleTries:   80,
+			ThenIdleStable:  3,
+			ThenSettle:      100 * time.Millisecond,
+			Sender:          &Sender{Session: "sender", Label: "Operator", UUID: "abcdef123456"},
+			ClaudeInlineMax: ClaudeInlineMax,
+			CodexInlineMax:  CodexInlineMax,
 		},
 	})
 	if err != nil {

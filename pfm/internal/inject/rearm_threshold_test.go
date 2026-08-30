@@ -12,10 +12,10 @@ import (
 
 // TestRearmThresholdBytesUnderBothSpillLinesAndDefault pins behaviour 3 (the
 // channel budget fix): the self-compact channel's own re-arm budget must sit
-// STRICTLY BELOW autoFileThreshold for BOTH engines — the point above which
+// STRICTLY BELOW inlineThreshold for BOTH engines — the point above which
 // prepareMessage spills the body into ~/.local/state/pfm/inject-bodies and
 // replaces it with a pointer at that SNAPSHOT file (body.go's
-// autoFileThreshold check) — and STRICTLY BELOW rearm.DefaultThresholdBytes,
+// inlineThreshold check) — and STRICTLY BELOW rearm.DefaultThresholdBytes,
 // never handed rearm.Pointer's day-one design ceiling unchecked.
 func TestRearmThresholdBytesUnderBothSpillLinesAndDefault(t *testing.T) {
 	engine := &Engine{options: withDefaults(Options{})}
@@ -25,8 +25,8 @@ func TestRearmThresholdBytesUnderBothSpillLinesAndDefault(t *testing.T) {
 		target     Target
 		spillLimit int
 	}{
-		{"claude", Target{Engine: string(pfmengine.Claude)}, ClaudeAutoFileMax},
-		{"codex", Target{Engine: string(pfmengine.Codex)}, CodexAutoFileMax},
+		{"claude", Target{Engine: string(pfmengine.Claude)}, ClaudeInlineMax},
+		{"codex", Target{Engine: string(pfmengine.Codex)}, CodexInlineMax},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := engine.rearmThresholdBytes(test.target)
@@ -46,7 +46,7 @@ func TestRearmThresholdBytesUnderBothSpillLinesAndDefault(t *testing.T) {
 // test for the real defect T1's channel budget fixes: a role constitution
 // sized comfortably under rearm.DefaultThresholdBytes (so reload's own
 // channel would re-arm it FULL TEXT) must still land as the SHORT POINTER
-// on the self-compact channel, because that channel's own autoFileThreshold
+// on the self-compact channel, because that channel's own inlineThreshold
 // spill line sits far below 4KB. Handing rearm.Pointer the wrong (larger)
 // budget here would have this body attempt to go out full text, get
 // silently spilled by prepareMessage into a snapshot file, and point the
@@ -57,7 +57,7 @@ func TestRolePointerChoosesShortPointerUnderChannelBudget(t *testing.T) {
 	artifactPath := filepath.Join(t.TempDir(), "dev.md")
 	// 1000 bytes: comfortably under rearm.DefaultThresholdBytes (4096), so
 	// reload_command.go's own channel would re-arm this FULL TEXT — but
-	// comfortably over this channel's derived budget (ClaudeAutoFileMax 720
+	// comfortably over this channel's derived budget (ClaudeInlineMax 720
 	// minus rearmPreamblePadding 200 = 520).
 	body := strings.Repeat("x", 1000) + "\n"
 	if err := os.WriteFile(artifactPath, []byte(body), 0o600); err != nil {

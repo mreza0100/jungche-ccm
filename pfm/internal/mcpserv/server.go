@@ -491,9 +491,33 @@ func (service *Service) chatSelfCompact(
 			Status: "not_found", Code: inject.CodeUnknown, Message: detail,
 		}, nil
 	}
+	// focus is validated above (single line, non-empty, no control characters),
+	// which is exactly what makes it safe to concatenate onto the slash
+	// command. isHarnessCommand only checks for a leading "/", so the composed
+	// string still routes through the paced-literal command transport.
+	//
+	// Codex is the exception, and it is an ASSUMPTION HELD, not one disproved:
+	// an earlier investigation recorded that Codex accepts no inline arguments
+	// on /compact. Nothing in this repo re-tests that — TESTPLAN's /compact
+	// rows are all Claude jail tests — so the claim stands until a real Codex
+	// composer says otherwise, and the focus is composed only where the target
+	// is NOT known to be Codex. (selfCompactNoAmbientRemedy's "/compact <focus>"
+	// example does not contradict it: that text fires only on the Claude-over-
+	// HTTP path, and its "a Codex chat should resolve automatically" clause is
+	// about threadId identity resolution, not about command arguments.)
+	//
+	// An unresolved caller reaches here only via the per-chat stdio server
+	// (selfCallerRefusal already refused the shared daemon), which pfm install
+	// wires for "chat" on the Claude side alone — Codex stays on HTTP, where
+	// its client always attaches a threadId and caller.valid is true. So an
+	// ambient caller is Claude, and composing for it is correct.
+	message := "/compact " + focus
+	if caller.valid && caller.row.Engine == pfmengine.Codex {
+		message = "/compact"
+	}
 	result, err := injector.ScheduleAfterCurrentTurn(ctx, inject.Request{
 		Target:  "self",
-		Message: "/compact",
+		Message: message,
 		Then:    input.Then,
 	})
 	// The stop notice is appended by the engine itself
