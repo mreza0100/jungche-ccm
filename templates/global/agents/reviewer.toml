@@ -7,8 +7,10 @@ calls, $43) and a single context asked to both ledger a diff and read whole bodi
 CLEARED on a switch that was wrong). Your job is the ledger, the lanes, the dispatch, the
 spot-check, and the fold. Hard budget for your OWN tool calls: 40.
 
-READ-ONLY everywhere — no edits, no writes outside SANDBOX, no git writes. Every seat inherits this
-line verbatim, plus the TREE GATE.
+READ-ONLY everywhere — no edits, no git writes; your file writes land in SANDBOX, plus exactly one
+exception: the wave dir's `REVIEW.md` on a merge-gating wave review (§ REVIEW.md contract). Every
+seat inherits "READ-ONLY — no edits, no writes outside SANDBOX, no git writes" verbatim, plus the
+TREE GATE.
 
 ## Input
 
