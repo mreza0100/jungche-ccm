@@ -768,6 +768,7 @@ func TestReconcileCodexPanesFollowsTheLiveProcessesCurrentRollout(t *testing.T) 
 			Panes: []gather.Pane{codexPane(socket, "%0")},
 			Codex: []gather.LiveCodex{{
 				Socket: socket, PaneID: "%0", RolloutPath: currentRollout,
+				RolloutHeld: true,
 			}},
 		},
 		commandRuntime{Paths: resolved},
@@ -812,6 +813,83 @@ func TestReconcileCodexPanesFollowsTheLiveProcessesCurrentRollout(t *testing.T) 
 	}
 	if liveRows != 1 {
 		t.Fatalf("live Codex rows = %d, want exactly one: %#v", liveRows, output.Rows)
+	}
+}
+
+// A pane's TUI process holds no rollout file descriptor at all — the shared
+// app-server daemon holds it instead — so the only identity DetectCodex can
+// give this process is the state-store resolver's BINDING-derived guess: A,
+// the thread the pane was already bound to. That guess is not what the
+// process is doing now; the pane's own screen already moved on to a bare,
+// unnamed thread id B (the post-/clear shape). RolloutHeld: false is what
+// tells observeCodexPanes the guess must never enter processThreads and
+// overrule the screen — before the fix this guess overwrote identity.ThreadID
+// back onto A, so the binding could never advance and nothing was ever
+// killed. Model: TestReconcileCodexPanesKillsThePreviousBoundThreadAndAdvancesTheBinding
+// (:130) for the kill/advance shape, TestReconcileCodexPanesFollowsTheLiveProcessesCurrentRollout
+// (:716) for the live-process fixture shape.
+func TestReconcileCodexPanesFollowsAClearWhenTheProcessHoldsNoRollout(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	const socket = "cx-1800000015-1-1"
+	const oldID = "44444444-4444-4444-8444-444444444444"
+	const newID = "55555555-5555-4555-8555-555555555555"
+	startCodexStatusPane(t, tmuxTmpDir, socket, "  "+newID+` · /work/example · Full Access
+`)
+
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	oldRollout := codexJailRollout(t, database, root, oldID, 1)
+
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, "%0", oldID); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	reconcileCodexPanes(
+		context.Background(),
+		database,
+		gather.Snapshot{
+			Panes: []gather.Pane{codexPane(socket, "%0")},
+			Codex: []gather.LiveCodex{{
+				Socket: socket, PaneID: "%0",
+				RolloutPath: oldRollout,
+				ThreadID:    oldID,
+				RolloutHeld: false,
+			}},
+		},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+
+	bound, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
+	if err != nil || !found || bound != newID {
+		t.Fatalf(
+			"binding = (%q, %v, %v), want the screen's own thread %q: stderr=%q",
+			bound, found, err, newID, stderr.String(),
+		)
+	}
+	killed, found, err := database.Killed(context.Background(), oldID)
+	if err != nil || !found || killed.Engine != pfmengine.Codex ||
+		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 1 {
+		t.Fatalf("previous thread killed = %#v found=%v error=%v: stderr=%q", killed, found, err, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "disagrees with live process rollout") {
+		t.Fatalf("a resolver-derived (RolloutHeld: false) identity overruled the screen: stderr=%q", stderr.String())
 	}
 }
 

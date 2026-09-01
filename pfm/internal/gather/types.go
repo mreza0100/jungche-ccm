@@ -54,6 +54,14 @@ type LiveCodex struct {
 	PaneID      string
 	RolloutPath string
 	ThreadID    string
+	// RolloutHeld is true only when RolloutPath was found among the
+	// process's own FDLinks in DetectCodexThreadsInRoots — the process
+	// itself has the file open right now. It is false when RolloutPath (or
+	// ThreadID) came from argv, an inherited environment variable, or the
+	// state-store resolver: those name a conversation the process is NOT
+	// currently holding open, and must never outrank what the pane's own
+	// screen says.
+	RolloutHeld bool
 }
 
 // ClaudeProcess maps one live Claude process onto its owning tmux pane.

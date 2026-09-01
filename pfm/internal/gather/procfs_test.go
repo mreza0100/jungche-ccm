@@ -98,6 +98,7 @@ func TestDetectCodexNumericFDAndAncestorMatching(t *testing.T) {
 		PaneID:      "%4",
 		RolloutPath: first,
 		ThreadID:    "first",
+		RolloutHeld: true,
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("DetectCodex() = %#v, want %#v", got, want)

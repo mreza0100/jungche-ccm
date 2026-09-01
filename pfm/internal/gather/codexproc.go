@@ -95,6 +95,12 @@ func DetectCodexThreadsInRoots(
 				break
 			}
 		}
+		// True only when the loop above actually found the rollout among
+		// this process's own FDLinks — before argv/env/identify get a
+		// chance to fill rolloutPath in from somewhere else. Only a
+		// currently-held rollout may claim the process is doing this
+		// conversation right now.
+		rolloutHeld := rolloutPath != ""
 		// A process-held rollout is what the live process is doing NOW. It
 		// outranks launch argv and inherited environment because a compact or
 		// reset continuation can rotate the thread without replacing the
@@ -132,6 +138,7 @@ func DetectCodexThreadsInRoots(
 			PaneID:      pane.PaneID,
 			RolloutPath: rolloutPath,
 			ThreadID:    threadID,
+			RolloutHeld: rolloutHeld,
 		})
 	}
 	sort.Slice(live, func(left, right int) bool {

@@ -1037,6 +1037,13 @@ func observeCodexPanes(
 	processThreads := make(map[string]string, len(live.Codex))
 	processConflicts := make(map[string]bool)
 	for _, process := range live.Codex {
+		// Only a rollout the process itself has open right now may override
+		// the screen. A resolver-derived identity (binding/argv/env guess,
+		// RolloutHeld false) never enters this map, so it can never overrule
+		// what the pane's own status line just said.
+		if !process.RolloutHeld {
+			continue
+		}
 		id := gather.CodexRolloutID(process.RolloutPath)
 		if id == "" {
 			continue

@@ -248,7 +248,75 @@ func TestDetectCodexThreadsPrefersCurrentRolloutOverInheritedIdentity(t *testing
 		PaneID:      "%4",
 		RolloutPath: rollout,
 		ThreadID:    "live",
+		RolloutHeld: true,
 	}}
+	if !reflect.DeepEqual(live, want) {
+		t.Fatalf("DetectCodexThreads() = %#v, want %#v", live, want)
+	}
+}
+
+// RolloutHeld is the whole point of the fix: only a rollout the process
+// itself has open right now may claim to be that process's current
+// conversation. A rollout-less session resolved through the state-store
+// resolver still gets a RolloutPath — the resolver's answer, for display and
+// lineage — but it must never be marked held, because observeCodexPanes uses
+// RolloutHeld to decide whether this identity is allowed to override the
+// pane's own screen (pipeline.go). Blanket-true here would silently restore
+// the defect this field exists to prevent.
+func TestDetectCodexThreadsMarksOnlyAnFDHeldRolloutAsHeld(t *testing.T) {
+	codexRoot := "/jail/codex"
+	heldRollout := filepath.Join(codexRoot, "sessions", "2026", "rollout-held.jsonl")
+	resolvedRollout := filepath.Join(codexRoot, "sessions", "2026", "rollout-resolved-paginated.jsonl")
+	proc := &fakeProcFS{processes: map[int]fakeProcess{
+		100: {stat: ProcStat{ParentPID: 1}},
+		400: {
+			cmdline: []string{"/usr/bin/codex"},
+			fdLinks: []FDLink{{FD: 3, Target: heldRollout}},
+			stat:    ProcStat{ParentPID: 100},
+		},
+		101: {stat: ProcStat{ParentPID: 1}},
+		401: {
+			cmdline: []string{"/usr/bin/codex"},
+			environ: map[string]string{resolve.CodexThreadEnv: "paginated"},
+			stat:    ProcStat{ParentPID: 101},
+		},
+	}}
+	panes := []Pane{
+		{Socket: "cx-1-2-3", PaneID: "%4", PID: 100},
+		{Socket: "cx-4-5-6", PaneID: "%5", PID: 101},
+	}
+
+	live, err := DetectCodexThreads(
+		proc,
+		codexRoot,
+		panes,
+		func(exported, _ string, _ int64, _, _ string) (string, string) {
+			return exported, resolvedRollout
+		},
+	)
+	if err != nil {
+		t.Fatalf("DetectCodexThreads() error = %v", err)
+	}
+	want := []LiveCodex{
+		{
+			PID:         400,
+			PanePID:     100,
+			Socket:      "cx-1-2-3",
+			PaneID:      "%4",
+			RolloutPath: heldRollout,
+			ThreadID:    "held",
+			RolloutHeld: true,
+		},
+		{
+			PID:         401,
+			PanePID:     101,
+			Socket:      "cx-4-5-6",
+			PaneID:      "%5",
+			RolloutPath: resolvedRollout,
+			ThreadID:    "paginated",
+			RolloutHeld: false,
+		},
+	}
 	if !reflect.DeepEqual(live, want) {
 		t.Fatalf("DetectCodexThreads() = %#v, want %#v", live, want)
 	}

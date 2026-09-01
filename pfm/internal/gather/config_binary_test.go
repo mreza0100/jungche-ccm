@@ -74,7 +74,7 @@ func TestConfiguredBinaryBasenamesReachLiveDetectors(t *testing.T) {
 	}
 	wantCodex := []LiveCodex{{
 		PID: 300, PanePID: 101, Socket: "cx-configured", PaneID: "%2",
-		RolloutPath: rollout, ThreadID: "configured",
+		RolloutPath: rollout, ThreadID: "configured", RolloutHeld: true,
 	}}
 	if !reflect.DeepEqual(codex, wantCodex) {
 		t.Fatalf("DetectCodexThreads() = %#v, want %#v", codex, wantCodex)
