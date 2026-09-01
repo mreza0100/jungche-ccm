@@ -28,9 +28,9 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 		t.Fatalf("BuildCosmos() state = err %q warnings %v", graph.Err, graph.Warnings)
 	}
 	wantNodes := []CosmosNode{
-		{Key: "chat:id:alpha-id", Label: resolve.Named("Alpha"), Engine: "cc", Live: true, LastNS: 20},
-		{Key: "chat:id:beta-id", Label: resolve.Named("Beta"), Engine: "cx", Live: true, LastNS: 40},
-		{Key: "chat:id:child-id", Label: resolve.Named("Child"), Engine: "cc", Live: true, LastNS: 40},
+		{Key: "chat:id:alpha-id", Label: resolve.Named("Alpha"), Engine: "cc", RowID: "alpha-id", Live: true, LastNS: 20},
+		{Key: "chat:id:beta-id", Label: resolve.Named("Beta"), Engine: "cx", RowID: "beta-id", Live: true, LastNS: 40},
+		{Key: "chat:id:child-id", Label: resolve.Named("Child"), Engine: "cc", RowID: "child-id", Live: true, LastNS: 40},
 	}
 	if !reflect.DeepEqual(graph.Nodes, wantNodes) {
 		t.Fatalf("nodes = %#v, want %#v", graph.Nodes, wantNodes)
@@ -444,5 +444,111 @@ func TestBuildCosmosSpawnResolvesASplitRowThatCarriesNoPaneID(t *testing.T) {
 				t.Fatalf("resolved split node lost its liveness: %#v", node)
 			}
 		})
+	}
+}
+
+// TestBuildCosmosStarsCountTrafficOncePerHomeInsideTheHour pins the spectral
+// class feature's counting rule (warm, cosmosBuilder.stars): an event counts
+// ONCE per distinct Home among its endpoints — an intra-system message must
+// not double-warm its own star, a cross-system message must warm BOTH ends —
+// and only inside CosmosTrafficWindow of the clock BuildCosmos was actually
+// handed, which is the one fact the chronoscope's replay depends on: heat at
+// a past playhead is measured against THAT moment, not the real wall clock.
+// A star with no recent traffic still gets a Stars entry (LastNS remembers
+// it even when TrafficHour does not), and every distinct Home among the
+// built nodes gets one, full stop.
+func TestBuildCosmosStarsCountTrafficOncePerHomeInsideTheHour(t *testing.T) {
+	rows := []Row{
+		{Kind: LiveClaude, ID: "a1", Name: "A1", Socket: "cc-a1", Project: "alpha"},
+		{Kind: LiveClaude, ID: "a2", Name: "A2", Socket: "cc-a2", Project: "alpha"},
+		{Kind: LiveClaude, ID: "b1", Name: "B1", Socket: "cc-b1", Project: "beta"},
+		{Kind: LiveClaude, ID: "g1", Name: "G1", Socket: "cc-g1", Project: "gamma"},
+		{Kind: LiveClaude, ID: "g2", Name: "G2", Socket: "cc-g2", Project: "gamma"},
+	}
+	const nowNS = int64(240 * time.Hour) // an arbitrary clock, far from zero
+	intraAlpha := shared.CommsEvent{
+		AtNS: nowNS - int64(1*time.Minute), Kind: shared.KindInject,
+		SenderUUID: "a1", Target: "A2", ReceiverSocket: "cc-a2", Message: "intra",
+	}
+	crossAlphaBeta := shared.CommsEvent{
+		AtNS: nowNS - int64(2*time.Minute), Kind: shared.KindInject,
+		SenderUUID: "a1", Target: "B1", ReceiverSocket: "cc-b1", Message: "cross",
+	}
+	oldGamma := shared.CommsEvent{
+		AtNS: nowNS - int64(2*CosmosTrafficWindow), Kind: shared.KindInject,
+		SenderUUID: "g1", Target: "G2", ReceiverSocket: "cc-g2", Message: "stale",
+	}
+
+	// Intra-system warms its ONE star ONCE, not twice: if warm() failed to
+	// dedupe by Home, a1->a2 (both alpha) would count 2, not 1.
+	intraOnly := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, nowNS)
+	if got := intraOnly.Stars["alpha"].TrafficHour; got != 1 {
+		t.Fatalf("intra-system event warmed alpha %d times, want exactly 1: %#v", got, intraOnly.Stars["alpha"])
+	}
+
+	all := BuildCosmos(rows, []shared.CommsEvent{intraAlpha, crossAlphaBeta, oldGamma}, nowNS)
+	if got := all.Stars["alpha"].TrafficHour; got != 2 {
+		t.Fatalf("alpha traffic = %d, want 2 (one intra + one cross)", got)
+	}
+	if got := all.Stars["beta"].TrafficHour; got != 1 {
+		t.Fatalf("beta traffic = %d, want 1 (warmed by the cross-system event)", got)
+	}
+	if got := all.Stars["gamma"].TrafficHour; got != 0 {
+		t.Fatalf("gamma traffic = %d, want 0: the only gamma event is older than CosmosTrafficWindow", got)
+	}
+	if got := all.Stars["gamma"].LastNS; got != oldGamma.AtNS {
+		t.Fatalf("gamma LastNS = %d, want %d: an old touch still raises LastNS", got, oldGamma.AtNS)
+	}
+	if len(all.Stars) != 3 {
+		t.Fatalf("Stars = %#v, want exactly one entry per distinct Home (alpha, beta, gamma) — a zero-traffic home included", all.Stars)
+	}
+	for _, home := range []string{"alpha", "beta", "gamma"} {
+		if _, ok := all.Stars[home]; !ok {
+			t.Fatalf("Stars missing entry for %q: %#v", home, all.Stars)
+		}
+	}
+
+	// The chronoscope depends on this: BuildCosmos(rows, events, pastNS)
+	// counts the trailing hour relative to whichever clock it was HANDED,
+	// not a real wall clock the pure function never reads. The same event,
+	// judged from two different clocks, must disagree on whether it is hot.
+	hotFromThen := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, intraAlpha.AtNS+30*int64(time.Minute))
+	if got := hotFromThen.Stars["alpha"].TrafficHour; got != 1 {
+		t.Fatalf("event 30m before the given clock should be hot: TrafficHour=%d", got)
+	}
+	coldFromThen := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, intraAlpha.AtNS+2*int64(time.Hour))
+	if got := coldFromThen.Stars["alpha"].TrafficHour; got != 0 {
+		t.Fatalf("the SAME event, judged from a clock 2h later, should be cold: TrafficHour=%d", got)
+	}
+}
+
+// TestBuildCosmosNodeCarriesRowIDOnlyWhenFound pins compose.CosmosNode.RowID,
+// the navigator's join key back to the fleet: a resolved node carries the
+// matched row's own ID, and a ghost the directory could not resolve carries
+// none — RowID is never fabricated from anything else an event happened to
+// record (a session name, a label), or `enter` would open the wrong chat, or
+// crash trying to find a row that does not exist.
+func TestBuildCosmosNodeCarriesRowIDOnlyWhenFound(t *testing.T) {
+	rows := []Row{{Kind: LiveClaude, ID: "row-1", Name: "Alpha", Socket: "cc-alpha", PaneID: "%1"}}
+	events := []shared.CommsEvent{{
+		AtNS: 10, Kind: shared.KindInject,
+		SenderUUID: "row-1", Target: "ghost-name", Message: "hi",
+	}}
+	graph := BuildCosmos(rows, events, 100)
+
+	resolved, found := nodeWithKey(graph, "chat:id:row-1")
+	if !found {
+		t.Fatalf("resolved sender missing: %#v", graph.Nodes)
+	}
+	if resolved.RowID != "row-1" {
+		t.Fatalf("resolved node RowID = %q, want the matched row's own ID %q", resolved.RowID, "row-1")
+	}
+
+	ghost, found := nodeWithKey(graph, "chat:name:ghost-name")
+	if !found {
+		t.Fatalf("unresolved receiver missing: %#v", graph.Nodes)
+	}
+	if ghost.RowID != "" {
+		t.Fatalf("ghost node RowID = %q, want empty — nothing in the fleet resolved it", ghost.RowID)
 	}
 }

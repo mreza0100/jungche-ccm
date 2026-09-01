@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -134,6 +135,27 @@ func TestRenderGoldens(t *testing.T) {
 			path: "ui_cosmos_classic_80.ansi",
 			got: func() string {
 				return quoteANSI(cosmosClassicGoldenModel(80).View().Content)
+			},
+		},
+		{
+			name: "Cosmos chronoscope replay ansi 80 columns",
+			path: "ui_cosmos_replay_80.ansi",
+			got: func() string {
+				return quoteANSI(cosmosReplayGoldenModel(80).View().Content)
+			},
+		},
+		{
+			name: "Cosmos system focus ansi 80 columns",
+			path: "ui_cosmos_focus_80.ansi",
+			got: func() string {
+				return quoteANSI(cosmosFocusGoldenModel(80).View().Content)
+			},
+		},
+		{
+			name: "Cosmos reticle ansi 80 columns",
+			path: "ui_cosmos_select_80.ansi",
+			got: func() string {
+				return quoteANSI(cosmosSelectGoldenModel(80).View().Content)
 			},
 		},
 		{
@@ -298,20 +320,57 @@ func cosmosGoldenSnapshot(width int, noSky bool) Snapshot {
 			snapshot.Rows[index].ActivityNS += clockShift
 		}
 	}
-	events := []shared.CommsEvent{
+	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, cosmosGoldenEvents(cosmosNowNS, snapshot.Rows), snapshot.NowNS)
+	return snapshot
+}
+
+// cosmosGoldenEvents is the fixed ledger every cosmos golden is cut from: one
+// inject 300ms old (mid-comet) and one spawn ten minutes old.
+func cosmosGoldenEvents(nowNS int64, rows []compose.Row) []shared.CommsEvent {
+	return []shared.CommsEvent{
 		{
-			AtNS: cosmosNowNS - int64(300*time.Millisecond), Kind: shared.KindInject,
-			SenderUUID: snapshot.Rows[0].ID, Target: snapshot.Rows[1].Name,
+			ID:   2,
+			AtNS: nowNS - int64(300*time.Millisecond), Kind: shared.KindInject,
+			SenderUUID: rows[0].ID, Target: rows[1].Name,
 			Message: "QA: cosmos goldens are pinned",
 		},
 		{
-			AtNS: cosmosNowNS - int64(10*time.Minute), Kind: shared.KindSpawn,
-			SenderUUID: snapshot.Rows[0].ID, Target: snapshot.Rows[4].Name,
+			ID:   1,
+			AtNS: nowNS - int64(10*time.Minute), Kind: shared.KindSpawn,
+			SenderUUID: rows[0].ID, Target: rows[4].Name,
 			Message: "begin the child seat",
 		},
 	}
-	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, events, snapshot.NowNS)
-	return snapshot
+}
+
+// cosmosReplayGoldenModel pins the chronoscope: `[` puts the playhead five
+// minutes back, where the spawn (ten minutes old) has happened and the
+// inject (300ms old) has not — a different sky from the live one, cut by
+// the same BuildCosmos from the same events, with the ⏪ chip naming the
+// moment. The timeline is seeded the way a sample seeds it, because the
+// scrub keys refuse by name until the ledger has been sampled once.
+func cosmosReplayGoldenModel(width int) Model {
+	model := cosmosGoldenModel(width)
+	model.cosmosEvents = cosmosGoldenEvents(model.cosmosNowNS, model.rows)
+	model.rebuildCosmosTimeline()
+	updated, _ := model.Update(printableKey('['))
+	return updated.(Model)
+}
+
+// cosmosFocusGoldenModel pins `s`: the first star (alpha) takes the whole
+// canvas and the spawn edge into beta is drawn leaving the frame.
+func cosmosFocusGoldenModel(width int) Model {
+	model := cosmosGoldenModel(width)
+	updated, _ := model.Update(printableKey('s'))
+	return updated.(Model)
+}
+
+// cosmosSelectGoldenModel pins the reticle: ↓ selects the first node, the
+// halo rings it, and the query row carries its card.
+func cosmosSelectGoldenModel(width int) Model {
+	model := cosmosGoldenModel(width)
+	updated, _ := model.Update(specialKey(tea.KeyDown))
+	return updated.(Model)
 }
 
 func cosmosGoldenModel(width int) Model {

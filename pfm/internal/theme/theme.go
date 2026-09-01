@@ -41,6 +41,11 @@ type Palette struct {
 	// CosmosSun colours the project stars — the anchors every chat of one
 	// project orbits. Warm on purpose: a sun, not another chat.
 	CosmosSun string
+	// CosmosSunHot is the blue-white end of a star's temperature: the cosmos
+	// blends CosmosSun toward it as a project's hourly traffic rises, so a
+	// busy system burns like an O-class star and a sleeping one stays a warm
+	// dwarf.
+	CosmosSunHot string
 
 	Header      string
 	HeaderBg    string
@@ -78,6 +83,7 @@ var defaultPalette = Palette{
 	CosmosStar:    "#52586E",
 	CosmosBright:  "#E1E6F0",
 	CosmosSun:     "#FFD27D",
+	CosmosSunHot:  "#BFD7FF",
 	Header:        "#ffffff",
 	HeaderBg:      "#5f3dc4",
 	GroupA:        "#5eead4",
@@ -114,6 +120,7 @@ var tokyoNightPalette = Palette{
 	CosmosStar:    "#52586E",
 	CosmosBright:  "#E1E6F0",
 	CosmosSun:     "#E0AF68",
+	CosmosSunHot:  "#B4C8FF",
 	Header:        "#c0caf5",
 	HeaderBg:      "#414868",
 	GroupA:        "#73daca",

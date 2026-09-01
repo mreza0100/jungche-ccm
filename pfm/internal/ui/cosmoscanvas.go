@@ -102,6 +102,27 @@ func (c *Canvas) Text(x, y int, s string, fg RGB, bold bool) {
 	}
 }
 
+// TextFree reports whether the n cells starting at (x, y) hold no text yet —
+// braille dots do not count, only glyph and label cells — so a label can
+// look for a row where it will not print over another label. Cells outside
+// the canvas count as free: clipping is the caller's business, collision is
+// this one's.
+func (c *Canvas) TextFree(x, y, n int) bool {
+	if y < 0 || y >= c.Rows {
+		return true
+	}
+	for i := 0; i < n; i++ {
+		col := x + i
+		if col < 0 || col >= c.Cols {
+			continue
+		}
+		if c.cells[y*c.Cols+col].used {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Canvas) Dot(px, py int, color RGB) {
 	if px < 0 || py < 0 || px >= c.PW() || py >= c.PH() {
 		return

@@ -28,16 +28,44 @@ type cosmosPoint struct{ x, y float64 }
 // star anchors and system radii the seats were computed against, so the
 // renderer can draw orbit guides on exactly the geometry the planets follow.
 type cosmosFrame struct {
-	points               map[string]cosmosPoint
-	starOrder            []string
-	starPoints           map[string]cosmosPoint
-	systemRx, systemRy   float64
-	cx, cy               float64
+	points             map[string]cosmosPoint
+	starOrder          []string
+	starPoints         map[string]cosmosPoint
+	systemRx, systemRy float64
+	cx, cy             float64
+	// rings lists, per star, the distinct ring factors its planets sit on —
+	// the tracks the guide loop draws, so a split system shows every ring
+	// its planets actually follow.
+	rings map[string][]float64
+	// hidden marks nodes seated outside the focused system: placed off-canvas
+	// so their edges leave the frame toward their own star, never drawn as
+	// bodies themselves.
+	hidden map[string]bool
 }
 
 // cosmosMoonOrbit is the one source of a moon ring's radius: the shared
 // orbit widens with the brood.
 func cosmosMoonOrbit(count int) float64 { return 5 + 2.5*float64(count) }
+
+// cosmosRingCap is how many planets share one ring before a system splits
+// into several: the most recently active chats take the inner track, the
+// quiet ones the outer, so a crowded project reads as a system with depth
+// instead of a ring of overlapping labels.
+const cosmosRingCap = 6
+
+// cosmosRingFactor is ring r's radius as a fraction of the system's outer
+// track: one ring fills the track; several spread evenly from 0.55 outward.
+func cosmosRingFactor(ring, rings int) float64 {
+	if rings <= 1 {
+		return 1
+	}
+	return 0.55 + 0.45*float64(ring)/float64(rings-1)
+}
+
+// cosmosRingSpeed is Kepler's third law in one line: angular speed falls
+// with radius to the 3/2, so an outer ring revolves slower than an inner
+// one — the physics the eye already expects from a solar system.
+func cosmosRingSpeed(factor float64) float64 { return math.Pow(math.Max(0.2, factor), -1.5) }
 
 type cosmosSampleMsg struct {
 	generation uint64
@@ -155,6 +183,11 @@ func wrapDelta(delta float64) float64 {
 	return delta
 }
 
+// cosmosRevolution is the base angular speed of a system's outer ring: one
+// revolution every ~3.5 minutes, slow enough to feel orbital, fast enough
+// to see. Inner rings turn faster by cosmosRingSpeed.
+const cosmosRevolution = 0.03
+
 func (model *Model) advanceCosmos(nowNS int64) {
 	dt := float64(nowNS-model.cosmosNowNS) / float64(time.Second)
 	if dt < 0 {
@@ -162,9 +195,11 @@ func (model *Model) advanceCosmos(nowNS int64) {
 	}
 	for _, seat := range model.cosmosSeats {
 		seat.Angle += wrapDelta(seat.Target-seat.Angle) * math.Min(1, dt*5)
+		seat.Ring += (seat.RingTarget - seat.Ring) * math.Min(1, dt*3)
+		seat.Orbit += dt * cosmosRevolution * cosmosRingSpeed(seat.Ring)
 	}
 	model.cosmosNowNS = nowNS
-	model.layoutCosmosSeats()
+	model.advanceChronoscope(dt)
 }
 
 // applyCosmosGraph is the single place model.cosmos is ever replaced. It is
@@ -288,16 +323,21 @@ func (model *Model) applyCosmosGraph(next compose.CosmosGraph) {
 	model.cosmos = next
 }
 
+// mergeCosmosSeats re-targets every seat against the graph the sky renders —
+// the live graph, or the replay cut while the playhead is off now. Seats are
+// keyed by chat, so a chat keeps its seat across the two: scrubbing into the
+// past shows the same body gliding, not a stranger seated in its place.
 func (model *Model) mergeCosmosSeats() {
 	previous := model.cosmosSeats
 	if previous == nil {
 		previous = make(map[string]*cosmosSeat)
 	}
+	graph := model.viewGraph()
 	hadSeats := len(previous) != 0
-	next := make(map[string]*cosmosSeat, len(model.cosmos.Nodes))
-	newKeys := make(map[string]bool, len(model.cosmos.Nodes))
-	chats := model.cosmos.Nodes
-	assign := func(nodes []compose.CosmosNode, offset float64) {
+	next := make(map[string]*cosmosSeat, len(graph.Nodes))
+	newKeys := make(map[string]bool, len(graph.Nodes))
+	chats := graph.Nodes
+	assign := func(nodes []compose.CosmosNode, offset, ring float64) {
 		for index, node := range nodes {
 			target := offset
 			if len(nodes) != 0 {
@@ -306,21 +346,22 @@ func (model *Model) mergeCosmosSeats() {
 			if old := previous[node.Key]; old != nil {
 				copy := *old
 				copy.Target = target
+				copy.RingTarget = ring
 				next[node.Key] = &copy
 				continue
 			}
-			next[node.Key] = &cosmosSeat{Angle: target, Target: target}
+			next[node.Key] = &cosmosSeat{Angle: target, Target: target, Ring: ring, RingTarget: ring}
 			newKeys[node.Key] = true
 		}
 	}
 	if model.classicSky {
 		// The first cosmos' seating, kept verbatim: every chat evenly on ONE
 		// shared ring starting at the top — no per-star systems, no moon
-		// parking.
-		assign(chats, -math.Pi/2)
+		// parking, no inner rings.
+		assign(chats, -math.Pi/2, 1)
 	} else {
-		nodeMap := cosmosNodeMap(model.cosmos.Nodes)
-		parents, _ := cosmosOrbits(model.cosmos.Edges, nodeMap)
+		nodeMap := cosmosNodeMap(graph.Nodes)
+		parents, _ := cosmosOrbits(graph.Edges, nodeMap)
 		roots := make([]compose.CosmosNode, 0, len(chats))
 		moons := make([]compose.CosmosNode, 0, len(chats))
 		for _, node := range chats {
@@ -343,38 +384,56 @@ func (model *Model) mergeCosmosSeats() {
 		}
 		sort.Strings(homes)
 		for _, home := range homes {
-			assign(byHome[home], -math.Pi/2)
+			// Past cosmosRingCap the system splits into rings, the most
+			// recently active chats innermost — a warm inner system, a cold
+			// outer one. Each ring is spaced among itself and offset from
+			// the last so two rings never line their planets up radially.
+			planets := byHome[home]
+			sort.SliceStable(planets, func(left, right int) bool {
+				if planets[left].LastNS != planets[right].LastNS {
+					return planets[left].LastNS > planets[right].LastNS
+				}
+				return planets[left].Key < planets[right].Key
+			})
+			rings := (len(planets) + cosmosRingCap - 1) / cosmosRingCap
+			for ring := 0; ring < rings; ring++ {
+				start, end := ring*cosmosRingCap, minInt(len(planets), (ring+1)*cosmosRingCap)
+				offset := -math.Pi/2 + math.Pi*float64(ring)/float64(maxInt(1, rings))
+				assign(planets[start:end], offset, cosmosRingFactor(ring, rings))
+			}
 		}
 		// A moon's seat is only the fallback for the day its parent vanishes:
 		// while the parent renders, cosmosLayout overrides the moon's position
 		// with the parent-anchored orbit, and the ring target parked here is
 		// where the orphan eases once the parent is gone.
 		for _, node := range moons {
-			target := 0.0
+			target, ring := 0.0, 1.0
 			if parent := next[parents[node.Key]]; parent != nil {
-				target = parent.Target
+				target, ring = parent.Target, parent.RingTarget
 			}
 			if old := previous[node.Key]; old != nil {
 				copy := *old
 				copy.Target = target
+				copy.RingTarget = ring
 				next[node.Key] = &copy
 				continue
 			}
-			next[node.Key] = &cosmosSeat{Angle: target, Target: target}
+			next[node.Key] = &cosmosSeat{Angle: target, Target: target, Ring: ring, RingTarget: ring}
 			newKeys[node.Key] = true
 		}
 	}
-	for _, edge := range model.cosmos.Edges {
+	for _, edge := range graph.Edges {
 		if !hadSeats || edge.Kind != shared.KindSpawn || !newKeys[edge.To] {
 			continue
 		}
 		parent, child := next[edge.From], next[edge.To]
 		if parent != nil && child != nil {
 			child.Angle = parent.Angle
+			child.Orbit = parent.Orbit
 		}
 	}
 	model.cosmosSeats = next
-	model.layoutCosmosSeats()
+	model.reconcileCosmosSelection()
 }
 
 // toggleClassicSky flips the cosmos between the orbital and the first-cosmos
@@ -385,35 +444,35 @@ func (model *Model) mergeCosmosSeats() {
 func (model *Model) toggleClassicSky() {
 	model.classicSky = !model.classicSky
 	model.mergeCosmosSeats()
-	if !model.skyEnabled {
-		for _, seat := range model.cosmosSeats {
-			seat.Angle = seat.Target
-		}
-		model.layoutCosmosSeats()
-	}
+	model.settleCosmosSeatsWithoutSky()
 }
 
-func (model *Model) layoutCosmosSeats() {
-	width := maxInt(40, model.width)
-	height := maxInt(12, model.height)
-	bodyHeight := maxInt(4, height-6)
-	cols, rows := maxInt(1, width-2), maxInt(1, bodyHeight-2)
-	top := 4.0
-	bottom := float64((rows - 4) * 4)
-	cx := float64(cols)
-	cy := (top + bottom) / 2
-	rx := float64(cols) - 26
-	if rx < 12 {
-		rx = 12
+// renderCosmosSubheader is the tab's one-line census: what the sky is
+// showing right now — the focused system's chats and edges when `s` has
+// narrowed it, with the edges that LEAVE the system counted rather than
+// silently absent, since those are drawn running off the frame.
+func (model Model) renderCosmosSubheader() string {
+	graph := model.viewGraph()
+	if !model.cosmosFocused() {
+		return fmt.Sprintf(" cosmos · %d chats · %d edges · last 24h", len(graph.Nodes), len(graph.Edges))
 	}
-	ry := (bottom-top)/2 - 5
-	if ry < 6 {
-		ry = 6
+	visible := cosmosNodeMap(model.cosmosVisibleNodes())
+	inside, leaving := 0, 0
+	for _, edge := range graph.Edges {
+		_, fromIn := visible[edge.From]
+		_, toIn := visible[edge.To]
+		switch {
+		case fromIn && toIn:
+			inside++
+		case fromIn || toIn:
+			leaving++
+		}
 	}
-	for _, seat := range model.cosmosSeats {
-		seat.X = cx + rx*math.Cos(seat.Angle)
-		seat.Y = cy + ry*math.Sin(seat.Angle)
+	line := fmt.Sprintf(" cosmos · ⌖ %s · %d chats · %d edges", cosmosHomeLabel(model.cosmosFocus), len(visible), inside)
+	if leaving > 0 {
+		line += fmt.Sprintf(" · %d leave the system", leaving)
 	}
+	return line + " · last 24h"
 }
 
 func (model Model) renderCosmosPanel(width, height int) string {
@@ -430,45 +489,94 @@ func (model Model) renderCosmosPanel(width, height int) string {
 		canvas.Quant = 16
 		title = " cosmos · safe "
 	}
+	// Two clocks: `now` drives the ambient sky (twinkle, revolution, wind,
+	// breath) and never stops; `view` is the ledger moment the sky shows,
+	// and it is what every message-derived light — edge fade, comets,
+	// shockwaves, arrival flashes — measures its age against. Live, they are
+	// the same instant; under the chronoscope, view is the past.
 	now := time.Unix(0, model.cosmosNowNS)
+	view := time.Unix(0, model.cosmosViewNS)
+	graph := model.viewGraph()
+	visible := model.cosmosVisibleNodes()
 	if model.skyEnabled {
 		drawCosmosStars(canvas, now)
 	}
-	if len(model.cosmos.Nodes) != 0 {
-		model.drawCosmosUniverse(canvas, now)
+	// Legend and mode chip land BEFORE the bodies: they are text the label
+	// nudge must see, so a planet's name steps around them instead of being
+	// paved over by them.
+	drawCosmosLegend(canvas, model.classicSky)
+	if chip := model.cosmosModeChip(); chip != "" {
+		canvas.Text(1, 0, truncateRunes(chip, maxInt(0, canvas.Cols-2)), rgbFromHex(configuredCosmosPalette.Warn), true)
 	}
-	if model.cosmos.Err != "" {
+	if len(visible) != 0 {
+		model.drawCosmosUniverse(canvas, graph, now, view)
+	}
+	switch {
+	case model.cosmos.Err != "":
+		// Ledger health is a fact about NOW, so the banner rides over a
+		// replayed past as well: the record the past was cut from is the
+		// same unreachable ledger.
 		canvas.DimAll(0.30)
 		model.drawCosmosBanner(canvas)
-	} else if len(model.cosmos.Nodes) == 0 {
+	case len(graph.Nodes) == 0 && model.cosmosPast != nil:
+		at := view.Format("15:04:05")
+		centerCosmosText(canvas, canvas.Rows/2-1, "no chat traffic recorded before "+at, cosmosDimColor(), false)
+		centerCosmosText(canvas, canvas.Rows/2+1, "] steps forward · space plays · n returns to now", scaleRGB(cosmosDimColor(), 0.7), false)
+	case len(graph.Nodes) == 0:
 		centerCosmosText(canvas, canvas.Rows/2-1, "no chat traffic recorded yet — the ledger fills as chats talk", cosmosDimColor(), false)
 		centerCosmosText(canvas, canvas.Rows/2+1, "cosmos maps conversation · pfm ls maps existence", scaleRGB(cosmosDimColor(), 0.7), false)
-	} else {
-		model.drawCosmosTicker(canvas)
+	case len(visible) == 0:
+		// The focused star has no chats at this moment — a replay before its
+		// first spawn, or a system whose every chat has since been dropped.
+		// Distinct from an empty sky: the galaxy is not empty, this system is.
+		centerCosmosText(canvas, canvas.Rows/2-1, "⌖ "+cosmosHomeLabel(model.cosmosFocus)+" has no chats at this moment", cosmosDimColor(), false)
+		centerCosmosText(canvas, canvas.Rows/2+1, "s cycles systems · n returns to now", scaleRGB(cosmosDimColor(), 0.7), false)
+	default:
+		drawCosmosTicker(canvas, graph)
 	}
-	if len(model.cosmos.Warnings) > 0 {
-		warning := "⚠ " + model.cosmos.Warnings[0]
-		if len(model.cosmos.Warnings) > 1 {
-			warning += fmt.Sprintf(" (+%d)", len(model.cosmos.Warnings)-1)
+	if len(graph.Warnings) > 0 {
+		warning := "⚠ " + graph.Warnings[0]
+		if len(graph.Warnings) > 1 {
+			warning += fmt.Sprintf(" (+%d)", len(graph.Warnings)-1)
 		}
 		canvas.Text(1, canvas.Rows-1, truncateRunes(warning, maxInt(0, canvas.Cols-2)), cosmosDimColor(), false)
 	}
 	return framePanel(title, strings.Split(canvas.render(), "\n"), width)
 }
 
+// drawCosmosLegend keys the glyphs in the top-right corner of the sky — the
+// three engines, and the sun wherever suns are drawn — when the canvas is
+// wide enough to spare the room. Structure, not decoration: the same in
+// --no-sky. The classic sky has no suns, so its legend names none.
+func drawCosmosLegend(canvas *Canvas, classic bool) {
+	legend := "✳ claude  ▲ codex  ◆ opencode  ✹ project"
+	if classic {
+		legend = "✳ claude  ▲ codex  ◆ opencode"
+	}
+	width := len([]rune(legend))
+	if canvas.Cols < width+24 {
+		return
+	}
+	canvas.Text(canvas.Cols-1-width, 0, legend, scaleRGB(cosmosDimColor(), 0.8), false)
+}
+
 func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) string {
+	graph := model.viewGraph()
 	lines := make([]string, 0, innerHeight)
+	if chip := model.cosmosModeChip(); chip != "" {
+		lines = append(lines, warnStyle.Render(fillLine(ansiTruncateRunes(chip, innerWidth), innerWidth)))
+	}
 	if model.cosmos.Err != "" {
 		lines = append(lines, warnStyle.Render(fillLine(
 			ansiTruncateRunes("⚠ comms ledger unreachable: "+model.cosmos.Err, innerWidth), innerWidth,
 		)))
-	} else if len(model.cosmos.Nodes) == 0 {
+	} else if len(graph.Nodes) == 0 {
 		lines = append(lines, dimStyle.Render(fillLine(
 			ansiTruncateRunes("no chat traffic recorded yet — the ledger fills as chats talk", innerWidth), innerWidth,
 		)))
 	} else {
-		nodes := cosmosNodeMap(model.cosmos.Nodes)
-		for index, edge := range model.cosmos.Edges {
+		nodes := cosmosNodeMap(graph.Nodes)
+		for index, edge := range graph.Edges {
 			if index >= 3 || len(lines) >= innerHeight {
 				break
 			}
@@ -483,10 +591,13 @@ func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) strin
 			}
 		}
 	}
-	if len(model.cosmos.Warnings) > 0 && len(lines) < innerHeight {
+	if len(graph.Warnings) > 0 && len(lines) < innerHeight {
 		lines = append(lines, dimStyle.Render(fillLine(
-			ansiTruncateRunes("⚠ "+model.cosmos.Warnings[0], innerWidth), innerWidth,
+			ansiTruncateRunes("⚠ "+graph.Warnings[0], innerWidth), innerWidth,
 		)))
+	}
+	if len(lines) > innerHeight {
+		lines = lines[:innerHeight]
 	}
 	for len(lines) < innerHeight {
 		lines = append(lines, strings.Repeat(" ", innerWidth))
@@ -579,12 +690,29 @@ func cosmosCometDuration(kind string) time.Duration {
 	return 1500 * time.Millisecond
 }
 
-func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
-	nodes := cosmosNodeMap(model.cosmos.Nodes)
-	frame := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled, model.classicSky)
+func (model Model) drawCosmosUniverse(canvas *Canvas, graph compose.CosmosGraph, now, view time.Time) {
+	nodes := cosmosNodeMap(graph.Nodes)
+	frame := cosmosLayout(canvas, model.cosmosSeats, nodes, graph.Edges, now, model.skyEnabled, model.classicSky, model.cosmosFocus)
 	points, starOrder, starPoints, cx, cy := frame.points, frame.starOrder, frame.starPoints, frame.cx, frame.cy
 	clock := float64(now.UnixNano()) / 1e9
-	moonParents, moonChildren := cosmosOrbits(model.cosmos.Edges, nodes)
+	moonParents, moonChildren := cosmosOrbits(graph.Edges, nodes)
+	// The navigator's spotlight: with a reticle set, the edges it touches
+	// keep their light and every other edge steps back — the sky answers
+	// "who does this one talk to" without a single line being removed.
+	selected := model.cosmosSelected
+	spotlight := func(edge compose.CosmosEdge, fade float64) float64 {
+		if selected == "" || edge.From == selected || edge.To == selected {
+			return fade
+		}
+		return fade * 0.45
+	}
+	// An edge with BOTH ends outside the focused system has nothing to show
+	// here — and its rail, bent toward the centre, could still cross the
+	// frame between two off-canvas exits, so it is skipped rather than
+	// clipped. One end inside: drawn, and seen to leave.
+	offFrame := func(edge compose.CosmosEdge) bool {
+		return frame.hidden[edge.From] && frame.hidden[edge.To]
+	}
 
 	// Orbit guides: the discipline made visible — a faint dashed ellipse
 	// under every planetary ring and every moon orbit, so a body is seen to
@@ -594,14 +722,16 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		guide := scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), 0.8)
 		for _, home := range starOrder {
 			anchor := starPoints[home]
-			for step := 0; step < 72; step += 3 {
-				angle := 2 * math.Pi * float64(step) / 72
-				canvas.Dot(int(anchor.x+frame.systemRx*math.Cos(angle)), int(anchor.y+frame.systemRy*math.Sin(angle)), guide)
+			for _, factor := range frame.rings[home] {
+				for step := 0; step < 72; step += 3 {
+					angle := 2 * math.Pi * float64(step) / 72
+					canvas.Dot(int(anchor.x+frame.systemRx*factor*math.Cos(angle)), int(anchor.y+frame.systemRy*factor*math.Sin(angle)), guide)
+				}
 			}
 		}
 		for parentKey, moons := range moonChildren {
 			anchor, ok := points[parentKey]
-			if !ok {
+			if !ok || frame.hidden[parentKey] {
 				continue
 			}
 			orbit := cosmosMoonOrbit(len(moons))
@@ -612,14 +742,14 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		}
 	}
 
-	for _, edge := range model.cosmos.Edges {
+	for _, edge := range graph.Edges {
 		from, to := nodes[edge.From], nodes[edge.To]
 		fp, fok := points[edge.From]
 		tp, tok := points[edge.To]
-		if !fok || !tok {
+		if !fok || !tok || offFrame(edge) {
 			continue
 		}
-		age := now.Sub(time.Unix(0, edge.LastNS)).Seconds()
+		age := view.Sub(time.Unix(0, edge.LastNS)).Seconds()
 		if age < 0 {
 			age = 0
 		}
@@ -632,12 +762,12 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 			fromColor = rgbFromHex(configuredCosmosPalette.CosmosLineage)
 		}
 		if model.skyEnabled {
-			if flightAge := now.Sub(time.Unix(0, edge.LastNS)); flightAge >= 0 && flightAge < cosmosCometDuration(edge.Kind) {
+			if flightAge := view.Sub(time.Unix(0, edge.LastNS)); flightAge >= 0 && flightAge < cosmosCometDuration(edge.Kind) {
 				fade = 1.0
 			}
 		}
 		x0, y0, cpx, cpy, x1, y1 := cosmosEdgeRail(fp, tp, cx, cy)
-		canvas.Bezier(x0, y0, cpx, cpy, x1, y1, fromColor, toColor, fade, dashed)
+		canvas.Bezier(x0, y0, cpx, cpy, x1, y1, fromColor, toColor, spotlight(edge, fade), dashed)
 	}
 
 	if model.skyEnabled {
@@ -647,13 +777,13 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		// edge blows brighter for ~15 minutes) and the drift stays tail-less
 		// and dim so it can never be misread as a comet, which is a real
 		// message in flight.
-		for _, edge := range model.cosmos.Edges {
+		for _, edge := range graph.Edges {
 			fp, fok := points[edge.From]
 			tp, tok := points[edge.To]
-			if !fok || !tok {
+			if !fok || !tok || offFrame(edge) {
 				continue
 			}
-			age := now.Sub(time.Unix(0, edge.LastNS)).Seconds()
+			age := view.Sub(time.Unix(0, edge.LastNS)).Seconds()
 			if age < 0 {
 				age = 0
 			}
@@ -671,16 +801,16 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 				progress := math.Mod(clock/period+phase/(2*math.Pi)+float64(index)*0.5, 1)
 				px, py := BezierPoint(x0, y0, cpx, cpy, x1, y1, progress)
 				shimmer := 0.7 + 0.3*math.Sin(clock*2.4+phase+float64(index)*math.Pi)
-				canvas.Dot(int(px), int(py), scaleRGB(lerpRGB(fromColor, toColor, progress), memory*shimmer))
+				canvas.Dot(int(px), int(py), scaleRGB(lerpRGB(fromColor, toColor, progress), spotlight(edge, memory*shimmer)))
 			}
 		}
 
 		white := rgbFromHex(configuredCosmosPalette.CosmosBright)
 		const tailSegments = 18
-		for _, edge := range model.cosmos.Edges {
+		for _, edge := range graph.Edges {
 			duration := cosmosCometDuration(edge.Kind)
-			age := now.Sub(time.Unix(0, edge.LastNS))
-			if age < 0 || age >= duration {
+			age := view.Sub(time.Unix(0, edge.LastNS))
+			if age < 0 || age >= duration || offFrame(edge) {
 				continue
 			}
 			from, to := nodes[edge.From], nodes[edge.To]
@@ -724,7 +854,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 			}
 		}
 
-		for _, edge := range model.cosmos.Edges {
+		for _, edge := range graph.Edges {
 			var duration, startRadius, endRadius, blend float64
 			var dotCount int
 			if edge.Kind == shared.KindSpawn {
@@ -735,8 +865,8 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 				// different things happening, not the same ring twice.
 				duration, startRadius, endRadius, blend, dotCount = 1.0, 1.5, 7, 0.8, 18
 			}
-			age := now.Sub(time.Unix(0, edge.LastNS)).Seconds()
-			if age < 0 || age >= duration {
+			age := view.Sub(time.Unix(0, edge.LastNS)).Seconds()
+			if age < 0 || age >= duration || frame.hidden[edge.To] {
 				continue
 			}
 			point, ok := points[edge.To]
@@ -757,8 +887,8 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// glow in this function: --no-sky renders a static frame, full stop.
 	var inboundFlash, outboundFlash map[string]float64
 	if model.skyEnabled {
-		inboundFlash = newestInboundFlash(model.cosmos.Edges, model.cosmosNowNS)
-		outboundFlash = newestOutboundFlash(model.cosmos.Edges, model.cosmosNowNS)
+		inboundFlash = newestInboundFlash(graph.Edges, view.UnixNano())
+		outboundFlash = newestOutboundFlash(graph.Edges, view.UnixNano())
 	}
 	white := rgbFromHex(configuredCosmosPalette.CosmosBright)
 	orbitDepth := func(key string) int {
@@ -771,7 +901,15 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// Deepest moons draw first so that where a system crowds, the parent's
 	// glyph and label overwrite the moon's — the anchor of a system stays
 	// readable, the way the bigger body wins an eclipse.
-	ordered := append([]compose.CosmosNode(nil), model.cosmos.Nodes...)
+	ordered := make([]compose.CosmosNode, 0, len(graph.Nodes))
+	population := make(map[string]int)
+	for _, node := range graph.Nodes {
+		if frame.hidden[node.Key] {
+			continue
+		}
+		ordered = append(ordered, node)
+		population[node.Home]++
+	}
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return orbitDepth(ordered[i].Key) > orbitDepth(ordered[j].Key)
 	})
@@ -780,26 +918,27 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		glyph rune
 		color RGB
 	}
-	// The stars: one sun per project, drawn before the planets so a planet
-	// label may run over a star LABEL, while the star glyphs replay LAST in
-	// the re-stamp below — a sun can never be erased by its planets. A sun's
-	// radiance is its population: the more chats orbit it, the hotter it
-	// burns (see drawCosmosSun).
-	population := make(map[string]int)
-	for _, node := range model.cosmos.Nodes {
-		population[node.Home]++
+	// The stars: one sun per project, drawn before the planets, while the
+	// star glyphs replay LAST in the re-stamp below — a sun can never be
+	// erased by its planets. A sun's radiance is its population and its
+	// colour is its traffic (see drawCosmosSun); the population counted is
+	// what this frame draws. The star's NAME waits until every planet has
+	// landed: it is the one label that must read in a crowded system, so
+	// it picks its row around the planets rather than under them.
+	var starLabels []struct {
+		x, y int
+		text string
 	}
 	for _, home := range starOrder {
 		point := starPoints[home]
-		color := drawCosmosSun(canvas, point, home, population[home], clock, model.skyEnabled)
+		color := drawCosmosSun(canvas, point, home, population[home], graph.Stars[home].TrafficHour, clock, model.skyEnabled)
 		colX, colY := int(point.x)/2, int(point.y)/4
 		canvas.SetCell(colX, colY, '✹', color, true)
-		label := home
-		if label == "" {
-			label = "unknown"
-		}
-		label = truncateRunes(label, maxInt(0, canvas.Cols-2))
-		canvas.Text(colX-len([]rune(label))/2, colY+1, label, cosmosDimColor(), false)
+		label := truncateRunes(cosmosHomeLabel(home), maxInt(0, canvas.Cols-2))
+		starLabels = append(starLabels, struct {
+			x, y int
+			text string
+		}{colX - len([]rune(label))/2, colY, label})
 		starStamps = append(starStamps, struct {
 			x, y  int
 			glyph rune
@@ -826,7 +965,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		}
 		bold := arrival > 0.4
 		if node.Dead {
-			if model.skyEnabled {
+			if model.skyEnabled && model.cosmosPast == nil {
 				// DiedNS here is model.applyCosmosGraph's own detection
 				// timestamp, not compose's last-edge-activity value — the
 				// honest answer to "when did the model first notice this
@@ -836,10 +975,27 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 				// not), so DiedNS is always set here.
 				color, bold = cosmosDeathVisual(base, now.Sub(time.Unix(0, node.DiedNS)))
 			} else {
-				// --no-sky: dimmed, never animated, the same frame every
-				// render.
+				// --no-sky, and every replayed past: dimmed, never animated.
+				// A chat dead NOW shown at a moment it was alive is a ghost
+				// of itself — the truth, not a death to re-enact.
 				color, bold = scaleRGB(base, 0.35), false
 			}
+		}
+		if node.Key == selected {
+			// The reticle: a ring of light around the chosen body, turning
+			// slowly under the sky, still under --no-sky. Its label reads at
+			// full strength so the name is never in doubt.
+			halo := scaleRGB(white, 0.9)
+			spin := 0.0
+			if model.skyEnabled {
+				spin = clock * 0.8
+			}
+			const haloDots = 12
+			for index := 0; index < haloDots; index++ {
+				angle := spin + 2*math.Pi*float64(index)/haloDots
+				canvas.Dot(int(point.x+2.2*math.Cos(angle)*1.6), int(point.y+2.2*math.Sin(angle)), halo)
+			}
+			bold = true
 		}
 		canvas.SetCell(colX, colY, cosmosNodeGlyph(node), color, true)
 		glyphStamps = append(glyphStamps, struct {
@@ -866,17 +1022,44 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		// arriving chat flashes its name at full strength, and a dead
 		// node's alarm colour is never softened.
 		labelColor := scaleRGB(color, 0.62)
-		if node.Dead || arrival > 0.4 {
+		if node.Dead || arrival > 0.4 || node.Key == selected {
 			labelColor = color
 		}
-		if rightward {
-			canvas.Text(colX+2, colY, label, labelColor, bold)
-		} else {
-			canvas.Text(colX-1-len([]rune(label)), colY, label, labelColor, bold)
+		labelX := colX + 2
+		if !rightward {
+			labelX = colX - 1 - len([]rune(label))
 		}
+		// Collision nudge: a name that would print over another name, a
+		// glyph, or the legend steps one row down, then one row up, before
+		// it accepts the overlap. Rows outside the canvas are not a refuge —
+		// a label nudged off-canvas is a label lost.
+		labelRow := colY
+		if width := len([]rune(label)); !canvas.TextFree(labelX, labelRow, width) {
+			for _, candidate := range []int{colY + 1, colY - 1} {
+				if candidate >= 0 && candidate < canvas.Rows && canvas.TextFree(labelX, candidate, width) {
+					labelRow = candidate
+					break
+				}
+			}
+		}
+		canvas.Text(labelX, labelRow, label, labelColor, bold)
 		if arrival > 0.55 {
 			canvas.SetCell(colX, colY-1, '✦', scaleRGB(white, arrival), false)
 		}
+	}
+	// Star names land last among the text: the row under the sun, or the
+	// next row down, or the row above — whichever holds no planet's glyph
+	// or name yet — and under the sun regardless when every row is taken.
+	for _, label := range starLabels {
+		row := label.y + 1
+		width := len([]rune(label.text))
+		for _, candidate := range []int{label.y + 1, label.y + 2, label.y - 1} {
+			if candidate >= 0 && candidate < canvas.Rows && canvas.TextFree(label.x, candidate, width) {
+				row = candidate
+				break
+			}
+		}
+		canvas.Text(label.x, row, label.text, cosmosDimColor(), false)
 	}
 	// Glyphs win over labels: a later node's text may have paved over an
 	// earlier node's marker (a moon sitting inside its parent's long label),
@@ -891,17 +1074,27 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	}
 }
 
+// cosmosHotTraffic is the hourly message count at which a star burns at the
+// blue-white end of its spectrum; anything above is simply as hot.
+const cosmosHotTraffic = 30
+
 // drawCosmosSun paints one project star and returns the colour its glyph
-// should wear. Radiance scales with population — the count of chats living
-// under this star: a lone chat gets a modest ember; a crowded project burns
-// white-hot with a wider corona, diffraction spikes from three planets up,
-// and periodic solar flares from five. Every element derives from (clock,
-// home, population) alone, so a pinned test clock renders the same sun.
-func drawCosmosSun(canvas *Canvas, point cosmosPoint, home string, population int, clock float64, sky bool) RGB {
+// should wear. Two facts drive it, kept apart on purpose. Radiance is the
+// POPULATION — the count of chats living under this star: a lone chat gets
+// a modest ember; a crowded project burns with a wider corona, diffraction
+// spikes from three planets up, and periodic solar flares from five. Colour
+// is the TRAFFIC — the hour's messages through the system, the spectral
+// class in one lerp: a sleeping project stays a warm dwarf, a busy one goes
+// blue-white the way a hotter star does. Every element derives from (clock,
+// home, population, traffic) alone, so a pinned test clock renders the same
+// sun.
+func drawCosmosSun(canvas *Canvas, point cosmosPoint, home string, population, traffic int, clock float64, sky bool) RGB {
 	sunColor := rgbFromHex(configuredCosmosPalette.CosmosSun)
+	hot := rgbFromHex(configuredCosmosPalette.CosmosSunHot)
 	bright := rgbFromHex(configuredCosmosPalette.CosmosBright)
 	heat := math.Min(1, float64(population)/8)
-	base := lerpRGB(sunColor, bright, 0.45*heat)
+	temperature := math.Min(1, float64(traffic)/cosmosHotTraffic)
+	base := lerpRGB(lerpRGB(sunColor, hot, temperature), bright, 0.25*heat)
 	if !sky {
 		return scaleRGB(base, 0.75+0.25*heat)
 	}
@@ -1027,7 +1220,7 @@ func cosmosStarPoints(nodes map[string]compose.CosmosNode, cx, cy, rx, ry float6
 	return order, points
 }
 
-func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky, classic bool) cosmosFrame {
+func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky, classic bool, focus string) cosmosFrame {
 	top := 4.0
 	bottom := float64((canvas.Rows - 4) * 4)
 	cx := float64(canvas.PW()) / 2
@@ -1048,17 +1241,45 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 	// guide loops downstream simply have nothing to draw.
 	var starOrder []string
 	starPoints := map[string]cosmosPoint{}
+	hidden := map[string]bool{}
 	systemRx, systemRy := rx, ry
 	if !classic {
 		starOrder, starPoints = cosmosStarPoints(nodes, cx, cy, rx, ry)
-		if len(starOrder) > 1 {
+		if _, focused := starPoints[focus]; focus != "" && focused {
+			// Focus: the chosen star takes the galactic centre and the full
+			// system. Every other star keeps its bearing but moves just past
+			// the frame — its chats collapse onto that exit point — so an
+			// edge into a neighbouring system is seen to LEAVE toward it,
+			// never to vanish. The exit sits 12px beyond the rectangle's
+			// edge along the bearing, not on an ellipse: an ellipse's 45°
+			// point lands inside a wide rectangle.
+			for home, point := range starPoints {
+				if home == focus {
+					starPoints[home] = cosmosPoint{x: cx, y: cy}
+					continue
+				}
+				bearing := math.Atan2(point.y-cy, point.x-cx)
+				dx, dy := math.Cos(bearing), math.Sin(bearing)
+				halfW, halfH := float64(canvas.PW())/2+12, float64(canvas.PH())/2+12
+				reach := 1 / math.Max(math.Abs(dx)/halfW, math.Abs(dy)/halfH)
+				starPoints[home] = cosmosPoint{x: cx + reach*dx, y: cy + reach*dy}
+			}
+			starOrder = []string{focus}
+			for key, node := range nodes {
+				if node.Home != focus {
+					hidden[key] = true
+				}
+			}
+		} else if len(starOrder) > 1 {
 			// Sized against the 0.70/0.62 star ring above: adjacent systems
 			// keep clear water between their rings instead of printing into
 			// each other.
 			systemRx, systemRy = rx*0.34, ry*0.42
 		}
 	}
+	parents, children := cosmosOrbits(edges, nodes)
 	points := make(map[string]cosmosPoint, len(seats))
+	ringSets := make(map[string]map[float64]bool)
 	for key, seat := range seats {
 		angle, breath := seat.Angle, 1.0
 		if sky {
@@ -1079,21 +1300,27 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 			}
 			continue
 		}
-		anchor, anchored := starPoints[nodes[key].Home]
+		home := nodes[key].Home
+		anchor, anchored := starPoints[home]
 		if !anchored {
 			anchor = cosmosPoint{x: cx, y: cy}
 		}
-		if sky {
-			// The planets actually revolve: the whole ring turns rigidly
-			// around its sun — one revolution every ~3.5 minutes, slow
-			// enough to feel orbital, fast enough to see — while even
-			// spacing between siblings is preserved by construction. Moons
-			// orbit their planet faster (~70s) one tier down.
-			angle += clock * 0.03
-		}
+		// The planets actually revolve: each ring turns rigidly around its
+		// sun at its own Keplerian speed — the phase is the seat's own
+		// accumulated Orbit (advanceCosmos), never the wall clock, so a
+		// change of ring changes speed without a jump. Even spacing between
+		// ring-mates is preserved by construction. --no-sky never ticks, so
+		// there Orbit stays zero and the frame stays still.
+		angle += seat.Orbit
 		points[key] = cosmosPoint{
-			x: anchor.x + systemRx*breath*math.Cos(angle),
-			y: anchor.y + systemRy*breath*math.Sin(angle),
+			x: anchor.x + systemRx*seat.Ring*breath*math.Cos(angle),
+			y: anchor.y + systemRy*seat.Ring*breath*math.Sin(angle),
+		}
+		if parents[key] == "" && !hidden[key] {
+			if ringSets[home] == nil {
+				ringSets[home] = make(map[float64]bool)
+			}
+			ringSets[home][seat.RingTarget] = true
 		}
 	}
 	// Planetary hierarchy: a spawned chat leaves the main ring and becomes
@@ -1103,7 +1330,6 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 	// widening with the brood so a bigger family never crowds. Like the
 	// earth: the moon circles its planet while the planet keeps circling
 	// the sun — and a moon's own children circle IT, one level down.
-	parents, children := cosmosOrbits(edges, nodes)
 	if !classic && len(parents) != 0 {
 		var place func(key string, depth int) cosmosPoint
 		place = func(key string, depth int) cosmosPoint {
@@ -1138,9 +1364,26 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 			points[key] = place(key, 0)
 		}
 	}
+	// Out-of-focus bodies collapse onto their star's exit point AFTER moon
+	// placement, so no moon of a hidden parent can swing back into frame.
+	for key := range hidden {
+		if anchor, ok := starPoints[nodes[key].Home]; ok {
+			points[key] = anchor
+		}
+	}
+	rings := make(map[string][]float64, len(ringSets))
+	for home, set := range ringSets {
+		factors := make([]float64, 0, len(set))
+		for factor := range set {
+			factors = append(factors, factor)
+		}
+		sort.Float64s(factors)
+		rings[home] = factors
+	}
 	return cosmosFrame{
 		points: points, starOrder: starOrder, starPoints: starPoints,
 		systemRx: systemRx, systemRy: systemRy, cx: cx, cy: cy,
+		rings: rings, hidden: hidden,
 	}
 }
 
@@ -1154,16 +1397,16 @@ func cosmosEdgeRail(from, to cosmosPoint, cx, cy float64) (x0, y0, cpx, cpy, x1,
 
 func ease(t float64) float64 { return t * t * (3 - 2*t) }
 
-func (model Model) drawCosmosTicker(canvas *Canvas) {
-	nodes := cosmosNodeMap(model.cosmos.Nodes)
-	limit := minInt(2, len(model.cosmos.Edges))
+func drawCosmosTicker(canvas *Canvas, graph compose.CosmosGraph) {
+	nodes := cosmosNodeMap(graph.Nodes)
+	limit := minInt(2, len(graph.Edges))
 	for index := 0; index < limit; index++ {
 		row := canvas.Rows - 2 - index
 		color := cosmosDimColor()
 		if index == 0 {
 			color = rgbFromHex(configuredCosmosPalette.CosmosBright)
 		}
-		line := cosmosTickerLine(model.cosmos.Edges[index], nodes)
+		line := cosmosTickerLine(graph.Edges[index], nodes)
 		canvas.Text(1, row, truncateRunes(line, maxInt(0, canvas.Cols-2)), color, false)
 	}
 }

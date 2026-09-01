@@ -43,11 +43,18 @@ type orderedSearch struct {
 	order  []int
 }
 
+// cosmosSeat is one chat's place on its ring: the angle it is easing toward
+// and the angle it is at, plus the ring it sits on as a radius factor of
+// its system (1.0 is the outermost track; a crowded system's inner rings sit
+// closer to their sun, see cosmosRingFactor). Orbit is the revolution phase
+// accumulated tick by tick — never derived from the wall clock, so a seat
+// that changes ring, and with it angular speed, glides instead of jumping.
 type cosmosSeat struct {
-	Angle  float64
-	Target float64
-	X      float64
-	Y      float64
+	Angle      float64
+	Target     float64
+	Ring       float64
+	RingTarget float64
+	Orbit      float64
 }
 
 func (source orderedSearch) String(index int) string {
@@ -115,11 +122,31 @@ type Model struct {
 	// classicSky is the cosmos tab's "o" toggle: true collapses the orbital
 	// hierarchy back to the first cosmos — every chat on one shared ring, no
 	// stars, no revolution. The zero value keeps the solar systems on.
-	classicSky           bool
-	skyEvents            []sky.Event
-	mergeNewChat         bool
-	actionIndex          int
-	newChatEngine        pfmengine.ID
+	classicSky bool
+	// The chronoscope. cosmosPast is the replay graph while the playhead is
+	// off "now" — nil means live. model.cosmos stays the LIVE graph the whole
+	// time so its death bookkeeping never pauses; the sky renders whichever
+	// viewGraph returns. cosmosViewNS is the ledger clock the sky renders AT
+	// (equal to cosmosNowNS when live); cosmosTimeline is the sampled window
+	// sorted oldest-first, the source every past graph is cut from.
+	cosmosPast      *compose.CosmosGraph
+	cosmosViewNS    int64
+	cosmosPlaying   bool
+	cosmosTimeline  []shared.CommsEvent
+	cosmosPastCount int
+	cosmosPastCutNS int64
+	// cosmosSelected is the node key under the navigator's reticle ("" for
+	// none); cosmosFocus is the home whose system fills the canvas ("" for
+	// the whole galaxy); cosmosStatus is the one-line receipt the query row
+	// shows when a cosmos key was refused — a swallowed keystroke reads
+	// exactly like a key that did nothing on purpose.
+	cosmosSelected string
+	cosmosFocus    string
+	cosmosStatus   string
+	skyEvents      []sky.Event
+	mergeNewChat   bool
+	actionIndex    int
+	newChatEngine  pfmengine.ID
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
 	activity      *ActivityClock
@@ -181,6 +208,7 @@ func NewModel(snapshot Snapshot) Model {
 		cosmosSeats:         make(map[string]*cosmosSeat),
 		cosmosDiedAtNS:      make(map[string]int64),
 		cosmosNowNS:         snapshot.NowNS,
+		cosmosViewNS:        snapshot.NowNS,
 		skyEnabled:          !snapshot.NoSky,
 		cosmosSafe:          snapshot.CosmosSafe,
 		activity:            snapshot.Activity,
@@ -273,7 +301,6 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.width = positiveOr(message.Width, model.width)
 		model.height = positiveOr(message.Height, model.height)
 		model.query.SetWidth(maxInt(8, model.width/2))
-		model.layoutCosmosSeats()
 		return model, nil
 	case RefreshMsg:
 		model.applyRefresh(message.Snapshot)
@@ -308,6 +335,8 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if len(message.events) >= compose.CosmosEventCap {
 				model.cosmos.Warnings = append(model.cosmos.Warnings, compose.CosmosTruncationWarning)
 			}
+			model.rebuildCosmosTimeline()
+			model.rebuildCosmosPast()
 			model.mergeCosmosSeats()
 		}
 		return model, cosmosWaitCmd(message.generation)
@@ -376,10 +405,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model.updateLimitsKey(key)
 	}
 	if model.tab == TabCosmos {
-		if key == "o" {
-			model.toggleClassicSky()
-		}
-		return model, nil
+		return model.updateCosmosKey(key)
 	}
 	switch key {
 	case "ctrl+x":
@@ -985,6 +1011,9 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 	} else {
 		model.applyCosmosGraph(snapshot.Cosmos)
 	}
+	// A refresh may have changed which rows exist or are killed: the past
+	// graph's ghosts are cut against the rows of NOW, so it is re-cut too.
+	model.rebuildCosmosPast()
 	model.mergeCosmosSeats()
 	model.nowNS = snapshot.NowNS
 	model.view = snapshot.View

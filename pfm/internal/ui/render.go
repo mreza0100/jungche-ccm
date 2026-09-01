@@ -215,10 +215,7 @@ func (model Model) renderHeader(width int) string {
 			contentWidth,
 		)))
 	case TabCosmos:
-		lines = append(lines, dimStyle.Render(fillLine(fmt.Sprintf(
-			" cosmos · %d chats · %d edges · last 24h",
-			len(model.cosmos.Nodes), len(model.cosmos.Edges),
-		), contentWidth)))
+		lines = append(lines, dimStyle.Render(fillLine(model.renderCosmosSubheader(), contentWidth)))
 	default:
 		lines = append(lines, dimStyle.Render(fillLine(
 			" Chats · fuzzy search and all existing chat controls",
@@ -251,6 +248,15 @@ func (model Model) renderQuery(width int) string {
 		return dimStyle.Render(fillLine(" limits  live usage windows · ↑↓ scroll", width))
 	}
 	if model.tab == TabCosmos {
+		// Precedence is the receipt of the LAST keystroke first: a refused key
+		// names itself before anything else, then the reticle's card, then
+		// the ledger's own state.
+		switch {
+		case model.cosmosStatus != "":
+			return warnStyle.Render(fillLine(" cosmos  "+ansiTruncateRunes(model.cosmosStatus, maxInt(0, width-9)), width))
+		case model.cosmosSelected != "":
+			return dimStyle.Render(fillLine(" cosmos  "+ansiTruncateRunes(model.cosmosSelectionHUD(), maxInt(0, width-9)), width))
+		}
 		status := "live comms ledger"
 		if model.cosmosLoading {
 			status = "sampling…"
@@ -332,8 +338,12 @@ func (model Model) renderFooter(width int) string {
 			dimStyle.Render(fillLine(second, width))
 	}
 	if model.tab == TabCosmos {
-		first := " o classic sky · tab/shift+tab cycle tabs · ←/→ cycle tabs · esc cancel"
-		second := " live ledger samples every 2s only while cosmos is focused"
+		first := " ↑↓ select · enter open · s system · o classic sky · tab/shift+tab cycle tabs · esc cancel"
+		second := " [ ] ±5m · { } ±1h · space play · n now · ledger samples every 2s while focused"
+		if width < 96 {
+			first = " ↑↓ select · enter open · s system · o classic · esc cancel"
+			second = " [ ] ±5m · { } ±1h · space play · n now"
+		}
 		return dimStyle.Render(fillLine(first, width)) + "\n" +
 			dimStyle.Render(fillLine(second, width))
 	}

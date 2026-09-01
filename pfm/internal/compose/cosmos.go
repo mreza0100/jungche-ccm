@@ -15,6 +15,12 @@ const (
 	CosmosEventCap          = 5000
 	CosmosTruncationWarning = "showing newest 5000 events of the window"
 
+	// CosmosTrafficWindow is the lookback a star's temperature is measured
+	// over: the events that touched a system inside this window, counted at
+	// whatever clock BuildCosmos is handed, so a replayed past renders the
+	// heat it had then.
+	CosmosTrafficWindow = time.Hour
+
 	// CosmosDeathBlink is how long a dead node blinks like an alarm before it
 	// starts to fade. CosmosDeathFade is the fade tail that follows, after
 	// which the model stops rendering it. Both live here — not in
@@ -46,7 +52,11 @@ type CosmosNode struct {
 	// never disagree about where a chat lives. Empty for a ghost with no
 	// matching row: its home is genuinely unknown, and the renderer seats it
 	// under the shared unknown star rather than guessing.
-	Home   string
+	Home string
+	// RowID is the fleet row this node resolved to — the join key the picker
+	// uses to open a chat from the sky (rowKey prefers ID). Empty for a
+	// ghost.
+	RowID  string
 	Live   bool
 	Killed bool
 	LastNS int64
@@ -82,9 +92,21 @@ type CosmosEdge struct {
 	LastMessage string
 }
 
+// CosmosStar is one project's sun as the ledger sees it. TrafficHour is how
+// many events touched the system inside CosmosTrafficWindow — an event
+// counts ONCE per distinct Home among its endpoints, so an intra-system
+// message warms one star and a cross-system message warms both. Population
+// is not here on purpose: the renderer counts the nodes it actually draws.
+type CosmosStar struct {
+	Home        string
+	TrafficHour int
+	LastNS      int64
+}
+
 type CosmosGraph struct {
 	Nodes    []CosmosNode
 	Edges    []CosmosEdge
+	Stars    map[string]CosmosStar
 	Err      string
 	Warnings []string
 }
@@ -105,6 +127,15 @@ type cosmosBuilder struct {
 	// is known, via the grace window below; a resolved row's Dead (set in
 	// chatNode from row.Killed) is never touched here.
 	unmatched map[string]bool
+	// nowNS is the clock BuildCosmos was handed, threaded onto the builder
+	// so warm can answer "did this touch fall inside CosmosTrafficWindow"
+	// without every call site re-deriving it.
+	nowNS int64
+	// stars accumulates one CosmosStar per distinct Home touched by warm.
+	// BuildCosmos folds it against the node set at the end so a home with
+	// zero traffic still gets a cold star, and a home no node belongs to
+	// never gets one it was not asked for.
+	stars map[string]CosmosStar
 }
 
 // BuildCosmos derives the complete presentation graph from fleet rows and a
@@ -124,6 +155,7 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 		directory: resolve.NewDirectory(rows, rowAddress),
 		nodes:     make(map[string]CosmosNode),
 		edges:     make(map[string]CosmosEdge),
+		nowNS:     nowNS,
 	}
 
 	unsigned := 0
@@ -138,16 +170,19 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 			builder.touch(from, event.AtNS)
 			builder.touch(to, event.AtNS)
 			builder.addEdge(from.Key, to.Key, event)
+			builder.warm(event.AtNS, from, to)
 		case shared.KindSpawn:
 			child := builder.chatNode(receiverAddress(event))
 			builder.touch(child, event.AtNS)
 			if event.SenderSession == "" && event.SenderUUID == "" && event.SenderLabel == "" {
 				unsigned++
+				builder.warm(event.AtNS, child)
 				continue
 			}
 			parent := builder.chatNode(senderAddress(event))
 			builder.touch(parent, event.AtNS)
 			builder.addEdge(parent.Key, child.Key, event)
+			builder.warm(event.AtNS, child, parent)
 		case "group":
 			// Retired chat-group events: a historical fleet.db row of this
 			// kind is known history, not an unknown one — skip it silently,
@@ -201,6 +236,21 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 			node.DiedNS = node.LastNS
 		}
 		graph.Nodes = append(graph.Nodes, node)
+	}
+	// Stars gets one entry per distinct Home among the nodes just built —
+	// zero traffic included, a cold star is still a star — and only for
+	// those homes: a home warm() touched but that ended up with no
+	// surviving node (there is none such today, but the rule is the graph's
+	// node set decides, not the builder's touch history) does not get one.
+	homes := make(map[string]bool, len(graph.Nodes))
+	for _, node := range graph.Nodes {
+		homes[node.Home] = true
+	}
+	graph.Stars = make(map[string]CosmosStar, len(homes))
+	for home := range homes {
+		star := builder.stars[home]
+		star.Home = home
+		graph.Stars[home] = star
 	}
 	sort.Slice(graph.Nodes, func(left, right int) bool {
 		leftLabel := graph.Nodes[left].Label.String()
@@ -292,6 +342,7 @@ func (builder *cosmosBuilder) chatNode(query resolve.Address) CosmosNode {
 	if answer.Found {
 		node.Engine = string(EngineForKind(answer.Chat.Kind))
 		node.Home = answer.Chat.Project
+		node.RowID = answer.Chat.ID
 		node.Live = answer.Chat.Socket != ""
 		node.Killed = answer.Chat.Killed
 		node.Dead = answer.Chat.Killed
@@ -353,6 +404,35 @@ func (builder *cosmosBuilder) touch(node CosmosNode, atNS int64) {
 	builder.nodes[node.Key] = current
 }
 
+// warm folds one event's timestamp into every distinct Home among the given
+// endpoint nodes — an intra-system event (both endpoints share a Home) warms
+// that one star once, never twice, and a cross-system event warms both. A
+// node with no Key (an unresolved lookup) never reaches a star: it carries
+// no identity to warm anything with. TrafficHour only increments inside
+// CosmosTrafficWindow of nowNS, but LastNS always advances, so a star this
+// package has never seen fresh still remembers when it last was.
+func (builder *cosmosBuilder) warm(atNS int64, nodes ...CosmosNode) {
+	if builder.stars == nil {
+		builder.stars = make(map[string]CosmosStar)
+	}
+	seen := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		if node.Key == "" || seen[node.Home] {
+			continue
+		}
+		seen[node.Home] = true
+		star := builder.stars[node.Home]
+		star.Home = node.Home
+		if atNS > builder.nowNS-int64(CosmosTrafficWindow) {
+			star.TrafficHour++
+		}
+		if atNS > star.LastNS {
+			star.LastNS = atNS
+		}
+		builder.stars[node.Home] = star
+	}
+}
+
 func (builder *cosmosBuilder) addEdge(from, to string, event shared.CommsEvent) {
 	if from == "" || to == "" {
 		return
@@ -371,4 +451,3 @@ func (builder *cosmosBuilder) addEdge(from, to string, event shared.CommsEvent) 
 	edge.Count++
 	builder.edges[key] = edge
 }
-
