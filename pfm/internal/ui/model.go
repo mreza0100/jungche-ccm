@@ -1005,6 +1005,9 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 		}
 	}
 	model.rows = append(model.rows[:0], rows...)
+	// The refresh clock is the freshest "now" a --no-sky picker ever sees:
+	// adopt it before anything below measures an age against cosmosNowNS.
+	model.adoptCosmosClock(snapshot.NowNS)
 	if snapshot.Cosmos.Err != "" {
 		model.cosmos.Err = snapshot.Cosmos.Err
 		model.cosmos.Warnings = append(model.cosmos.Warnings[:0], snapshot.Cosmos.Warnings...)
@@ -1048,11 +1051,11 @@ func (model *Model) deactivate(row compose.Row) {
 	}
 	model.deactivatedSockets[row.Socket] = true
 	model.killStatus = "deactivated — " + row.Name + " — ready to resume"
-	key := rowKey(row)
+	key := compose.RowKey(row)
 	fallback := model.cursor
 	kept := model.rows[:0]
 	for _, candidate := range model.rows {
-		if rowKey(candidate) != key {
+		if compose.RowKey(candidate) != key {
 			kept = append(kept, candidate)
 		}
 	}
@@ -1124,7 +1127,7 @@ func (model *Model) toggleKilled() {
 	default:
 		model.killStatus = "unhidden — " + change.Name
 	}
-	follow := rowKey(row)
+	follow := compose.RowKey(row)
 	model.rows[index].Killed = change.Killed
 	model.adjustKilledCount(change.Killed)
 	model.killChanges[change.ID] = change
@@ -1322,7 +1325,7 @@ func (model *Model) refilter(follow string, fallback int) {
 	}
 	if follow != "" {
 		for cursor, index := range model.filtered {
-			if rowKey(model.rows[index]) == follow {
+			if compose.RowKey(model.rows[index]) == follow {
 				model.cursor = cursor
 				return
 			}
@@ -1375,17 +1378,7 @@ func (model Model) selectedKey() string {
 	if !ok {
 		return ""
 	}
-	return rowKey(row)
-}
-
-func rowKey(row compose.Row) string {
-	if row.ID != "" {
-		return row.ID
-	}
-	if row.Socket != "" {
-		return row.Kind.String() + "\x00" + row.Socket + "\x00" + row.PaneID
-	}
-	return row.Kind.String() + "\x00" + row.CWD + "\x00" + row.Project
+	return compose.RowKey(row)
 }
 
 func rowEngine(kind compose.Kind) pfmengine.ID {

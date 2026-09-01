@@ -207,6 +207,22 @@ func (model *Model) cosmosReturnToNow() {
 	model.settleCosmosSeatsWithoutSky()
 }
 
+// adoptCosmosClock lets the ledger clock follow a fresher "now" than the
+// animation tick — the refresh stream's snapshot clock, which keeps arriving
+// under --no-sky, where no tick ever runs. Without it the chronoscope's idea
+// of now froze at launch there: a scrub measured its window against a stale
+// mark and snapped "back to live" at a moment that was already history.
+// Monotonic: a snapshot older than the tick clock never rewinds it.
+func (model *Model) adoptCosmosClock(nowNS int64) {
+	if nowNS <= model.cosmosNowNS {
+		return
+	}
+	model.cosmosNowNS = nowNS
+	if model.cosmosPast == nil {
+		model.cosmosViewNS = nowNS
+	}
+}
+
 // settleCosmosSeatsWithoutSky snaps every seat onto its target when nothing
 // will ever ease it: --no-sky never ticks, so a deliberate mode change there
 // teleports on purpose — a graph refresh never does.
@@ -325,12 +341,12 @@ func (model Model) openCosmosSelection() (tea.Model, tea.Cmd) {
 		return model, nil
 	}
 	label := node.Label.String()
-	if node.RowID == "" {
+	if node.RowKey == "" {
 		model.cosmosStatus = "enter needs a fleet row — " + label + " is a ghost only the ledger remembers"
 		return model, nil
 	}
 	for _, row := range model.rows {
-		if row.ID == node.RowID {
+		if compose.RowKey(row) == node.RowKey {
 			model.outcome = OutcomeSelected
 			model.outcomeRow = row
 			return model, tea.Quit
@@ -442,10 +458,15 @@ func (model Model) cosmosSelectionHUD() string {
 	if newest != nil {
 		hud += fmt.Sprintf(" · %s %q", time.Unix(0, newest.LastNS).Format("15:04:05"), newest.LastMessage)
 	}
+	// Three honest states, keyed on the fields compose actually sets: a ghost
+	// has no row; a killed row says so; a row with no socket — resumable,
+	// booting, idle — is not running, whatever its Dead flag says.
 	switch {
-	case node.RowID == "":
+	case node.RowKey == "":
 		hud += " · ghost"
-	case node.Dead:
+	case node.Killed:
+		hud += " · killed"
+	case node.Dead || !node.Live:
 		hud += " · not running"
 	}
 	return hud

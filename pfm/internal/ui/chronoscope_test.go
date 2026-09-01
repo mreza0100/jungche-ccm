@@ -357,14 +357,14 @@ func TestNavigatorSelectionCyclesAndReconciles(t *testing.T) {
 func TestNavigatorEnterOpensTheSelectedRow(t *testing.T) {
 	model := cosmosTestModel(120, true)
 	model.tab = TabCosmos
-	var rrKey, rrRowID string
+	var rrKey, rrRowKey string
 	for _, node := range model.viewGraph().Nodes {
-		if node.RowID != "" {
-			rrKey, rrRowID = node.Key, node.RowID
+		if node.RowKey != "" {
+			rrKey, rrRowKey = node.Key, node.RowKey
 		}
 	}
 	if rrKey == "" {
-		t.Fatal("setup: no node in the fixture graph carries a RowID")
+		t.Fatal("setup: no node in the fixture graph carries a RowKey")
 	}
 	model.cosmosSelected = rrKey
 
@@ -376,8 +376,8 @@ func TestNavigatorEnterOpensTheSelectedRow(t *testing.T) {
 		t.Fatalf("enter on a live node did not quit: cmd() = %#v", cmd())
 	}
 	result := opened.Result()
-	if result.Kind != OutcomeSelected || result.Row.ID != rrRowID {
-		t.Fatalf("Result() = %#v, want OutcomeSelected with Row.ID %q", result, rrRowID)
+	if result.Kind != OutcomeSelected || result.Row.ID != rrRowKey {
+		t.Fatalf("Result() = %#v, want OutcomeSelected with Row.ID %q", result, rrRowKey)
 	}
 
 	ghostModel := cosmosTestModel(120, true)
@@ -807,5 +807,458 @@ func specialOrPrintable(key string) tea.KeyPressMsg {
 		return printableKey(' ')
 	default:
 		return printableKey(rune(key[0]))
+	}
+}
+
+// TestNavigatorEnterOpensALiveSplitRowWithNoPaneID is F1's ui-side
+// regression: a live, running LiveSplit row (fixtureSnapshot's row 2 — a
+// real multi-pane tmux session, Socket set, ID always empty) must resolve
+// to a node whose RowKey joins back to that exact row, must open on enter,
+// and its HUD preview must never carry the ghost suffix.
+func TestNavigatorEnterOpensALiveSplitRowWithNoPaneID(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	rows := snapshot.Rows
+	splitRow := rows[2]
+	if splitRow.Kind != compose.LiveSplit || splitRow.ID != "" || splitRow.Socket == "" {
+		t.Fatalf("setup: fixture row 2 must be a LiveSplit row with a socket and no pane ID: %#v", splitRow)
+	}
+	touching := shared.CommsEvent{
+		AtNS: fixtureNowNS, Kind: shared.KindInject,
+		SenderUUID: rows[0].ID, Target: splitRow.Name, ReceiverSocket: splitRow.Socket,
+		Message: "hello split",
+	}
+	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{touching}, fixtureNowNS)
+	model := NewModel(snapshot)
+	model.tab = TabCosmos
+
+	splitNode, found := cosmosNodeByKey(model.cosmos, "chat:pane:"+splitRow.Socket+"\t")
+	if !found {
+		t.Fatalf("setup: the split row never resolved into a node: %#v", model.cosmos.Nodes)
+	}
+	wantRowKey := compose.RowKey(splitRow)
+	if splitNode.RowKey == "" || splitNode.RowKey != wantRowKey {
+		t.Fatalf("split node RowKey = %q, want the row's own join key %q — a live row must never carry an empty RowKey", splitNode.RowKey, wantRowKey)
+	}
+
+	model.cosmosSelected = splitNode.Key
+	opened, cmd := applyKey(t, model, specialKey(tea.KeyEnter))
+	if cmd == nil {
+		t.Fatal("enter on a live split row returned no command")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("enter on a live split row did not quit: cmd() = %#v", cmd())
+	}
+	result := opened.Result()
+	if result.Kind != OutcomeSelected || compose.RowKey(result.Row) != wantRowKey {
+		t.Fatalf("Result() = %#v, want OutcomeSelected with the split row (join key %q)", result, wantRowKey)
+	}
+
+	hud := model.cosmosSelectionHUD()
+	if strings.Contains(hud, "ghost") {
+		t.Fatalf("a live, running split row's HUD read as a ghost: %q", hud)
+	}
+}
+
+// TestCosmosSelectionHUDNamesAllFourLifecycleStates pins F2: the HUD's
+// switch keys the "not running" suffix off !node.Live (or node.Dead), never
+// node.Dead alone — a resolved, non-killed chat with no active socket (an
+// idle/resumable session) is neither a ghost nor Dead, and before the fix it
+// fell through both switch arms and rendered indistinguishably from a chat
+// actively running right now.
+func TestCosmosSelectionHUDNamesAllFourLifecycleStates(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	rows := snapshot.Rows
+	events := []shared.CommsEvent{
+		{AtNS: fixtureNowNS, Kind: shared.KindInject, SenderUUID: rows[0].ID, Target: rows[1].Name, ReceiverSocket: rows[1].Socket, Message: "live and running"},
+		{AtNS: fixtureNowNS, Kind: shared.KindInject, SenderUUID: rows[4].ID, Target: "resumable reply", Message: "from a resumable row"},
+	}
+	snapshot.Cosmos = compose.BuildCosmos(rows, events, fixtureNowNS)
+	model := NewModel(snapshot)
+	model.tab = TabCosmos
+	// The ghost and killed cases are appended by hand rather than routed
+	// through a fresh model's own applyCosmosGraph: a Dead node never
+	// witnessed alive is correctly DROPPED on first sight (see
+	// TestApplyCosmosGraphDropsAnUnwitnessedDeadNodeOnFirstSight) — a
+	// separate, already-covered rule this test is not re-proving. What this
+	// test pins is cosmosSelectionHUD's own switch, given the exact node
+	// shapes chatNode produces for each of the four lifecycle states.
+	if !rows[3].Killed {
+		t.Fatal("setup: fixture row 3 must be Killed for the killed-state case")
+	}
+	if rows[4].Socket != "" {
+		t.Fatal("setup: fixture row 4 (ResumeClaude) must carry no socket for the not-running case")
+	}
+	model.cosmos.Nodes = append(model.cosmos.Nodes,
+		compose.CosmosNode{Key: "chat:name:ghost", Label: resolve.Named("ghost")},
+		compose.CosmosNode{
+			Key: "chat:id:" + rows[3].ID, Label: resolve.Named(rows[3].Name),
+			RowKey: compose.RowKey(rows[3]), Killed: true, Dead: true, Live: rows[3].Socket != "",
+		},
+	)
+
+	tests := []struct {
+		name    string
+		key     string
+		want    string
+		exclude []string
+	}{
+		{"ghost", "chat:name:ghost", "· ghost", []string{"· killed", "· not running"}},
+		{"killed", "chat:id:" + rows[3].ID, "· killed", []string{"· ghost", "· not running"}},
+		{"not running: resolved, not killed, no live socket", "chat:id:" + rows[4].ID, "· not running", []string{"· ghost", "· killed"}},
+		{"live and running: no suffix at all", "chat:id:" + rows[1].ID, "", []string{"· ghost", "· killed", "· not running"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m := model
+			m.cosmosSelected = test.key
+			hud := m.cosmosSelectionHUD()
+			if hud == "" {
+				t.Fatalf("setup: no HUD rendered for key %q", test.key)
+			}
+			if test.want != "" && !strings.Contains(hud, test.want) {
+				t.Fatalf("cosmosSelectionHUD() = %q, want it to contain %q", hud, test.want)
+			}
+			for _, excluded := range test.exclude {
+				if strings.Contains(hud, excluded) {
+					t.Fatalf("cosmosSelectionHUD() = %q, must not contain %q", hud, excluded)
+				}
+			}
+		})
+	}
+}
+
+// TestNoSkyChronoscopeClockTracksTheRefreshSnapshot pins F3: under --no-sky
+// no animation tick ever runs, so model.cosmosNowNS must adopt the refresh
+// stream's own snapshot clock (adoptCosmosClock, wired from applyRefresh) or
+// the chronoscope's idea of "now" freezes at launch — a scrub then measures
+// its window against a stale mark and a replay can never reach real history
+// the sampler already holds.
+func TestNoSkyChronoscopeClockTracksTheRefreshSnapshot(t *testing.T) {
+	model := cosmosGoldenModel(80) // NoSky: skyEnabled is false, no tick ever fires
+	if model.skyEnabled {
+		t.Fatal("setup: cosmosGoldenModel is expected to be --no-sky")
+	}
+	model.cosmosEvents = cosmosGoldenEvents(model.cosmosNowNS, model.rows)
+	model.rebuildCosmosTimeline()
+	launchNowNS := model.cosmosNowNS
+
+	refreshAt := func(nowNS int64) Snapshot {
+		snapshot := cosmosGoldenSnapshot(80, true)
+		snapshot.NowNS = nowNS
+		snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, cosmosGoldenEvents(nowNS, snapshot.Rows), nowNS)
+		return snapshot
+	}
+
+	t.Run("a live refresh advances both now and the live playhead", func(t *testing.T) {
+		newNowNS := launchNowNS + int64(20*time.Minute)
+		updated, _ := model.Update(RefreshMsg{Snapshot: refreshAt(newNowNS)})
+		refreshed := updated.(Model)
+		if refreshed.cosmosNowNS != newNowNS {
+			t.Fatalf("cosmosNowNS = %d, want the fresher snapshot clock %d", refreshed.cosmosNowNS, newNowNS)
+		}
+		if refreshed.cosmosViewNS != newNowNS {
+			t.Fatalf("cosmosViewNS = %d, want it to follow the live clock to %d", refreshed.cosmosViewNS, newNowNS)
+		}
+
+		scrubbed, _ := applyKey(t, refreshed, printableKey('['))
+		want := newNowNS - int64(cosmosScrubFine)
+		if scrubbed.cosmosViewNS != want {
+			t.Fatalf("cosmosViewNS after [ = %d, want %d (5m back from the FRESH now, not the launch-time now)", scrubbed.cosmosViewNS, want)
+		}
+	})
+
+	t.Run("an older snapshot clock never rewinds it", func(t *testing.T) {
+		advanced := launchNowNS + int64(20*time.Minute)
+		updated, _ := model.Update(RefreshMsg{Snapshot: refreshAt(advanced)})
+		refreshed := updated.(Model)
+
+		older := advanced - int64(5*time.Minute)
+		rewound, _ := refreshed.Update(RefreshMsg{Snapshot: refreshAt(older)})
+		result := rewound.(Model)
+		if result.cosmosNowNS != advanced {
+			t.Fatalf("cosmosNowNS = %d, an OLDER snapshot clock (%d) rewound it from %d", result.cosmosNowNS, older, advanced)
+		}
+	})
+
+	t.Run("while replaying, a refresh advances now but leaves the playhead alone", func(t *testing.T) {
+		replaying, _ := applyKey(t, model, printableKey('['))
+		if replaying.cosmosPast == nil {
+			t.Fatal("setup: [ did not enter replay")
+		}
+		viewBefore := replaying.cosmosViewNS
+
+		newNowNS := launchNowNS + int64(20*time.Minute)
+		updated, _ := replaying.Update(RefreshMsg{Snapshot: refreshAt(newNowNS)})
+		refreshed := updated.(Model)
+		if refreshed.cosmosNowNS != newNowNS {
+			t.Fatalf("cosmosNowNS = %d, want the fresher snapshot clock %d even while replaying", refreshed.cosmosNowNS, newNowNS)
+		}
+		if refreshed.cosmosViewNS != viewBefore {
+			t.Fatalf("cosmosViewNS = %d, a refresh mid-replay must leave the playhead exactly where it was (%d)", refreshed.cosmosViewNS, viewBefore)
+		}
+	})
+}
+
+// TestRenderCompactCosmosFocusFiltersEdgesToTheSystem pins F4: the compact
+// fallback (used whenever width < 20 || height < 8) must narrow through the
+// same focus-filtered node set the full-size panel and subheader already
+// use — before the fix it read graph.Edges unfiltered, so a focused system's
+// compact panel could list a conversation belonging entirely to another
+// system.
+func TestRenderCompactCosmosFocusFiltersEdgesToTheSystem(t *testing.T) {
+	model := cosmosTestModel(19, true)
+	model.cosmos = compose.CosmosGraph{
+		Nodes: []compose.CosmosNode{
+			{Key: "chat:name:Aone", Label: resolve.Named("Aone"), Home: "alpha"},
+			{Key: "chat:name:Atwo", Label: resolve.Named("Atwo"), Home: "alpha"},
+			{Key: "chat:name:Bone", Label: resolve.Named("Bone"), Home: "beta"},
+			{Key: "chat:name:Btwo", Label: resolve.Named("Btwo"), Home: "beta"},
+		},
+		Edges: []compose.CosmosEdge{
+			{From: "chat:name:Aone", To: "chat:name:Atwo", Kind: shared.KindInject, Count: 1, LastNS: fixtureNowNS, LastMessage: "alpha chatter"},
+			{From: "chat:name:Bone", To: "chat:name:Btwo", Kind: shared.KindInject, Count: 1, LastNS: fixtureNowNS, LastMessage: "beta chatter"},
+		},
+	}
+	model.cosmosFocus = "alpha"
+
+	panel := ansi.Strip(model.renderCosmosPanel(19, 7))
+	if !strings.Contains(panel, "Aone") || !strings.Contains(panel, "Atwo") {
+		t.Fatalf("compact panel dropped the focused system's own edge:\n%s", panel)
+	}
+	if strings.Contains(panel, "Bone") || strings.Contains(panel, "Btwo") {
+		t.Fatalf("compact panel listed an edge entirely inside another system while focused on alpha:\n%s", panel)
+	}
+}
+
+// TestNavigatorSpotlightDimsTheCometBurstAndShockwaveRing extends U9
+// (TestNavigatorSpotlightDimsEveryOtherEdge, which deliberately runs
+// --no-sky to isolate the plain rail) into the two sky-only draw passes that
+// rail-only test cannot reach: F5's fix routes the comet's head-burst dots
+// and the arrival/departure shockwave ring through the SAME spotlight()
+// closure the rail and ambient-wind passes already used, so an edge the
+// reticle does not touch dims there too, not just on its rail.
+func TestNavigatorSpotlightDimsTheCometBurstAndShockwaveRing(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	snapshot.NoSky = false // sky ON: the burst and shockwave passes are sky-only
+	rows := snapshot.Rows
+	givesSelectionItsOwnNode := shared.CommsEvent{
+		AtNS: fixtureNowNS - int64(10*time.Minute), Kind: shared.KindInject,
+		SenderUUID: rows[0].ID, Target: rows[1].Name, ReceiverSocket: rows[1].Socket,
+		Message: "old, not mid-comet, gives the selection its own node",
+	}
+	unrelated := shared.CommsEvent{
+		AtNS: fixtureNowNS - int64(300*time.Millisecond), Kind: shared.KindInject,
+		SenderUUID: rows[4].ID, Target: rows[5].Name,
+		Message: "mid-comet, does not touch the selection",
+	}
+	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{givesSelectionItsOwnNode, unrelated}, fixtureNowNS)
+	model := NewModel(snapshot)
+	model.tab = TabCosmos
+	selectedKey := "chat:id:" + rows[0].ID
+
+	graph := model.cosmos
+	nodes := cosmosNodeMap(graph.Nodes)
+	now := time.Unix(0, model.cosmosNowNS)
+	frame := cosmosLayout(NewCanvas(114, 22), model.cosmosSeats, nodes, graph.Edges, now, true, false, "")
+
+	var edge compose.CosmosEdge
+	found := false
+	for _, candidate := range graph.Edges {
+		if candidate.From == selectedKey || candidate.To == selectedKey {
+			continue
+		}
+		edge = candidate
+		found = true
+	}
+	if !found {
+		t.Fatalf("setup: expected an edge that does not touch the selection: %#v", graph.Edges)
+	}
+
+	sumLuma := func(canvas *Canvas, colCenter, rowCenter, radius int) float64 {
+		total := 0.0
+		for dy := -radius; dy <= radius; dy++ {
+			for dx := -radius; dx <= radius; dx++ {
+				x, y := colCenter+dx, rowCenter+dy
+				if x < 0 || y < 0 || x >= canvas.Cols || y >= canvas.Rows {
+					continue
+				}
+				total += canvas.dotLuma[y*canvas.Cols+x]
+			}
+		}
+		return total
+	}
+
+	baseline := NewCanvas(114, 22)
+	model.drawCosmosUniverse(baseline, graph, now, now)
+	selected := model
+	selected.cosmosSelected = selectedKey
+	spotlighted := NewCanvas(114, 22)
+	selected.drawCosmosUniverse(spotlighted, graph, now, now)
+
+	t.Run("comet head burst", func(t *testing.T) {
+		duration := cosmosCometDuration(edge.Kind)
+		age := now.Sub(time.Unix(0, edge.LastNS))
+		tt := ease(float64(age) / float64(duration))
+		fp, tp := frame.points[edge.From], frame.points[edge.To]
+		x0, y0, cpx, cpy, x1, y1 := cosmosEdgeRail(fp, tp, frame.cx, frame.cy)
+		hx, hy := BezierPoint(x0, y0, cpx, cpy, x1, y1, tt)
+		col, row := int(hx)/2, int(hy)/4
+
+		baseSum := sumLuma(baseline, col, row, 1)
+		spotSum := sumLuma(spotlighted, col, row, 1)
+		if baseSum <= 0 {
+			t.Fatalf("setup: no light landed near the comet head at col=%d row=%d: baseline sum=%v", col, row, baseSum)
+		}
+		if spotSum >= baseSum {
+			t.Fatalf("comet head burst was not dimmed by the spotlight: baseline=%v spotlighted=%v", baseSum, spotSum)
+		}
+	})
+
+	t.Run("arrival shockwave ring", func(t *testing.T) {
+		point, ok := frame.points[edge.To]
+		if !ok {
+			t.Fatal("setup: no seated point for the comet's receiver")
+		}
+		col, row := int(point.x)/2, int(point.y)/4
+
+		baseSum := sumLuma(baseline, col, row, 3)
+		spotSum := sumLuma(spotlighted, col, row, 3)
+		if baseSum <= 0 {
+			t.Fatalf("setup: no light landed near the shockwave ring at col=%d row=%d: baseline sum=%v", col, row, baseSum)
+		}
+		if spotSum >= baseSum {
+			t.Fatalf("the arrival shockwave ring was not dimmed by the spotlight: baseline=%v spotlighted=%v", baseSum, spotSum)
+		}
+	})
+}
+
+// TestRenderCompactCosmosEmptyStatesAndHeightBound pins F6: the compact
+// fallback shares cosmosEmptyState with the full panel, so a replay before
+// the first event names the MOMENT ("recorded before HH:MM:SS"), never the
+// "recorded yet" wording reserved for a ledger that has truly never talked;
+// a focused-but-empty system names itself too; and the panel it returns
+// never exceeds the requested innerHeight, however many edges compete for
+// the space.
+func TestRenderCompactCosmosEmptyStatesAndHeightBound(t *testing.T) {
+	t.Run("replay before the first event names the moment, not \"yet\"", func(t *testing.T) {
+		model := cosmosGoldenModel(80)
+		model.cosmosEvents = []shared.CommsEvent{}
+		model.rebuildCosmosTimeline()
+		pressed, _ := applyKey(t, model, printableKey('['))
+		// width 80 keeps the message unabbreviated; height 7 (<8) is what
+		// forces the compact fallback rather than the full-size panel.
+		text := ansi.Strip(pressed.renderCosmosPanel(80, 7))
+		at := time.Unix(0, pressed.cosmosViewNS).Format("15:04:05")
+		if !strings.Contains(text, "no chat traffic recorded before "+at) {
+			t.Fatalf("compact panel = %q, want it to name the moment %q", text, at)
+		}
+		if strings.Contains(text, "recorded yet") {
+			t.Fatal("compact replay read as the never-sampled-ledger message")
+		}
+	})
+
+	t.Run("a focused system with no chats at this moment names itself", func(t *testing.T) {
+		model := cosmosTestModel(19, true)
+		model.cosmos.Nodes = []compose.CosmosNode{
+			{Key: "chat:name:Bone", Label: resolve.Named("Bone"), Home: "beta"},
+		}
+		model.cosmos.Edges = nil
+		model.cosmosFocus = "alpha" // no node lives here; beta does
+		text := ansi.Strip(model.renderCosmosPanel(80, 7))
+		if !strings.Contains(text, "⌖ alpha has no chats at this moment") {
+			t.Fatalf("compact panel = %q, want the focused-empty message", text)
+		}
+	})
+
+	t.Run("never exceeds innerHeight lines", func(t *testing.T) {
+		model := cosmosTestModel(19, true)
+		nodes := make([]compose.CosmosNode, 0, 20)
+		edges := make([]compose.CosmosEdge, 0, 10)
+		for i := 0; i < 10; i++ {
+			suffix := string(rune('a' + i))
+			from, to := "chat:name:from-"+suffix, "chat:name:to-"+suffix
+			nodes = append(nodes,
+				compose.CosmosNode{Key: from, Label: resolve.Named("from-" + suffix), Home: "alpha"},
+				compose.CosmosNode{Key: to, Label: resolve.Named("to-" + suffix), Home: "alpha"},
+			)
+			edges = append(edges, compose.CosmosEdge{
+				From: from, To: to, Kind: shared.KindInject, Count: 1,
+				LastNS: fixtureNowNS - int64(i)*int64(time.Second), LastMessage: "message",
+			})
+		}
+		model.cosmos = compose.CosmosGraph{Nodes: nodes, Edges: edges}
+		text := model.renderCosmosPanel(19, 7) // innerHeight = 5
+		lines := strings.Split(text, "\n")
+		if len(lines) != 7 { // top border + 5 body lines + bottom border
+			t.Fatalf("panel produced %d lines for a height-7 request, want exactly 7 (frame + innerHeight): %#v", len(lines), lines)
+		}
+	})
+}
+
+// TestCosmosMoonOfMoonSeedsFromParentRegardlessOfNodeOrder pins F7: a
+// same-home nested spawn chain (A -> B -> C, B a moon of A, C a moon of B)
+// must seat C at B's own chain position even when graph.Nodes lists C
+// BEFORE B — mergeCosmosSeats resolves moons in parent-depth order, not
+// node order, so a parent's freshly written seat always exists before its
+// child's is read.
+func TestCosmosMoonOfMoonSeedsFromParentRegardlessOfNodeOrder(t *testing.T) {
+	model := cosmosTestModel(120, true)
+	parent := "chat:id:11111111-1111-4111-8111-111111111111"
+	parentHome := ""
+	for _, node := range model.cosmos.Nodes {
+		if node.Key == parent {
+			parentHome = node.Home
+		}
+	}
+	moonB := compose.CosmosNode{Key: "chat:name:moon-b", Label: resolve.Named("moon-b"), Home: parentHome}
+	moonC := compose.CosmosNode{Key: "chat:name:moon-c", Label: resolve.Named("moon-c"), Home: parentHome}
+	// C listed BEFORE B on purpose: mergeCosmosSeats must not depend on
+	// graph.Nodes' own order to find a parent's freshly written seat.
+	model.cosmos.Nodes = append(model.cosmos.Nodes, moonC, moonB)
+	model.cosmos.Edges = append(model.cosmos.Edges,
+		compose.CosmosEdge{From: parent, To: moonB.Key, Kind: shared.KindSpawn, LastNS: fixtureNowNS},
+		compose.CosmosEdge{From: moonB.Key, To: moonC.Key, Kind: shared.KindSpawn, LastNS: fixtureNowNS},
+	)
+	model.mergeCosmosSeats()
+
+	seatB, seatC := model.cosmosSeats[moonB.Key], model.cosmosSeats[moonC.Key]
+	if seatB == nil || seatC == nil {
+		t.Fatalf("setup: expected seats for both moons: B=%#v C=%#v", seatB, seatC)
+	}
+	if seatC.Target != seatB.Target || seatC.RingTarget != seatB.RingTarget {
+		t.Fatalf("moon-of-moon seat = {Target:%v RingTarget:%v}, want its parent B's own seat {Target:%v RingTarget:%v}",
+			seatC.Target, seatC.RingTarget, seatB.Target, seatB.RingTarget)
+	}
+}
+
+// TestCosmosStarTemperatureCoolsFromLastMessageNotJustTrafficCount is the
+// spectral-cooling unit table for cosmosStarTemperature, pinned as its own
+// boundary test rather than trusted to indirect golden coverage: zero
+// traffic and no last message is stone cold, traffic at the hot ceiling is
+// full white-hot, a star with zero current traffic that JUST talked still
+// holds the ember floor, that ember decays by 1/e after one cosmosCooling
+// interval, and a view point measured BEFORE the star's own last message
+// never shows a future ember.
+func TestCosmosStarTemperatureCoolsFromLastMessageNotJustTrafficCount(t *testing.T) {
+	const now = int64(10 * time.Hour)
+	tests := []struct {
+		name   string
+		star   compose.CosmosStar
+		viewNS int64
+		want   float64
+	}{
+		{"no traffic, no last message: stone cold", compose.CosmosStar{}, now, 0},
+		{"traffic at the hot ceiling: full white-hot", compose.CosmosStar{TrafficHour: cosmosHotTraffic}, now, 1},
+		{"idle but just talked: the ember floor", compose.CosmosStar{TrafficHour: 0, LastNS: now}, now, cosmosEmber},
+		{"idle for one cooling interval: ember decayed by 1/e", compose.CosmosStar{TrafficHour: 0, LastNS: now - int64(cosmosCooling)}, now, cosmosEmber / math.E},
+		{"viewed before the star ever spoke: traffic only, no future ember", compose.CosmosStar{TrafficHour: 0, LastNS: now + int64(time.Hour)}, now, 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := cosmosStarTemperature(test.star, test.viewNS)
+			if math.Abs(got-test.want) > 0.0001 {
+				t.Fatalf("cosmosStarTemperature(%#v, %d) = %v, want %v", test.star, test.viewNS, got, test.want)
+			}
+		})
 	}
 }

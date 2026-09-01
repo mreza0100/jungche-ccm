@@ -405,7 +405,19 @@ func (model *Model) mergeCosmosSeats() {
 		// A moon's seat is only the fallback for the day its parent vanishes:
 		// while the parent renders, cosmosLayout overrides the moon's position
 		// with the parent-anchored orbit, and the ring target parked here is
-		// where the orphan eases once the parent is gone.
+		// where the orphan eases once the parent is gone. Parents seat before
+		// their moons — a moon of a moon reads its parent's seat, which must
+		// already exist, whatever order the graph listed them in.
+		depth := func(key string) int {
+			count := 0
+			for parent := parents[key]; parent != "" && count <= 8; parent = parents[parent] {
+				count++
+			}
+			return count
+		}
+		sort.SliceStable(moons, func(left, right int) bool {
+			return depth(moons[left].Key) < depth(moons[right].Key)
+		})
 		for _, node := range moons {
 			target, ring := 0.0, 1.0
 			if parent := next[parents[node.Key]]; parent != nil {
@@ -511,27 +523,16 @@ func (model Model) renderCosmosPanel(width, height int) string {
 	if len(visible) != 0 {
 		model.drawCosmosUniverse(canvas, graph, now, view)
 	}
-	switch {
-	case model.cosmos.Err != "":
+	if model.cosmos.Err != "" {
 		// Ledger health is a fact about NOW, so the banner rides over a
 		// replayed past as well: the record the past was cut from is the
 		// same unreachable ledger.
 		canvas.DimAll(0.30)
 		model.drawCosmosBanner(canvas)
-	case len(graph.Nodes) == 0 && model.cosmosPast != nil:
-		at := view.Format("15:04:05")
-		centerCosmosText(canvas, canvas.Rows/2-1, "no chat traffic recorded before "+at, cosmosDimColor(), false)
-		centerCosmosText(canvas, canvas.Rows/2+1, "] steps forward · space plays · n returns to now", scaleRGB(cosmosDimColor(), 0.7), false)
-	case len(graph.Nodes) == 0:
-		centerCosmosText(canvas, canvas.Rows/2-1, "no chat traffic recorded yet — the ledger fills as chats talk", cosmosDimColor(), false)
-		centerCosmosText(canvas, canvas.Rows/2+1, "cosmos maps conversation · pfm ls maps existence", scaleRGB(cosmosDimColor(), 0.7), false)
-	case len(visible) == 0:
-		// The focused star has no chats at this moment — a replay before its
-		// first spawn, or a system whose every chat has since been dropped.
-		// Distinct from an empty sky: the galaxy is not empty, this system is.
-		centerCosmosText(canvas, canvas.Rows/2-1, "⌖ "+cosmosHomeLabel(model.cosmosFocus)+" has no chats at this moment", cosmosDimColor(), false)
-		centerCosmosText(canvas, canvas.Rows/2+1, "s cycles systems · n returns to now", scaleRGB(cosmosDimColor(), 0.7), false)
-	default:
+	} else if primary, secondary, empty := model.cosmosEmptyState(graph, len(visible)); empty {
+		centerCosmosText(canvas, canvas.Rows/2-1, primary, cosmosDimColor(), false)
+		centerCosmosText(canvas, canvas.Rows/2+1, secondary, scaleRGB(cosmosDimColor(), 0.7), false)
+	} else {
 		drawCosmosTicker(canvas, graph)
 	}
 	if len(graph.Warnings) > 0 {
@@ -560,9 +561,39 @@ func drawCosmosLegend(canvas *Canvas, classic bool) {
 	canvas.Text(canvas.Cols-1-width, 0, legend, scaleRGB(cosmosDimColor(), 0.8), false)
 }
 
+// cosmosEmptyState names why the sky has no bodies to draw, in words that
+// never read alike — nothing recorded yet, nothing recorded by the replayed
+// moment, or the focused system empty at this moment while the galaxy is
+// not. A ledger the picker could not READ is not an empty state and is not
+// answered here: that is the banner's job. empty is false when there is
+// something to draw.
+func (model Model) cosmosEmptyState(graph compose.CosmosGraph, visible int) (primary, secondary string, empty bool) {
+	switch {
+	case len(graph.Nodes) == 0 && model.cosmosPast != nil:
+		at := time.Unix(0, model.cosmosViewNS).Format("15:04:05")
+		return "no chat traffic recorded before " + at, "] steps forward · space plays · n returns to now", true
+	case len(graph.Nodes) == 0:
+		return "no chat traffic recorded yet — the ledger fills as chats talk", "cosmos maps conversation · pfm ls maps existence", true
+	case visible == 0:
+		// A replay before the focused star's first spawn, or a system whose
+		// every chat has since been dropped: this system is empty, the
+		// galaxy is not.
+		return "⌖ " + cosmosHomeLabel(model.cosmosFocus) + " has no chats at this moment", "s cycles systems · n returns to now", true
+	}
+	return "", "", false
+}
+
+// renderCompactCosmos is the sky for a pane too small to draw one: the mode
+// chip, then the newest exchanges as text — cut to the focused system's
+// conversations exactly as the full panel and the subheader above it are,
+// and naming each empty state in the same words the full panel uses.
 func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) string {
 	graph := model.viewGraph()
+	visible := cosmosNodeMap(model.cosmosVisibleNodes())
 	lines := make([]string, 0, innerHeight)
+	dim := func(text string) string {
+		return dimStyle.Render(fillLine(ansiTruncateRunes(text, innerWidth), innerWidth))
+	}
 	if chip := model.cosmosModeChip(); chip != "" {
 		lines = append(lines, warnStyle.Render(fillLine(ansiTruncateRunes(chip, innerWidth), innerWidth)))
 	}
@@ -570,16 +601,24 @@ func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) strin
 		lines = append(lines, warnStyle.Render(fillLine(
 			ansiTruncateRunes("⚠ comms ledger unreachable: "+model.cosmos.Err, innerWidth), innerWidth,
 		)))
-	} else if len(graph.Nodes) == 0 {
-		lines = append(lines, dimStyle.Render(fillLine(
-			ansiTruncateRunes("no chat traffic recorded yet — the ledger fills as chats talk", innerWidth), innerWidth,
-		)))
+	} else if primary, secondary, empty := model.cosmosEmptyState(graph, len(visible)); empty {
+		lines = append(lines, dim(primary))
+		if len(lines) < innerHeight {
+			lines = append(lines, dim(secondary))
+		}
 	} else {
 		nodes := cosmosNodeMap(graph.Nodes)
-		for index, edge := range graph.Edges {
-			if index >= 3 || len(lines) >= innerHeight {
+		listed := 0
+		for _, edge := range graph.Edges {
+			if listed >= 3 || len(lines) >= innerHeight {
 				break
 			}
+			_, fromIn := visible[edge.From]
+			_, toIn := visible[edge.To]
+			if !fromIn && !toIn {
+				continue // neither end in the focused system: not this system's conversation
+			}
+			listed++
 			from, to := nodes[edge.From], nodes[edge.To]
 			labelWidth := maxInt(1, (innerWidth-3)/2)
 			identity := truncateRunes(from.Label.String(), labelWidth) + " → " + truncateRunes(to.Label.String(), labelWidth)
@@ -833,7 +872,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, graph compose.CosmosGraph,
 				}
 				px, py := BezierPoint(x0, y0, cpx, cpy, x1, y1, tt)
 				strength := 1 - float64(tail)/tailSegments
-				color := scaleRGB(lerpRGB(base, white, 0.85*strength), 0.55+0.45*strength)
+				color := scaleRGB(lerpRGB(base, white, 0.85*strength), spotlight(edge, 0.55+0.45*strength))
 				canvas.Dot(int(px), int(py), color)
 				if tail == 0 {
 					// The head is a burst, not a dim streak segment: a
@@ -841,7 +880,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, graph compose.CosmosGraph,
 					// because braille sub-cells are half as wide as they
 					// are tall, so the x offset carries the same 1.6
 					// correction the shockwave rings below use.
-					canvas.Dot(int(px), int(py), white)
+					canvas.Dot(int(px), int(py), scaleRGB(white, spotlight(edge, 1)))
 					const burstDots = 10
 					const burstRadius = 1.6
 					for index := 0; index < burstDots; index++ {
@@ -875,7 +914,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, graph compose.CosmosGraph,
 			}
 			progress := age / duration
 			radius := startRadius + progress*(endRadius-startRadius)
-			color := scaleRGB(lerpRGB(cosmosNodeColor(nodes[edge.To]), white, blend), 1-progress)
+			color := scaleRGB(lerpRGB(cosmosNodeColor(nodes[edge.To]), white, blend), spotlight(edge, 1-progress))
 			for index := 0; index < dotCount; index++ {
 				angle := 2 * math.Pi * float64(index) / float64(dotCount)
 				canvas.Dot(int(point.x+radius*math.Cos(angle)*1.6), int(point.y+radius*math.Sin(angle)), color)
@@ -931,7 +970,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, graph compose.CosmosGraph,
 	}
 	for _, home := range starOrder {
 		point := starPoints[home]
-		color := drawCosmosSun(canvas, point, home, population[home], graph.Stars[home].TrafficHour, clock, model.skyEnabled)
+		color := drawCosmosSun(canvas, point, home, population[home], cosmosStarTemperature(graph.Stars[home], view.UnixNano()), clock, model.skyEnabled)
 		colX, colY := int(point.x)/2, int(point.y)/4
 		canvas.SetCell(colX, colY, '✹', color, true)
 		label := truncateRunes(cosmosHomeLabel(home), maxInt(0, canvas.Cols-2))
@@ -1078,22 +1117,44 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, graph compose.CosmosGraph,
 // blue-white end of its spectrum; anything above is simply as hot.
 const cosmosHotTraffic = 30
 
+// cosmosCooling is how long a star's ember takes to fade by e after its
+// last message, and cosmosEmber how bright that ember starts: a star does
+// not drop cold the second its hour of traffic slides out of the window —
+// it cools the way a star should, over hours.
+const (
+	cosmosCooling = 3 * time.Hour
+	cosmosEmber   = 0.35
+)
+
+// cosmosStarTemperature is a star's place on the spectrum in [0, 1]: the
+// hour's traffic sets the heat; a slower ember, decaying from the last
+// message the star saw, keeps a recently busy system warmer than one that
+// has been silent for a day. Measured at viewNS, so a replayed past shows
+// the heat it had then.
+func cosmosStarTemperature(star compose.CosmosStar, viewNS int64) float64 {
+	heat := math.Min(1, float64(star.TrafficHour)/cosmosHotTraffic)
+	if star.LastNS > 0 && viewNS >= star.LastNS {
+		ember := cosmosEmber * math.Exp(-float64(viewNS-star.LastNS)/float64(cosmosCooling))
+		heat = math.Max(heat, ember)
+	}
+	return heat
+}
+
 // drawCosmosSun paints one project star and returns the colour its glyph
 // should wear. Two facts drive it, kept apart on purpose. Radiance is the
 // POPULATION — the count of chats living under this star: a lone chat gets
 // a modest ember; a crowded project burns with a wider corona, diffraction
 // spikes from three planets up, and periodic solar flares from five. Colour
-// is the TRAFFIC — the hour's messages through the system, the spectral
-// class in one lerp: a sleeping project stays a warm dwarf, a busy one goes
-// blue-white the way a hotter star does. Every element derives from (clock,
-// home, population, traffic) alone, so a pinned test clock renders the same
-// sun.
-func drawCosmosSun(canvas *Canvas, point cosmosPoint, home string, population, traffic int, clock float64, sky bool) RGB {
+// is the TEMPERATURE — cosmosStarTemperature's reading of the system's
+// traffic, the spectral class in one lerp: a sleeping project stays a warm
+// dwarf, a busy one goes blue-white the way a hotter star does. Every
+// element derives from (clock, home, population, temperature) alone, so a
+// pinned test clock renders the same sun.
+func drawCosmosSun(canvas *Canvas, point cosmosPoint, home string, population int, temperature, clock float64, sky bool) RGB {
 	sunColor := rgbFromHex(configuredCosmosPalette.CosmosSun)
 	hot := rgbFromHex(configuredCosmosPalette.CosmosSunHot)
 	bright := rgbFromHex(configuredCosmosPalette.CosmosBright)
 	heat := math.Min(1, float64(population)/8)
-	temperature := math.Min(1, float64(traffic)/cosmosHotTraffic)
 	base := lerpRGB(lerpRGB(sunColor, hot, temperature), bright, 0.25*heat)
 	if !sky {
 		return scaleRGB(base, 0.75+0.25*heat)

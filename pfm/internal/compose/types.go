@@ -145,6 +145,21 @@ type Row struct {
 	SplitCount  int
 }
 
+// RowKey is a row's identity for the picker and the cosmos alike — the ONE
+// implementation (K3): the chat's ID when it has one, else its socket and
+// pane (a split live window has no ID of its own), else where it lives. A
+// second copy of this ladder is exactly how a live split row came to read
+// as a ghost in the sky.
+func RowKey(row Row) string {
+	if row.ID != "" {
+		return row.ID
+	}
+	if row.Socket != "" {
+		return row.Kind.String() + "\x00" + row.Socket + "\x00" + row.PaneID
+	}
+	return row.Kind.String() + "\x00" + row.CWD + "\x00" + row.Project
+}
+
 // Output contains the rows plus project metadata. Composition reads the kill
 // list; the store owns persistence and expiry of /clear prompt baselines.
 type Output struct {

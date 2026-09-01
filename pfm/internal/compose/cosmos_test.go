@@ -28,9 +28,9 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 		t.Fatalf("BuildCosmos() state = err %q warnings %v", graph.Err, graph.Warnings)
 	}
 	wantNodes := []CosmosNode{
-		{Key: "chat:id:alpha-id", Label: resolve.Named("Alpha"), Engine: "cc", RowID: "alpha-id", Live: true, LastNS: 20},
-		{Key: "chat:id:beta-id", Label: resolve.Named("Beta"), Engine: "cx", RowID: "beta-id", Live: true, LastNS: 40},
-		{Key: "chat:id:child-id", Label: resolve.Named("Child"), Engine: "cc", RowID: "child-id", Live: true, LastNS: 40},
+		{Key: "chat:id:alpha-id", Label: resolve.Named("Alpha"), Engine: "cc", RowKey: "alpha-id", Live: true, LastNS: 20},
+		{Key: "chat:id:beta-id", Label: resolve.Named("Beta"), Engine: "cx", RowKey: "beta-id", Live: true, LastNS: 40},
+		{Key: "chat:id:child-id", Label: resolve.Named("Child"), Engine: "cc", RowKey: "child-id", Live: true, LastNS: 40},
 	}
 	if !reflect.DeepEqual(graph.Nodes, wantNodes) {
 		t.Fatalf("nodes = %#v, want %#v", graph.Nodes, wantNodes)
@@ -522,13 +522,13 @@ func TestBuildCosmosStarsCountTrafficOncePerHomeInsideTheHour(t *testing.T) {
 	}
 }
 
-// TestBuildCosmosNodeCarriesRowIDOnlyWhenFound pins compose.CosmosNode.RowID,
+// TestBuildCosmosNodeCarriesRowKeyOnlyWhenFound pins compose.CosmosNode.RowKey,
 // the navigator's join key back to the fleet: a resolved node carries the
 // matched row's own ID, and a ghost the directory could not resolve carries
-// none — RowID is never fabricated from anything else an event happened to
+// none — RowKey is never fabricated from anything else an event happened to
 // record (a session name, a label), or `enter` would open the wrong chat, or
 // crash trying to find a row that does not exist.
-func TestBuildCosmosNodeCarriesRowIDOnlyWhenFound(t *testing.T) {
+func TestBuildCosmosNodeCarriesRowKeyOnlyWhenFound(t *testing.T) {
 	rows := []Row{{Kind: LiveClaude, ID: "row-1", Name: "Alpha", Socket: "cc-alpha", PaneID: "%1"}}
 	events := []shared.CommsEvent{{
 		AtNS: 10, Kind: shared.KindInject,
@@ -540,15 +540,109 @@ func TestBuildCosmosNodeCarriesRowIDOnlyWhenFound(t *testing.T) {
 	if !found {
 		t.Fatalf("resolved sender missing: %#v", graph.Nodes)
 	}
-	if resolved.RowID != "row-1" {
-		t.Fatalf("resolved node RowID = %q, want the matched row's own ID %q", resolved.RowID, "row-1")
+	if resolved.RowKey != "row-1" {
+		t.Fatalf("resolved node RowKey = %q, want the matched row's own ID %q", resolved.RowKey, "row-1")
 	}
 
 	ghost, found := nodeWithKey(graph, "chat:name:ghost-name")
 	if !found {
 		t.Fatalf("unresolved receiver missing: %#v", graph.Nodes)
 	}
-	if ghost.RowID != "" {
-		t.Fatalf("ghost node RowID = %q, want empty — nothing in the fleet resolved it", ghost.RowID)
+	if ghost.RowKey != "" {
+		t.Fatalf("ghost node RowKey = %q, want empty — nothing in the fleet resolved it", ghost.RowKey)
+	}
+}
+
+// TestRowKeyIsTheOneJoinKeyIDThenSocketPaneThenCWDProject is the K3
+// table for compose.RowKey, now the ONE implementation the picker and the
+// cosmos both join through: an ID always wins, a row with none (a live
+// split window) falls back to its socket and pane, and a row with neither
+// falls back to where it lives.
+func TestRowKeyIsTheOneJoinKeyIDThenSocketPaneThenCWDProject(t *testing.T) {
+	tests := []struct {
+		name string
+		row  Row
+		want string
+	}{
+		{
+			name: "an ID always wins, whatever else the row carries",
+			row:  Row{Kind: LiveClaude, ID: "row-1", Socket: "cc-x", PaneID: "%1", CWD: "/work/x", Project: "x"},
+			want: "row-1",
+		},
+		{
+			name: "no ID: socket and pane, the split-row shape",
+			row:  Row{Kind: LiveSplit, Socket: "cc-split", PaneID: ""},
+			want: LiveSplit.String() + "\x00cc-split\x00",
+		},
+		{
+			name: "no ID, no socket: where it lives",
+			row:  Row{Kind: ResumeClaude, CWD: "/work/beta", Project: "beta"},
+			want: ResumeClaude.String() + "\x00/work/beta\x00beta",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := RowKey(test.row); got != test.want {
+				t.Fatalf("RowKey(%#v) = %q, want %q", test.row, got, test.want)
+			}
+		})
+	}
+}
+
+// TestBuildCosmosSplitRowResolvesToARowKeyNotAGhost pins F1's producer half
+// directly: a live split-pane row (Socket set, ID always empty — the exact
+// shape TestBuildCosmosSpawnResolvesASplitRowThatCarriesNoPaneID proves the
+// spawn resolver still finds) must never carry an empty RowKey. Before the
+// fix, chatNode read node.RowKey = answer.Chat.ID — and a split row's own ID
+// is always "" — so this resolved, LIVE node was indistinguishable from a
+// true ghost the instant the cosmos tab tried to open it.
+func TestBuildCosmosSplitRowResolvesToARowKeyNotAGhost(t *testing.T) {
+	const session = "cc-1787705979-3980493-30867"
+	rows := []Row{{Kind: LiveSplit, Name: "alpha+beta", Socket: session, SplitCount: 2}}
+	graph := BuildCosmos(rows, []shared.CommsEvent{{
+		AtNS: 10, Kind: shared.KindSpawn, SenderLabel: "Parent",
+		Target: "child-at-birth", ReceiverSocket: session, ReceiverPane: "", Message: "born",
+	}}, 100)
+
+	node, found := nodeWithKey(graph, "chat:pane:"+session+"\t")
+	if !found {
+		t.Fatalf("the split row was not resolved: %#v", graph.Nodes)
+	}
+	// The pre-fix formula, for comparison: exactly what chatNode used to
+	// assign — the row's own bare ID, which is always empty for a split row.
+	if preFixRowKey := rows[0].ID; node.RowKey == preFixRowKey {
+		t.Fatalf("node.RowKey = %q (the pre-fix formula's answer for every split row) — a live row is reading as a ghost again", node.RowKey)
+	}
+	if want := RowKey(rows[0]); node.RowKey != want {
+		t.Fatalf("node.RowKey = %q, want compose.RowKey(row) = %q — the ONE join key (K3)", node.RowKey, want)
+	}
+}
+
+// TestBuildCosmosUnsignedSpawnWarmsOnlyTheChildsHome closes a coverage gap
+// the review named but did not find broken (NOTES: "an unsigned-spawn's
+// traffic warming ... has no test pinning this specific path against
+// Stars"): a spawn event carrying NO sender identity at all (SenderSession,
+// SenderUUID, and SenderLabel all empty — builder.warm's own unsigned-event
+// warning case) still warms the CHILD's star exactly once, and never invents
+// a parent star to warm alongside it, since no parent node is ever resolved
+// for an unsigned spawn.
+func TestBuildCosmosUnsignedSpawnWarmsOnlyTheChildsHome(t *testing.T) {
+	rows := []Row{
+		{Kind: LiveClaude, ID: "child-id", Name: "Child", Socket: "cc-child", Project: "childhome"},
+	}
+	event := shared.CommsEvent{
+		AtNS: 10, Kind: shared.KindSpawn,
+		Target: "Child", ReceiverSocket: "cc-child", // no SenderSession/SenderUUID/SenderLabel
+	}
+	graph := BuildCosmos(rows, []shared.CommsEvent{event}, 100)
+
+	if len(graph.Warnings) != 1 || !strings.Contains(graph.Warnings[0], "no sender identity") {
+		t.Fatalf("unsigned spawn did not warn by name: %#v", graph.Warnings)
+	}
+	if got := graph.Stars["childhome"].TrafficHour; got != 1 {
+		t.Fatalf("childhome traffic = %d, want exactly 1", got)
+	}
+	if len(graph.Stars) != 1 {
+		t.Fatalf("Stars = %#v, want exactly ONE entry (the child's home) — an unsigned spawn resolves no parent to warm", graph.Stars)
 	}
 }

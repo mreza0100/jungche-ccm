@@ -500,7 +500,7 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 		result := selected.Result()
 		if command == nil ||
 			result.Kind != OutcomeSelected ||
-			rowKey(result.Row) != rowKey(row) ||
+			compose.RowKey(result.Row) != compose.RowKey(row) ||
 			result.PrimaryAccount != 3 ||
 			!result.Cache1H {
 			t.Fatalf("%s enter command=%v result=%#v", row.Kind, command, result)
@@ -512,7 +512,7 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 		if isLive(row.Kind) {
 			if rebootCommand == nil ||
 				reboot.Result().Kind != OutcomeReboot ||
-				rowKey(reboot.Result().Row) != rowKey(row) {
+				compose.RowKey(reboot.Result().Row) != compose.RowKey(row) {
 				t.Fatalf("%s reboot=%#v cmd=%v", row.Kind, reboot.Result(), rebootCommand)
 			}
 		} else if rebootCommand != nil || reboot.Result().Kind != OutcomeNone {
@@ -565,7 +565,7 @@ func TestBootingRowIgnoresKillAndRebootButSelectsOnEnter(t *testing.T) {
 	result := selected.Result()
 	if selectCommand == nil ||
 		result.Kind != OutcomeSelected ||
-		rowKey(result.Row) != rowKey(row) {
+		compose.RowKey(result.Row) != compose.RowKey(row) {
 		t.Fatalf("Enter on a booting row = command=%v result=%#v", selectCommand, result)
 	}
 }

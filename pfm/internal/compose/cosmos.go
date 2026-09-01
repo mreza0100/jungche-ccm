@@ -53,10 +53,11 @@ type CosmosNode struct {
 	// matching row: its home is genuinely unknown, and the renderer seats it
 	// under the shared unknown star rather than guessing.
 	Home string
-	// RowID is the fleet row this node resolved to — the join key the picker
-	// uses to open a chat from the sky (rowKey prefers ID). Empty for a
-	// ghost.
-	RowID  string
+	// RowKey is the fleet row this node resolved to — compose.RowKey of that
+	// row, the join the picker uses to open a chat from the sky. Never the
+	// bare ID: a live split window has none, and a running chat must never
+	// read as a ghost. Empty only for a ghost — an identity no row answers to.
+	RowKey string
 	Live   bool
 	Killed bool
 	LastNS int64
@@ -342,7 +343,7 @@ func (builder *cosmosBuilder) chatNode(query resolve.Address) CosmosNode {
 	if answer.Found {
 		node.Engine = string(EngineForKind(answer.Chat.Kind))
 		node.Home = answer.Chat.Project
-		node.RowID = answer.Chat.ID
+		node.RowKey = RowKey(answer.Chat)
 		node.Live = answer.Chat.Socket != ""
 		node.Killed = answer.Chat.Killed
 		node.Dead = answer.Chat.Killed
