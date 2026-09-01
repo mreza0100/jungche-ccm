@@ -146,10 +146,13 @@ tilde = "~" if est else ""
 
 # --- meltdown ladder: one milestone per 5%, driven by the TRUE pct ---
 # pfm's own urgencyEmoji() picks from ITS percentage; recompute here where the number is real.
-LADDER = ["🧊", "❄️", "💧", "🌊", "🌫️",
-          "🌤️", "☀️", "🌡️", "♨️", "⚡",
-          "🔆", "🕯️", "🔥", "🌶️", "🧯",
-          "☄️", "🌋", "⚠️", "☢️", "💀"]
+# Every rung is a single East-Asian-Width=W code point, never a narrow base + U+FE0F: tmux
+# widens a VS16 sequence to 2 cells while xterm.js (VS Code) keeps it at 1, so one such rung at
+# column 0 lands every partial repaint of this row — the cache timer, each tick — one cell off.
+LADDER = ["🧊", "⛄", "💧", "🌊", "🌁",
+          "⛅", "🔅", "🌞", "🥵", "⚡",
+          "🔆", "🎇", "🔥", "🧨", "🧯",
+          "🌠", "🌋", "🚨", "💣", "💀"]
 glyph = LADDER[min(len(LADDER) - 1, pct // 5)]
 
 new_gauge = f"\x1b[{color}m{bar}\x1b[0m \x1b[{color}m{tilde}{pct}%\x1b[0m"
