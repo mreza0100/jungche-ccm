@@ -1,5 +1,5 @@
 ---
-# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: wave:refine
 description: Wave refinement — walks the code and writes ONE zero-gap, feature-scoped wave spec (tasks inside-out) to docs/dev/trains/queue/{YYYY-MM-DD}-{slug}.md, asking the user only what the code cannot answer; partitioning belongs to the scheduler agent, which also invokes merge mode (two+ specs in, one out, non-interactive). Subcommand `poc <goal>` refines AND builds it under .professor/RND/POC/{name}/. Triggers: "refine", "refine this", "/wave:refine", "refine tasks", "refine poc".
 argument-hint: [tasks | poc <goal>]
@@ -35,16 +35,16 @@ A task needing prototype evidence before it can be specified runs `refine poc` o
 
 Settle every technical branch before writing: transport, data placement, mechanism, failure modes, migration. Every mechanism decision first names the incumbent pattern it follows; deviating carries a one-line justification. A branch with 2+ defensible options and materially different consequences goes to the user; everything else you settle. Per task, decide and write:
 
-- **Routing** — the exact roster project set the task touches + the conditional build agents (`db-admin-{project}` on data-model change, `ui-ux-{project}` on visual work).
+- **Routing** — the exact roster project set the task touches + the conditional build agents (`{project}-db-admin` on data-model change, `{project}-ui-ux` on visual work).
 - **Data model** — every table, column with exact type, index, enum, constraint.
 - **Contracts** — exact API schema, resolver/handler signatures, queue message schemas, realtime event payloads.
-- **File plan** — every file to create/edit with the functions/exports it gains and their signatures. DELETE only for grep-verified single-purpose files; otherwise `EDIT (strip X by def-boundaries)`. A dropped column/enum/table names its full coupling including raw-SQL string references; a removed config field names its env-var scrub set. A removal spanning >10 files or >3 layers is declared a fan-out candidate.
+- **File plan** — every file to create/edit with the functions/exports it gains and their signatures. DELETE only for grep-verified single-purpose files; otherwise `EDIT (strip X by def-boundaries)`. A dropped or reshaped column/enum/table names its full coupling including raw-SQL string references; a removed config field names its env-var scrub set. A removal spanning >10 files or >3 layers is declared a fan-out candidate.
 - **Behavior** — success/failure/edge paths, UX, copy, scope. Every new check names what it reports when the check itself is broken.
 - **Sensitive-data channels** — every place the task moves protected domain content. Content reaches the access-controlled DB and nowhere else; a clause routing it to a log, metric label, error string, or telemetry payload surfaces at the R4 gate as its own plain-words line or does not ship. Escalations carry the pointer, never the text.
 
 ### Spec format
 
-Header: `# Wave: {slug}` · `**Status:** QUEUED` · `**Refined:** {YYYY-MM-DD} · main @ {short-sha}` (the HEAD walked in R1 — the scheduler agent's staleness anchor) · `**Epic:** {name | none}` · `**Touches:** {project set}` · `**Scope:**` · `**Deferred:**`. Then `## Task Reconciliation` (Original | Disposition | New # | Notes — every original task traces to REFINED / MERGED INTO #N / DEFERRED / DROPPED). Then tasks in inside-out order, `### Task #{N} — {title}` separated by `---`, each with exactly these sections (`none` allowed):
+Header: `# Wave: {slug}` · `**Status:** QUEUED` · `**Refined:** {YYYY-MM-DD} · main @ {short-sha}` (the HEAD walked in R1 — the scheduler agent's staleness anchor) · `**Epic:** {name | none}` · `**Touches:** {project set}` · `**Scope:**` · `**Deferred:**`. Then `## Task Reconciliation` (Original | Disposition | New # | Notes — every original task traces to REFINED / MERGED INTO #N / DEFERRED / DROPPED). Then, on a wave carrying data-model change, `## Data-model ↔ contract reconciliation` (Schema change | Contract owner or INTERNAL-ONLY | Live-row disposition): every table/column change — add, drop, reshape — names the contract task owning its wire shape, or INTERNAL-ONLY plus the scope searched to prove it; where the table holds live rows, the row names its disposition — carried / re-derived by a named trigger / accepted loss with the ratifying touchpoint ("a future run re-derives it" without a named trigger is not a disposition). Enumerated from the schema side: a per-task review cannot detect a missing owner — the defect is the absence of an entry in another task. Then tasks in inside-out order, `### Task #{N} — {title}` separated by `---`, each with exactly these sections (`none` allowed):
 
 1. One-line summary + `[WATCH: ...]` flags, then `**Why:**`
 2. `**Routing:**` + `**Build agents:**`

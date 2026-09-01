@@ -76,6 +76,12 @@
     "global/commands/rnd.md": {
       "curated": true
     },
+    "global/commands/rnd/hammer.md": {
+      "curated": true
+    },
+    "global/commands/rnd/referee.md": {
+      "curated": true
+    },
     "global/commands/tokens/README.md": {
       "curated": true
     },

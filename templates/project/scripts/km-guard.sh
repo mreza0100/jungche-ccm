@@ -101,7 +101,7 @@ fi
 
 REASON="This path is gate-protected: it matches a configured PROTECTED_PATHS glob — an LLM PROMPT or other sensitive asset that ships straight to production. You ARE authorized as the owner via /km."
 if ! fresh "$QUALITY"; then
-  REASON+=" DENIED — protected-file edits require /quality:prompt loaded this session: Read .claude/commands/quality/prompt.md (the Read auto-stamps your session), then retry."
+  REASON+=" DENIED — protected-file edits require /quality:prompt loaded this session: Read ~/.claude/commands/quality/prompt.md (the machine-global law; the Read auto-stamps your session), then retry."
 fi
 if ! fresh "$ACTIVE"; then
   REASON+=" DENIED — these edits route through /km: open this session's gate from the repo root: date +%s > \"tmp/professor_km_active${SID:+.$SID}\" , then retry."

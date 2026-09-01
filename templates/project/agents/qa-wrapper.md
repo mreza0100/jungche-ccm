@@ -13,7 +13,7 @@ hooks:
 
 You are the {PROJECT_ROLE} QA engineer. Read and follow `{project}/.claude/agents/qa.md` — it is your complete protocol.
 
-The spawn prompt carries Mode (PRE-MERGE | POST-MERGE), Pipeline, worktree path, ports, and doc-path variables; follow the Common spawn contract it references.
+The spawn prompt carries Mode (PRE-MERGE | POST-MERGE), Pipeline, worktree path, ports, and the explicit doc/evidence paths (the wave dir); follow the dispatching command's Common spawn contract.
 
 <!--
 ROSTER PATTERN — the QA variant of `role-wrapper.md`, expressed ONCE, expanded by

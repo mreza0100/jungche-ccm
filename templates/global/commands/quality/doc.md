@@ -29,7 +29,7 @@ A reference doc is a cluster — a directory, not a monolith. A consumer reads `
 The highest-leverage rule. Decide by field shape, not habit:
 
 - Short, uniform cells (port maps, access matrices, the `_index.md` pointer tables themselves) → markdown table: genuinely tabular, no padding waste, one grep hit shows the whole record on one line.
-- Any long free-text field (descriptions, rationale, prose) → heading-per-record sections: one `###` per record, a one-line bold metadata strip for the short fields (`**Projects:** {project}, {project} — **Status:** Active`), then the long field as a prose paragraph.
+- Any long free-text field (descriptions, rationale, prose) → heading-per-record sections: one `###` per record, a one-line bold metadata strip for the short fields (`**Projects:** api, web — **Status:** Active`), then the long field as a prose paragraph.
 
 Long prose belongs in a section, never a table cell. Prettier aligns every column to its widest cell with no config option to disable it, and a PostToolUse hook runs `prettier --write` over every Professor-owned `.md`, so a "compact unpadded table" re-bloats on the next save: one 600-char description pads every other row in that column to 600 chars, and editing one record reflows the entire column into a giant diff. Sections cost zero padding, keep a one-record edit local, and give each record its own greppable `###` anchor.
 
@@ -45,7 +45,7 @@ Authorship follows the same law: no `> Author:` / `> Last updated:` / `> Wave:` 
 
 ## Name fidelity — docs are grep-true
 
-Every identifier is the exact code/DB name, verbatim: a table or column is its {DATABASE} name (`{table_name}`, `{column_name}` — not the {ORM} TS field), a {API_PROTOCOL} operation its SDL name, a component/chain/queue its source symbol. When a record maps to a code symbol, the `###` heading IS that symbol (`### {mutation}`, `### {table_name}`) — the grep landmark and the name are one string. Claude Code's grep is exact-match (ripgrep, no fuzzy), so a heading that paraphrases the symbol is invisible to the search that would find it. When the code renames, the doc renames in the same edit.
+Every identifier is the exact code/DB name, verbatim: a table or column is its database name as the schema spells it (never the ORM's mapped field name), an API operation its schema name, a component/chain/queue its source symbol. When a record maps to a code symbol, the `###` heading IS that symbol (`### updateSubscription`, `### user_session_events`) — the grep landmark and the name are one string. Claude Code's grep is exact-match (ripgrep, no fuzzy), so a heading that paraphrases the symbol is invisible to the search that would find it. When the code renames, the doc renames in the same edit.
 
 ## Navigation contract — one hop
 
@@ -57,7 +57,7 @@ When a split moves a doc that consumers reference by its old path, leave a one-l
 
 ## Finish
 
-Run `npx prettier --write --prose-wrap preserve <file>` on everything touched. The format hook covers Edit/Write on root-owned paths (`CLAUDE.md`, `.claude/`, `docs/`); child-project docs (`{project}/docs/`) and Bash-written files need the manual run.
+Run `npx prettier --write --prose-wrap preserve <file>` on everything touched. The format hook covers Edit/Write on root-owned paths (`CLAUDE.md`, `.claude/`, `docs/`); child-project docs (a sub-project's own `docs/`) and Bash-written files need the manual run.
 
 ## Approval — certify a document
 

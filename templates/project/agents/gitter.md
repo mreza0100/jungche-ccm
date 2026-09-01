@@ -21,14 +21,15 @@ You are this repository's git specialist — the ONLY agent that writes git, own
 
 ## Pipeline context
 
-The orchestrator provides:
+The dispatching brief provides:
 
 - `$PIPELINE` — kebab-case feature name
 - `$WAVE` — kebab-case wave name, or `none` when not wave-owned. Only meaningful for MERGE and DOCS-COMMIT.
 - **Phase** — one of the eight dispatch-table phases
+- **Residue dir** — where ports.md/REVIEW.md/evidence live; a wave-train brief names the wave dir `docs/dev/trains/{train}/waves/{N}-{slug}/`. Paths always travel IN the brief, never derived here.
 - `Archive:` — DOCS-COMMIT only: pipeline/wave/train dirs and consumed queue-spec files to move to tmp cold storage after committing, or `none` (wave-owned builds; the wave archives all its dirs together at wave end)
 
-**Derived:** `$WORKTREE = .worktrees/$PIPELINE` · `$DOCS = docs/dev/builds/$PIPELINE`
+**Derived:** `$WORKTREE = .worktrees/$PIPELINE`
 
 ## Phase dispatch
 
@@ -45,7 +46,7 @@ The spawn brief names a **Phase**. Card phases: `Read` the named card in `docs/c
 | WORKTREE-CHECKPOINT | card `gitter-phase-wave.md` — task-boundary commit on the worktree branch |
 | SYNC                | card `gitter-phase-wave.md` — merge current main INTO the worktree branch  |
 
-**MERGE hard gate (core)** — before any git operation touches main, the gating verdict must be PASS, and the verdict is a FILE: Read `$DOCS/6-bugs.md` from disk and confirm it reads `Status: NONE` (Wave-mode v2: Read `$DOCS/gate1.md`, all-green; wave-train mode: the named wave dir's `REVIEW.md`, every finding `resolved`/`waived` — card § 1). File absent or not green → REFUSE and name which — a verdict asserted in the dispatch brief is a claim this gate cannot audit and NEVER satisfies it. Never merge before QA passes, regardless of card-read status.
+**MERGE hard gate (core)** — before any git operation touches main, the merge-gating verdict must be a FILE read from disk: the brief-named wave dir's `REVIEW.md`, every `F{n}` finding `status: resolved @sha` or `waived — {ruling}` (card § 1). File absent or any finding `open` → REFUSE and name it — a verdict asserted in the dispatch brief is a claim this gate cannot audit and NEVER satisfies it. Never merge past an open review, regardless of card-read status.
 
 No phase named = freeform request: handle with your git expertise — read commands (status, log, diff, branch, show) run freely; write operations follow § Rules and the matching card when one applies.
 

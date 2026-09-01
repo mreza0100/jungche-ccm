@@ -52,7 +52,7 @@ fi
 
 REASON="This file is framework INFRASTRUCTURE — a .claude/ prompt or a CLAUDE.md that the harness loads at runtime; a careless edit ships straight into the agent pipeline. You ARE authorized as the infra owner via /pfm."
 if ! fresh "$QUALITY"; then
-  REASON+=" DENIED — prompt-file edits require /quality:prompt loaded this session: Read .claude/commands/quality/prompt.md (the Read auto-stamps your session), then retry."
+  REASON+=" DENIED — prompt-file edits require /quality:prompt loaded this session: Read ~/.claude/commands/quality/prompt.md (the machine-global law; the Read auto-stamps your session), then retry."
 fi
 if ! fresh "$ACTIVE"; then
   REASON+=" DENIED — infra edits route through /pfm: open this session's gate from the repo root: date +%s > \"tmp/professor_pfm_active${SID:+.$SID}\" — run the stamp UNSANDBOXED (a sandboxed write never lands on the filesystem this hook reads; a denied retry after stamping means the stamp ran sandboxed), then retry."

@@ -1,7 +1,7 @@
 ---
-# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: wave:live
-description: Batch a set of tasks live on `main` — grouping and parallelism for related changes that don't need worktree isolation: parallel sub-agent builds, end-of-wave qa-{project} agents write tests, one /documenter + gitter commit, then /wave:walker with inline remediation. Trigger — /wave:live [file|tasks] (empty → root wave.md).
+description: Batch a set of tasks live on `main` — grouping and parallelism for related changes that don't need worktree isolation: parallel sub-agent builds, end-of-wave {project}-qa agents write tests, one /documenter + gitter commit, then /wave:walker with inline remediation. Trigger — /wave:live [file|tasks] (empty → root wave.md).
 argument-hint: [task file | inline tasks]
 ---
 
@@ -13,9 +13,7 @@ Run a batch of tasks live on `main`: $ARGUMENTS
 
 A task list runs here; a single coherent change goes to `/jc`.
 
-**Lane mode (an on-main lane under a `/wave:orchestrator` train):** maintain `docs/dev/waves/{wave-name}/w-status.md` — after every W-step completion append one line `W{n} — {artifact path | commit SHA | gate verdict}`. Every W-step completion PINGS the orchestrator — the ping quotes the appended line — AND appends that same line to `tmp/wave-sensor/events.log` (guaranteed wake); an in-thread reply the orchestrator never sees is a silent lane. Standalone runs skip all of it.
-
-The fix machinery the steps below cite is the jc-core card, `docs/commands/jc/references/jc-core.md`; missing or stale → fall back to `/jc` rather than stalling.
+The fix machinery the steps below cite is the jc-core card, `docs/references/jc-core.md`; missing or stale → fall back to `/jc` rather than stalling.
 
 ## W1 — Resolve, stage & pre-flight
 
@@ -39,7 +37,7 @@ Dispatched agents and reports received must match, and the count appears in the 
 
 ## W4 — QA writes the tests
 
-The full suites run on the single-tenant canonical test stack: take the boundary mutex `tmp/wave-boundary.lock` for the W4 span (atomic `mkdir`; write `{wave-name} {PID} {timestamp}` to a `holder` file inside; release at W5) — a held lock is another seat's gate, so wait for its release rather than squatting the stack behind it. Once every task has landed, spawn each modified project's registered `qa-{project}` agent in POST-MERGE mode — tests run against `main`, no worktree or pipeline `$DOCS`, findings reported in the return. Each adds the regression + unit coverage for this wave's changes in its project and runs the full suite under the jc-core card § Step 4c zero-tolerance — every failure blocking, pre-existing included. A regression test counts only after it was watched FAILING against the unfixed code; a filtered or skipped run is a named gap, never a pass. Fix all breakage before proceeding.
+The full suites run on the single-tenant canonical test stack: take the boundary mutex `tmp/wave-boundary.lock` for the W4 span (atomic `mkdir`; write `{wave-name} {PID} {timestamp}` to a `holder` file inside; release at W5) — a held lock is another seat's gate, so wait for its release rather than squatting the stack behind it. Once every task has landed, spawn each modified project's registered `{project}-qa` agent in POST-MERGE mode — tests run against `main`, no worktree paths, findings reported in the return. Each adds the regression + unit coverage for this wave's changes in its project and runs the full suite under the jc-core card § Step 4c zero-tolerance — every failure blocking, pre-existing included. A regression test counts only after it was watched FAILING against the unfixed code; a filtered or skipped run is a named gap, never a pass. Fix all breakage before proceeding.
 
 ## W5 — Cleanup → docs → commit
 

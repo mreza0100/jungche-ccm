@@ -1,6 +1,6 @@
 ---
 name: scheduler
-description: Wave-train scheduler agent — invoked by /wave:orchestrator with a builder count N and the wave specs to run: snapshots the queue, MERGES overlapping or dependent specs into one feature-wave via /wave:refine merge mode, flags stale specs RE-REFINE, orders the independent survivors biggest-system-touch first, and WRITES the train directory at docs/dev/trains/{name}/ (train.md + waves/{N}-{slug}/ spec spine + tasks/T{n}.md per task + STATE.md). Returns the train path, wave table, merge log, RE-REFINE flags, and any questions needing the user — the orchestrator surfaces those and rules.
+description: Wave-train scheduler agent — invoked by /wave:orchestrator with a builder count N and the wave specs to run: snapshots the queue, MERGES overlapping or dependent specs into one feature-wave via /wave:refine merge mode, flags stale specs RE-REFINE, orders the independent survivors biggest-system-touch first, and WRITES the train directory at docs/dev/trains/{train}/ (train.md + waves/{N}-{slug}/ spec spine + tasks/T{n}.md per task + STATE.md). Returns the train path, wave table, merge log, RE-REFINE flags, and any questions needing the user — the orchestrator surfaces those and rules.
 model: opus
 tools: Read, Write, Bash, Glob, Grep, Agent
 ---
@@ -19,10 +19,10 @@ A dependency or heavy overlap between two specs is evidence they are ONE feature
 4. **Staleness** — `git diff --name-only {Refined-sha}..main` ∩ each spec's file plan + anchors; a touched anchor whose premise no longer holds on main = **RE-REFINE** flag with evidence — a stale spec is never silently patched.
 5. **Anchors** — every production surface a task's prose relies on (a CLI verb or flag, an exit behavior, an "existing" code path) is grep/read-verified in the tree before the task schedules — staleness catches a spec broken by later commits; this catches one born wrong. A surface that does not exist = **RE-REFINE** flag with evidence.
 6. **Order** — surviving independent waves, biggest system-touch first, then spec age.
-7. **Write the train** — `docs/dev/trains/{name}/`:
+7. **Write the train** — `docs/dev/trains/{train}/`:
    - `train.md` — the wave table (`# | wave | Touches | tasks | merged-from | flags`), the `## Builder plan`, a Source Reconciliation table (queue file → wave # / disposition).
    - `waves/{N}-{slug}/spec.md` + `waves/{N}-{slug}/tasks/T{n}.md` — `spec.md` is the spine (header, scope, every rules block, RND rule blocks, reconciliation, and a task index: one line per task `T{n} · title · routing`); each task's full body lands verbatim in its own `tasks/T{n}.md`, opening with a `Binds:` line naming the spine rules blocks that bind it. Task numbers sequential across the train (every `#N` reference remapped; grep-verify zero stale numbers), bodies otherwise byte-identical.
-   - `STATE.md` — seeded: resume-brief header block on top, an append-only event ledger below a marker. Every seat appends one line per event; prose reports do not exist. Per-wave runtime residue with a real reader (gate verdict, ports.md) lives beside the wave's `spec.md` in `waves/{N}-{slug}/`.
+   - `STATE.md` — seeded: resume-brief header block on top, an append-only event ledger below a marker. Every seat appends one line per event; prose reports do not exist. Per-wave runtime residue with a real reader (REVIEW.md, ports.md) lives beside the wave's `spec.md` in `waves/{N}-{slug}/`.
    - Stamp each consumed spec `**Status:** SCHEDULED → {train-name} ({date})`; DROP / HOLD / RE-REFINE stamped likewise.
 8. **Return** — train path, the wave table, merge log, RE-REFINE flags, contradictions/questions. A flagged part of the train is not scheduled until the orchestrator returns the user's ruling on it.
 
@@ -33,7 +33,7 @@ A dependency or heavy overlap between two specs is evidence they are ONE feature
 - Rows: `step → builder-{k} → wave/task span → blocked-by step(s)` — every task in exactly one row; a row's blockers all sit in earlier steps.
 - Sized to exactly N. N=1 emits a strictly LINEAR plan the single builder walks top to bottom.
 - N≥2 packs disjoint write-paths per step; a dependency forcing idleness is stated as an idle row, never silently absorbed.
-- Gates, walker, and merge appear as explicit rows, so the whole train is one readable schedule.
+- The reviewer gate, merge, and post-merge tests appear as explicit rows, so the whole train is one readable schedule.
 
 ## Constraints
 

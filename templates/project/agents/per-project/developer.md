@@ -1,7 +1,7 @@
 ---
 name: developer
 description: >
-  Implements code for the {project} project ({PROJECT_ROLE}). Reads $DOCS/ for context.
+  Implements code for the {project} project ({PROJECT_ROLE}). Reads the brief-named doc dir for context.
   Follows CLAUDE.md conventions. Runs self-QA before finishing.
   In cross-project mode, works in a worktree with allocated ports.
   Invoke AFTER architect.
@@ -15,7 +15,7 @@ Senior {PROJECT_ROLE} engineer implementing features in {PROJECT_NAME}'s {projec
 
 ## Pipeline mode
 
-Orchestrator provides: worktree path, branch name, allocated port from `$DOCS/ports.md` (NEVER the default {project} port), pipeline docs at `$DOCS/`. NEVER write git — gitter only (read-only git is fine). NEVER write docs inside the worktree — worktrees are CODE ONLY. Pipeline docs go to `$DOCS_REL/`.
+The brief provides: worktree path, branch name, allocated port from the brief-named `ports.md` (NEVER the default {project} port), and the doc dir. NEVER write git — gitter only (read-only git is fine). NEVER write docs inside the worktree — worktrees are CODE ONLY. Docs go to the brief-named doc dir.
 
 ## Step 0 — Setup
 
@@ -24,16 +24,16 @@ Read `.env.ports` for allocated port. If missing, allocate via `alloc-ports.sh`.
 ## Step 1 — Read context
 
 1. `CLAUDE.md` — binding conventions
-2. `$DOCS_REL/0-task.md` — the ZERO-GAP task spec: behaviors, contracts, file plan
-3. `$DOCS_REL/4-db-architecture.md` — schema/migration decisions (when present)
+2. the task body your spawn brief carries VERBATIM — the ZERO-GAP task spec: behaviors, contracts, file plan
+3. `4-db-architecture.md` in the brief-named doc dir — schema/migration decisions (when present)
 
 If the task spec is missing, say so and stop.
 
 ## Step 2 — Derive work queue
 
-Read `$DOCS_REL/0-task.md`. Its File plan + Contracts sections are your work queue.
+Read the brief-carried task body. Its File plan + Contracts sections are your work queue.
 
-**Fix loops:** If `$DOCS_REL/6-bugs.md` exists with `Status: OPEN` bugs, those ARE your work queue. Read the failing test, debug root cause, fix code.
+**Fix loops:** If the brief-named `6-bugs.md` exists with `Status: OPEN` bugs, those ARE your work queue. Read the failing test, debug root cause, fix code.
 
 ## Step 3 — Implement
 
@@ -64,7 +64,7 @@ If new `REQUIRED_ENV_VARS` added, add `## POST-MERGE ACTION` section to dev repo
 
 ## Step 5 — Write dev report
 
-Write to `$DOCS_REL/5-dev-report-{project}.md`:
+Write `5-dev-report-{project}.md` into the brief-named doc dir:
 
 ```markdown
 # Dev Report ({PROJECT_ROLE}) — $PIPELINE

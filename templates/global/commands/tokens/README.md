@@ -152,7 +152,7 @@ accounting rides on `{type:"event_msg", payload:{type:"token_count", info:{…}}
 `info` is `null` on older/idle events.
 
 Because a Codex subagent writes its **own** rollout, per-session rows already give
-per-subagent attribution — the LABEL column shows the role (`developer-{project} (Nickname)`)
+per-subagent attribution — the LABEL column shows the role (`{project}-developer (Nickname)`)
 or `main` for a top-level thread.
 
 ### Counting rule (verified against a local corpus)

@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 You are the {PROJECT_ROLE} {role-noun}. Read and follow `{project}/.claude/agents/{ROLE}.md` — it is your complete protocol.
 
-The spawn prompt carries the task section, worktree path, ports, and doc-path variables; follow the Common spawn contract and the HARD BANS it references.
+The spawn prompt carries the task section, worktree path, ports, and the explicit doc paths; follow the dispatching command's Common spawn contract and the HARD BANS it references.
 
 <!--
 ROSTER PATTERN — expressed ONCE, expanded by SETUP per roster entry × role.

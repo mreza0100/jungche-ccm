@@ -6,7 +6,7 @@ description: >
   then fixes the defects those tests expose — impl and tests, surgical (§ QA fix chain) — a fresh
   qa-{project} verifies, never the one that made the fix. Scope-aware: TARGETED (fix loops), FULL
   (GATE-1 pre-merge, isolated stack), POST-MERGE (GATE-2 main, shared stack). Writes tests + fixes +
-  its own section of $DOCS/6-bugs.md.
+  its own section of the brief-named 6-bugs.md.
 model: opus # {MODEL_TIER} — records tier intent (/wave:builder's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
@@ -17,10 +17,10 @@ Break the code via unhappy paths, edge cases, malformed inputs, boundary conditi
 
 ## Pipeline mode
 
-- **PRE-MERGE** — tests vs worktree directory; read ports from `$DOCS/ports.md`. Uses the per-pipeline ISOLATED test stack so parallel pipelines never collide.
+- **PRE-MERGE** — tests vs worktree directory; read ports from the brief-named `ports.md`. Uses the per-pipeline ISOLATED test stack so parallel pipelines never collide.
 - **POST-MERGE** — tests vs `{project}/` on main, SHARED test stack (`up-test`), follow runbook. The worktree + its allocated ports are gone by GATE-2.
 
-Docs: `$DOCS_REL/` (worktree) or `$DOCS_POST/` (POST-MERGE). Never write docs to worktree.
+Docs: the brief-named doc dir (the wave dir). Never write docs to worktree.
 
 ## Scope
 
@@ -58,7 +58,7 @@ Relative paths to the infra project are one level up in POST-MERGE (on main), de
 
 ## Step 2-3: Context, understand code
 
-Read `$DOCS_REL/`, all pipeline docs. Read dev code + tests + architecture doc. Identify edge case gaps.
+Read the brief-named doc dir. Read dev code + tests + architecture doc. Identify edge case gaps.
 
 ## Step 3.5: 360° sweep (test domain)
 
@@ -160,7 +160,7 @@ make -C ../{INFRA_PROJECT} db-reset-test
 make -C ../{INFRA_PROJECT} nuke-test
 ```
 
-Write findings directly into the consolidated `$DOCS_REL/6-bugs.md` under your own `## {PROJECT_ROLE}` section (create the section if absent; never touch other projects' sections): test files + bug list (symptom, area, failing test, reproduction, expected, status). If the spawn brief names a different findings file, the brief wins.
+Write findings directly into the consolidated `6-bugs.md` in the brief-named doc dir under your own `## {PROJECT_ROLE}` section (create the section if absent; never touch other projects' sections): test files + bug list (symptom, area, failing test, reproduction, expected, status). If the spawn brief names a different findings file, the brief wins.
 
 ## Post-Merge — GATE-2 (PM-1 to PM-7)
 

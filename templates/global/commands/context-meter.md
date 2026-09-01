@@ -1,5 +1,5 @@
 ---
-# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /ptm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
 name: context-meter
 description: "Audits Claude Code context consumption across CLAUDE.md, agents, commands, skills, and MCP servers — the machine-global roster included — ranks the heaviest offenders against the framework's size limits, and reports savings by tokens reclaimed (`--verbose` for per-file detail). Report-only; trims route through /pfm. Triggered by 'context budget', 'token budget', 'context-budget', 'context meter', 'context-meter', 'audit context', 'what's eating my context', or after adding/growing an agent, command, or skill."
 ---

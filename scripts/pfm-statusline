@@ -40,6 +40,7 @@ ctx = None
 usage_idx = -1
 boundary_idx = -1
 boundary_post = 0
+prompts = 0
 try:
     last_claude = None
     last_codex = None
@@ -62,6 +63,26 @@ try:
                 boundary_post = p if isinstance(p, int) and p > 0 else 0
                 continue
             if d.get("isSidechain") is True: continue
+            # Human turns only: a tool_result rides back as type "user" with no
+            # text block, and slash-command scaffolding is not a prompt either.
+            if d.get("type") == "user" and not d.get("isMeta"):
+                c = ((d.get("message") or {}).get("content"))
+                if isinstance(c, str):
+                    text = c
+                elif isinstance(c, list):
+                    text = "".join(b.get("text", "") for b in c
+                                   if isinstance(b, dict) and b.get("type") == "text")
+                else:
+                    text = ""
+                text = text.strip()
+                # The harness speaks in the user's voice constantly — tool
+                # results, task notifications, system reminders, slash-command
+                # scaffolding. None of those are prompts the human typed.
+                if text and not text.startswith((
+                        "<local-command", "<command-name>", "<command-message>",
+                        "<command-args>", "<task-notification", "<system-reminder",
+                        "Caveat:")):
+                    prompts += 1
             u = (d.get("message") or {}).get("usage") or d.get("usage")
             if u and (u.get("input_tokens") is not None or u.get("cache_read_input_tokens") is not None):
                 last_claude = u
@@ -117,10 +138,11 @@ pct   = max(0, min(100, round(100 * ctx / win)))
 fill  = round(pct / 10)
 bar   = "█" * fill + "░" * (10 - fill)
 color = "1;32" if pct < 50 else ("1;33" if pct < 80 else "1;31")
-if ctx < 1000:        num = str(ctx)
-elif ctx < 100000:    num = f"{ctx/1000:.1f}K"
-else:                 num = f"{round(ctx/1000)}K"
-if est: num = "~" + num
+# The raw token count used to ride here, beside the percent — but pfm's own
+# 🧮 segment already carries it, so it was the same number printed twice. The
+# estimate marker it used to carry moves onto the percent, where it still says
+# "this reading is a post-compact estimate, not a measurement".
+tilde = "~" if est else ""
 
 # --- meltdown ladder: one milestone per 5%, driven by the TRUE pct ---
 # pfm's own urgencyEmoji() picks from ITS percentage; recompute here where the number is real.
@@ -130,7 +152,7 @@ LADDER = ["🧊", "❄️", "💧", "🌊", "🌫️",
           "☄️", "🌋", "⚠️", "☢️", "💀"]
 glyph = LADDER[min(len(LADDER) - 1, pct // 5)]
 
-new_gauge = f"\x1b[{color}m{bar}\x1b[0m \x1b[{color}m{pct}%\x1b[0m \x1b[2m{num}\x1b[0m"
+new_gauge = f"\x1b[{color}m{bar}\x1b[0m \x1b[{color}m{tilde}{pct}%\x1b[0m"
 # The gauge in pfm's line is glyph cells INTERLEAVED with ANSI escapes: makeBar emits
 # color + filled-cells + dim + empty-cells, so an escape sits MID-BAR whenever the
 # percentage is nonzero. Match glyph runs joined by escapes, then the percent.
@@ -140,6 +162,11 @@ patched, hits = re.subn(r"(?:🚨|🔥|⚡|🟢)\s*" + GAUGE,
 if not hits:
     # pfm changed its emoji set -> still fix the gauge; never render worse than before
     patched = re.sub(GAUGE, new_gauge, line, count=1)
+# Prompt count rides beside pfm's 🧮 token segment — the transcript scan above
+# already visited every line, so counting human turns costs no extra read.
+if prompts > 0:
+    patched = re.sub(r"(🧮[^\x1b]*)", lambda m: m.group(1) + f" \x1b[2m✎{prompts}\x1b[0m",
+                     patched, count=1)
 # cache TTL unknown "1h?" -> "1h∞" (infinite), per user ruling 2026-08-28
 patched = patched.replace("1h?", "1h∞")
 print(patched, end="")
