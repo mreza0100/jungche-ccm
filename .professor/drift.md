@@ -347,3 +347,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   `compactMetadata.postTokens` + the project's cached system floor, marked `~` (estimate). Missing
   both → the pre-compact number stands (stale beats blank). Verified against a live post-compact
   transcript: estimate ~77.0K vs actual 76.1K first call.
+- 2026-09-02: **KEEP-LOCAL: root `CLAUDE.md` gains § How the framework reaches an adopter, the
+  twins-move-together rule, the map-before-dispatch law (folded from retro 2026-08-29), and ledger
+  consumers on the `.professor/` line.** This file describes the blueprint's own machinery from the
+  upstream side; `templates/project/CLAUDE.md` is a different document and unchanged.

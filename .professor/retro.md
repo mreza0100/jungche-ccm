@@ -1,7 +1,7 @@
 # Retro — the steering-conscience inbox
 
 An **inbox**, not a change log. Sessions append when a steering correction reveals something the
-framework files should have said; `/ptm retro` consumes it.
+framework files should have said; `/pfm retro` consumes it.
 
 Append one entry per correction:
 
@@ -9,10 +9,10 @@ Append one entry per correction:
 ## {date} — {one-line subject}
 Observed: what actually happened, concretely.
 Amend: {file}#{section} — what the file should say instead. Or `judgment` if no text fix applies.
-Resolved:            ← /ptm retro stamps this in place: `Resolved: {date} — {where it landed}`
+Resolved:            ← /pfm retro stamps this in place: `Resolved: {date} — {where it landed}`
 ```
 
-Entries without a `Resolved:` line are the open queue. `/ptm retro` folds each `Amend:` into the
+Entries without a `Resolved:` line are the open queue. `/pfm retro` folds each `Amend:` into the
 named file through the normal change flow, stamps the entry, and logs the fold to `drift.md` or
 `release.md` like any other change.
 
@@ -28,7 +28,7 @@ Amend: CLAUDE.md#Subagent dispatch — a cross-layer enforcement surface is mapp
 BEFORE the build dispatch; the spec carries the enumerated doors, never "find the rest". Candidate root
 bullet: an invariant enforced at N−1 of its N doors is a violation at the missing door. (Registered:
 walker-invariants § SPAWN-DOOR-COMPLETENESS; pfm doctor spawn-audit check landing in the same pass.)
-Resolved:
+Resolved: 2026-09-02 — CLAUDE.md § Subagent dispatch (map-before-dispatch law); walker-invariants § SPAWN-DOOR-COMPLETENESS already registered.
 
 ## 2026-08-29 — a dispatched builder wrote a second matcher beside the K3 original
 Observed: the spawn-door consolidation brief told an opus builder to classify live Claude processes;
