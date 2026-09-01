@@ -6,6 +6,16 @@ by the same git tag.
 
 ---
 
+## Contents
+
+- [Versioning](#versioning)
+- [Release notes layout](#release-notes-layout)
+- [Cutting a release](#cutting-a-release)
+- [What the tag push triggers](#what-the-tag-push-triggers)
+- [Pulling an update](#pulling-an-update-adopter)
+
+---
+
 ## Versioning
 
 [Semantic Versioning](https://semver.org/), one `VERSION` file at the repo root as the source of
@@ -14,9 +24,9 @@ deleted or moved after push.
 
 | Bump | When | Adopter impact |
 | --- | --- | --- |
-| **PATCH** | Bug fixes, doc tweaks, non-interface mechanic changes | adopters re-derive from the updated clone |
-| **MINOR** | New Tier B archetype, new mechanics command, new pipeline step | Mix of auto + interactive; may add optional files |
-| **MAJOR** | Breaking rename, removed command, changed core convention | Full interactive walkthrough, no silent applies |
+| **PATCH** | Bug fixes, doc tweaks, non-interface mechanic changes | Review reported project-template diffs; machine-global links update with the clone |
+| **MINOR** | New Tier B archetype, new mechanics command, new pipeline step | Review reported changes and adopt optional project files explicitly |
+| **MAJOR** | Breaking rename, removed command, changed core convention | Full manual migration walkthrough; no silent project-file writes |
 
 Magnitude for a multi-version update is the **largest single-release bump in the chain**, never the
 endpoint semver diff alone — one major release anywhere in the walked range makes the whole update
@@ -35,7 +45,9 @@ Bullets carry a category prefix and optional trailing tags, both read at update 
 - Trailing tag → `(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)` (env var/hook/permission/model-config
   changes — always routed to manual review regardless of prefix)
 
-## Cutting a release (maintainer) — `/pfm:release {patch|minor|major} "{summary}"`
+## Cutting a release
+
+Maintainer command: `/pfm:release {patch|minor|major} "{summary}"`.
 
 Run from inside the live source project against the local clone at `{BLUEPRINT_CLONE_PATH}` —
 the only working copy — targeting the public repo (`{BLUEPRINT_REPO}`, GH user `{GH_USER}`).
@@ -69,7 +81,9 @@ the only working copy — targeting the public repo (`{BLUEPRINT_REPO}`, GH user
 machine-absolute home paths), force-push, ship a Tier A character with empty placeholders, or
 auto-bump the README version without re-checking the templates it describes.
 
-## What the tag push triggers — `.github/workflows/release.yml`
+## What the tag push triggers
+
+The workflow is `.github/workflows/release.yml`.
 
 A `v*` tag push (or manual `workflow_dispatch`) runs on GitHub Actions:
 
@@ -90,16 +104,16 @@ optional — the tag push fails release assembly without it.
 ## Pulling an update (adopter)
 
 State lives in `.professor/` inside the adopter's project: `VERSION` (installed version),
-`manifest.json` (file hashes + interview-answer replay seed), `drift.md` (forced KEEP-LOCAL
-customizations), `release.md` (local framework changes queued to publish upstream — swept by the
-framework repo's release flow).
+`manifest.json` (user-owned interview record), `baseline.json` (pfm-owned local-to-template pins),
+`drift.md` (optional local customization notes), and `release.md` (framework changes queued to
+publish upstream — swept by the framework repo's release flow).
 
-Updating is deliberate, by-hand work today: update the clone (`git pull --tags`, or `pfm update`,
-which also rebuilds the pfm binary), read `CHANGELOG.md` between the installed version and the new
-tag, port what applies, and honor `drift.md`'s KEEP-LOCAL entries — a customized file is never
-blindly overwritten. Two standing rules survive from the old protocol: a `GENERATED FILE — DO NOT
-EDIT` banner means whole-file rebuild by its stated generator, never a line-merge; a symlink into
-the blueprint clone updates through the clone's own `git pull`. Source-fetched skills
-(`templates/project/skills/sources.json`) update from their own repos — compare the installed `version:`
-frontmatter against the skill repo's latest tag; never downgrade. A mechanical, reviewed update
-transaction (per-file report, nothing silently applied) is queued as the blueprint-compiler train.
+Run `pfm update` to advance the tagged clone, rebuild the binary, refresh machine-global links,
+and append the current project's report. Run `pfm update check` when only the read-only project
+report is wanted. For every `UPDATED` item, inspect the printed template diff, hand-apply what
+belongs in the local source, then run `pfm update pin <local>`. `NEW`, `GONE-UPSTREAM`, and
+`LOCAL-DELETED` print their own `pin --template` or `drop` actions. Generated engine mirrors remain
+whole-file compiler outputs; symlinked machine-global files update through their blueprint
+original. Source-fetched skills (`templates/project/skills/sources.json`) update from their own
+repos — compare the installed `version:` frontmatter against the skill repo's latest tag; never
+downgrade. Project files are never regenerated or merged during update.

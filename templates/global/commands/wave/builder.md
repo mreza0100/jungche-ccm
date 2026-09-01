@@ -1,5 +1,5 @@
 ---
-# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); project-scaffold customization belongs in its installed local source; engine mirrors are never hand-edited.
 name: wave:builder
 description: The wave builder — ORCHESTRATED ONLY: takes a /goal from /wave:orchestrator (train, spec, worktree, ports) and implements the wave task-by-task per the zero-gap spec — build agents, verify, gitter checkpoint, one STATE.md line each; reports BUILD-GREEN, runs the {project}-qa fix chain per touched project, then full suites, reports DONE. A genuine spec gap = ask the orchestrator, never improvise.
 ---

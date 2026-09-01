@@ -1,6 +1,21 @@
 # SETUP — Installing Professor
 
-Run inside your target project. Claude reads this file, conducts an interview, then customizes every template before copying into your repo. Result: a `.claude/` that reads like it was written for your project, because it was.
+Run inside your target project after `pfm init`. The command scaffolds project templates once, with tokens intact and per-file baseline pins. Claude reads this file, conducts the install interview, and adapts those local files in place. Result: a `.claude/` that reads like it was written for your project, because it was.
+
+---
+
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [How to install](#how-to-install)
+- [Install interview](#install-interview)
+- [Phase 1 — The interview](#phase-1--the-interview)
+- [Phase 2 — Customization](#phase-2--customization)
+- [Phase 3 — Smoke test](#phase-3--smoke-test)
+- [Phase 4 — Memory backup](#phase-4--memory-backup-optional-opt-in)
+- [Common gotchas](#common-gotchas)
+- [After install](#after-install)
+- [Staying current](#staying-current)
 
 ---
 
@@ -8,31 +23,49 @@ Run inside your target project. Claude reads this file, conducts an interview, t
 
 - Git repository (at least one commit on `main` or `master`)
 - Claude Code CLI installed and configured
+- `pfm` installed with a permanent tagged blueprint clone recorded by `pfm install --yes`
 - 10 minutes for the interview
 
 ---
 
 ## How to install
 
-**The fastest path:** let Claude conduct the interview.
+**The fastest path:** scaffold once, then let Claude conduct the interview.
 
 ```bash
-# Clone the blueprint at a specific release tag (put it anywhere you like)
-git clone --branch v0.5.0 https://github.com/mreza0100/professor.git /path/to/professor
-
 # Inside YOUR project
 cd /path/to/your-project
+pfm init .
 claude
-> Read every file in /path/to/professor/templates/project/.
-> Follow SETUP.md to install Professor in THIS project.
-> Conduct the interview before touching any files.
+# Tell Claude: follow the printed blueprint docs/SETUP.md § Install interview.
 ```
 
-> **Note:** `/path/to/professor` is the permanent absolute clone path used by the installed Wave Walker. Put it somewhere durable (conventionally `~/.professor`) and keep it after installation — updates and template work read this clone. A temporary clone would leave every Wave caller pointing at a dead engine.
+`pfm init` prints the exact permanent blueprint `docs/SETUP.md` path to follow. Keep that clone: updates, template diffs, and the Wave Walker engine read it.
 
-Claude runs Phase 1 (interview), then Phase 2 (customization), then Phase 3 (smoke test). You answer about 10 questions. Claude does the rest.
+Claude runs Phase 1 (questions), Phase 2 (local adaptation), then Phase 3 (smoke test). You answer about 10 questions. Claude does the rest.
 
-**The manual path:** read `BLUEPRINT.md`, copy templates manually, replace placeholders by hand. Slower but doable.
+**The manual path:** run `pfm init`, read `BLUEPRINT.md` and `PLACEHOLDERS.md`, then adapt the scaffolded local files and pin any additional template mappings by hand. Slower but doable.
+
+---
+
+## Install interview
+
+This section is the runnable handoff from `pfm init`; no install slash command exists. Work only in the target project. The blueprint clone is read-only input.
+
+1. Read this file and `docs/PLACEHOLDERS.md` from the blueprint path printed by `pfm init`. Conduct every applicable Phase 1 question below and show the complete local write plan. Wait for the user to type **"go"**.
+2. Fill registered tokens directly in the scaffolded local files. These files are now the project's source of truth; do not regenerate them from templates or rewrite `.professor/baseline.json`. Files skipped by `pfm init` as `CONFLICT` stay unpinned and unchanged unless the user explicitly includes them in the plan.
+3. Materialize the roster-only sources that `pfm init` deliberately skips:
+   - `templates/project/per-project/CLAUDE.md` → `{project}/CLAUDE.md` for each child project that needs one.
+   - Every file under `templates/project/agents/per-project/` → the corresponding local per-project agent path for each roster entry. A single-project install places its instantiated agents in `.claude/agents/`; a multi-project install places them in `{project}/.claude/agents/`. Create only the roster entries and roles the interview selected.
+4. Update the `interview` object in `.professor/manifest.json` with the confirmed answers, including `blueprint_clone_path`, roster, tool commands, ports, optional roles, and engine choices. Preserve every non-interview field. `manifest.json` is the user-owned install record; `.professor/baseline.json` remains pfm-owned provenance.
+5. Verify that no required token remains, every generated agent reference resolves, and scripts preserve executable mode. If Codex is enabled, run `pfm codex build` and `pfm codex check` from the target project after the local Claude files are final.
+6. **Close by pinning every file deployed by the interview.** For each local created from a roster-only template, run:
+
+   ```bash
+   pfm update pin --template project/agents/per-project/<t>.md <local>
+   ```
+
+   Use the matching template path for `project/per-project/CLAUDE.md` and any other interview-deployed template. Many local files may pin the same template. Do not re-pin files scaffolded by `pfm init`; their template-byte pins already exist and local token filling does not invalidate them.
 
 ---
 
@@ -109,13 +142,9 @@ These go into `worktree.sh`, `dev.sh`, and the developer + qa agent files.
 
 Question 5 (Professor's disciplines) is retired — the persona's qualification is fixed prose ("15+ PhDs, one in whatever area the work touches"), nothing to collect. The number is kept so `--re-interview N` stays stable for questions 6+.
 
-### 6. Council panel
+### 6. (retired)
 
-> The Council debates topics with 5 voices in three rounds (opening / rebuttal / verdict). Universal members **JC + Professor** are always in. Who fills the other 3 seats?
-
-Standard panel: pick 3 from the Tier B opt-ins below. Most projects pick Officer + PM + Mentor, or Officer + PM + Marketer.
-
-Smaller council (3 voices: JC + Professor + 1) works fine for solo or research projects. The three-round structure scales.
+Question 6 (Council panel) is retired because no Council command ships. Omit `council_panel` from the manifest. The number is kept so later question references stay stable.
 
 ### 7. Tier B opt-ins
 
@@ -192,7 +221,7 @@ If no, skip.
 
 > Do you also use OpenAI Codex? (Everything works without it — this adds a second runtime for cheaper implementation.)
 
-If yes: the installer creates `.codex/` as a pointer layer over `.claude/` — the skills layer GENERATED by `scripts/codex-mirror.sh`, plus a hand-authored `config.toml`/`rules/*.rules`/`agents/*.toml` — and an `AGENTS.md` symlink → `CLAUDE.md`. Claude and Codex read the same Professor contract; the pointer layer translates mechanics, not identity. Either runtime can orchestrate when invoked with the matching command surface.
+If yes: the interview creates `.codex/` as a pointer layer over the project's local Claude sources, then runs `pfm codex build` and `pfm codex check`. `AGENTS.md`, command and skill pointers, and `.codex/agents/*.toml` are generated; `config.toml` and `rules/*.rules` keep their hand-written portions. Claude and Codex read the same Professor contract; the pointer layer translates mechanics, not identity. Either runtime can orchestrate when invoked with the matching command surface.
 
 If no: skip — the entire Codex layer is omitted. No pipeline operation requires it.
 
@@ -204,7 +233,6 @@ This becomes `{SACRED_GROUND}` and is referenced by:
 
 - JC (the trigger that escalates from chill to temple-flipping)
 - Officer (if opted in — the protected category)
-- Council (the trump card in verdicts)
 
 Be specific. "Privacy" is too vague. "Patient session content and identifying details" is concrete. "Financial transaction integrity at the millisecond level" is concrete. "Scientific data reproducibility for FDA submissions" is concrete.
 
@@ -327,10 +355,14 @@ Claude takes your answers and:
 
 8a. **Installs command reference docs** — copies `templates/project/docs-commands/` into `docs/commands/` verbatim; the template tree mirrors `$CDOCS` exactly (e.g. `docs-commands/build/references/build-reference.md` → `docs/commands/build/references/build-reference.md`), so commands that cite a reference doc find it on disk.
 
-8b. **(If Codex opted in)** Creates `.codex/` as a pointer layer over `.claude/` — never a restatement of it. Writes `config.toml` (sandbox reach + the `{CODEX_MODEL}`/`{CODEX_REASONING_EFFORT}` pins) and `rules/repo-law.rules` (the execpolicy door lock for non-gitter roles). Runs `scripts/build-codex.mjs generate` to compile every root and per-project `.claude/agents/*.md` into the active `.codex/agents/` registry, including the sole Git writer `gitter`; every other role keeps read-only Git. The same pass builds `.codex/skills/` using true directory symlinks for `.claude/skills/*` and generated `SKILL.md` pointers for single-file `.claude/commands/*.md`, then compiles `AGENTS.md` from `CLAUDE.md`. Registry changes require a new or reloaded Codex session. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). 11. **Writes `.professor/VERSION`** — the blueprint version installed from. 12. **Writes `.professor/manifest.json`** — records the installed version, interview replay seed, and SHA-256 hashes of every installed file after substitution — the machine-readable replay seed an update consults. Format:
+8b. **(If Codex opted in)** Creates `.codex/` as a pointer layer over `.claude/` — never a restatement of it. Writes `config.toml` (sandbox reach + the `{CODEX_MODEL}`/`{CODEX_REASONING_EFFORT}` pins) and `rules/repo-law.rules` (the execpolicy door lock for non-gitter roles). Runs `pfm codex build` to compile every root and per-project Claude source into the Codex mirrors, then `pfm codex check` to verify them. Registry changes require a new or reloaded Codex session. If Codex was NOT opted in, this step is skipped entirely.
+
+9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
+10. **Maintains `.professor/` state** — `manifest.json` holds the user-owned interview answers, while `baseline.json` holds pfm-owned per-file template pins. `drift.md` and `release.md` remain the local customization and pending-framework ledgers.
+11. **Updates `.professor/manifest.json`** — replace its `interview` object with the confirmed answers while preserving every non-interview field. Format:
 
 **Build roster validation:** `/wave:builder` is not allowed to carry blueprint example projects that the target repo does not have. The installer must generate planner/architect/developer/QA/db/devops blocks only for installed subprojects, fail if any `{OPTIONAL_*}` placeholder remains, and then verify every referenced `*/.claude/agents/*.md` path exists. If a monorepo has only BE/FE/Cortex, no web or infra planner/architect/dev/QA blocks may remain.
-`json
+```json
     {
       "schema": 1,
       "version": "0.5.0",
@@ -352,7 +384,6 @@ Claude takes your answers and:
           "api": { "test": "pnpm test", "lint": "pnpm lint", "typecheck": "pnpm tsc --noEmit", "build": "pnpm build", "dev": "pnpm dev" },
           "web": { "test": "npm test", "lint": "npm run lint", "typecheck": "skip", "build": "npm run build", "dev": "npm run dev" }
         },
-        "council_panel": ["Officer", "PM", "Mentor"],
         "tier_b": {
           "officer": { "enabled": true, "regulation": "HIPAA", "authority": "HHS OCR", "rights": "HIPAA Privacy Rule", "notification": "60 days" },
           "km": { "enabled": false },
@@ -362,15 +393,11 @@ Claude takes your answers and:
         },
         "codex": false,
         "ports": { "api": 3000, "web": 5173, "db": 5432 }
-      },
-      "files": {
-        "CLAUDE.md": "sha256:fa7b1ba7e0f3...",
-        ".claude/commands/jc.md": "sha256:e3b0c44298fc...",
-        ".claude/commands/pfm.md": "sha256:2c26b46b68ff..."
       }
     }
-    `
-The `interview` field is the replay seed an update re-applies to new upstream templates. The `files` field is SHA-256 of every installed file AFTER placeholder substitution (a mismatch means the user edited post-install). The `installed_from_tag` records which git tag was installed, so an update can diff against the exact source version.
+```
+
+The `interview` field records the choices needed to understand the install; it is not an instruction to regenerate project files. Per-file upstream comparison state lives only in `.professor/baseline.json`, whose hashes cover template bytes with tokens intact.
 
 ### 2.7 Documentation scaffold (`docs/agents/`)
 
@@ -384,13 +411,13 @@ The `interview` field is the replay seed an update re-applies to new upstream te
 
 ## Phase 3 — Smoke test
 
-After install, Claude runs a tiny `/wave:builder` to verify the pipeline works end-to-end:
+After install, Claude verifies the project routes through the installed developer gate:
 
 ```
-/wave:builder add-readme-section
+/dev status
 ```
 
-Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/pfm` to fix it at the source.
+Then run one tiny `/jc` task and watch its project checks. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/pfm` to fix it at the source.
 
 Before the pipeline smoke, rerun `{BLUEPRINT_CLONE_PATH}/engines/wave-walker/engine`'s `npm run verify` and confirm its Claude and Codex manifests carry the same `workflowHash`. This proves the permanent paths and pinned library survived materialization.
 
@@ -498,10 +525,23 @@ The pipeline is supposed to evolve. Static configurations rot — evolving ones 
 
 ## Staying current
 
-New Professor versions are released as git tags on `mreza0100/professor` (semver: patch = fixes, minor = new features, major = breaking, walked through in the notes). Updating an install:
+New Professor versions ship as semver git tags. Each tier stays current from its own source of truth:
 
-1. Update the clone: `git -C <your-clone> pull --tags` — or `pfm update`, which moves the recorded clone to the newest tag and rebuilds the pfm binary.
-2. Read `CHANGELOG.md` between your `.professor/VERSION` and the new tag — the release notes name what changed and any `→ For:` adopter actions.
-3. Port the changes that apply to your install, honoring `drift.md`'s KEEP-LOCAL entries — a customized file is never blindly overwritten.
+| Tier | Truth | Mechanism |
+| --- | --- | --- |
+| Machine-global commands, agents, and skills | Blueprint originals | Symlink-live. `pfm update` advances the recorded tagged clone, rebuilds the binary, runs `pfm install --yes`, and refreshes registrations. |
+| Project files (`CLAUDE.md`, `.claude/**`, docs, scripts) | The local file, full stop | Scaffolded once by `pfm init`. Upstream changes are reports to review and hand-apply; pfm never rewrites these files during update. |
+| Engine mirrors (`AGENTS.md`, `.codex/**`, OpenCode outputs) | Generated from local project files | Never edit by hand. Run the owning compiler, including `pfm codex build|check`, after changing its local sources. |
 
-This is deliberate, by-hand work today: a mechanical, reviewed update transaction (per-file report, nothing silently applied) is queued as the blueprint-compiler train. See `RELEASE.md` for how releases are produced.
+### Review and adopt upstream project changes
+
+1. Run `pfm update check` inside the project. It only reads the blueprint, `.professor/baseline.json`, and local paths; it does not fetch, build, install, or write. Bare `pfm update` performs the machine update and then appends this project report when it finds a baseline.
+2. Read every non-current row:
+   - `UPDATED` — run the printed `git -C <blueprint> diff <pinned>..HEAD -- templates/<template>` command, then hand-apply the parts that belong in the local file.
+   - `NEW` — adopt it only if useful, then map it with `pfm update pin --template <template> <local>`.
+   - `GONE-UPSTREAM` — keep the local file as yours and drop its pin, or delete it and drop the pin.
+   - `LOCAL-DELETED` — restore the local file or drop its pin.
+3. After reviewing and applying an `UPDATED` file, accept its new template baseline with `pfm update pin <local>`. Use `--all` only after every reported updated file has been reviewed and applied.
+4. Re-run `pfm update check`; it exits `0` and ends in `clean` only when no item needs review. Rebuild opted-in engine mirrors from the resulting local source files.
+
+The report is the update UI. There is no project regeneration, interview replay, automatic application, or three-way merge.

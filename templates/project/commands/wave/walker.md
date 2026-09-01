@@ -1,5 +1,5 @@
 ---
-# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); project-scaffold customization belongs in its installed local source; engine mirrors are never hand-edited.
 name: wave:walker
 description: Wave walk that verifies the code works — read-only multi-agent verification of a wave's changed set, ending in one authoritative verdict and a written review. Auto-invoked pre-merge by /wave:orchestrator (branch mode) and post-commit by /wave:live (merge-SHA mode); the `reviewer` agent gates the merge, never this. Also standalone code investigation (args.goal) and claim-verification panels (args.claims, args.manifestPath). Fast mode routes to the `tracer` agent — § Fast mode. Triggers — "wave walker", "/wave:walker", "walker fast", "fast walk".
 argument-hint: [report path | fast <mission>]

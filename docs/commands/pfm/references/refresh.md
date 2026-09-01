@@ -4,9 +4,22 @@ Executed inside `/pfm:release` (step 3). Re-derives the blueprint from the CURRE
 
 **Scope (incremental):** `templates/refresh-map.json` maps every template to its live source(s) + the SHA-256 of each as of the last sync. `scripts/refresh-scope.sh scan` proves unchanged sources untouched — their templates are skipped; re-derive only CHANGED templates (plus files named by any bullet the `refresh-scope.sh ledgers` sweep collected, from this repo's ledger or a linked project's); UNMAPPED-LIVE files get a mapping ruling. `curated` templates have no live source and are never auto-derived. `refresh-scope.sh regen` re-baselines the hashes at release end.
 
-**Update mechanism context:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). When upstream releases new tags, an adopter's `/pfm:update` replays those interview answers against the new templates, runs a three-way hash comparison, and presents changes in three buckets. That protocol ships to adopters as `templates/project/commands/pfm/{update,release}.md`; this repo installs only `release` (there is nothing upstream of upstream to update from).
+**Update mechanism context:** Adopters install from a tagged blueprint. `pfm init` scaffolds project templates once and records per-file template pins in `.professor/baseline.json`; the local project files then own truth. `pfm update check` reports `UPDATED`, `NEW`, `GONE-UPSTREAM`, and `LOCAL-DELETED` mappings without writing. The session reviews each printed template diff, hand-applies wanted changes, and advances accepted pins. Machine-global symlinks update through the blueprint clone, and engine mirrors rebuild from local sources.
 
 Cross-conversation context persists via **Epics** — initiative-level manifest files (`docs/epics/{name}/manifest.md`) with lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED).
+
+---
+
+## Contents
+
+- [Three tiers](#three-tiers)
+- [Source files to mine](#1-source-files-to-mine)
+- [Tier-aware transformations](#2-tier-aware-transformations)
+- [Output structure](#3-output-structure)
+- [SETUP.md install interview](#4-setupmd--interactive-install-interview)
+- [Public README](#5-public-readme)
+- [Process rules](#6-process-rules)
+- [Report](#7-report-after-the-refresh-pass)
 
 ---
 
@@ -133,7 +146,7 @@ Skills ship as **empty shells** when their content is project-specific — the s
 
 **Phase 2.6 — Host tooling probe (git-host bridge):** Check the install machine for `gh` and `glab` (`command -v`). For each present, write a one-file host command at `.claude/commands/h/{gh|glab}.md` (the `h:` host namespace) whose `description` records that the CLI is available on this host for {GitHub|GitLab} operations. It carries no procedure — it is the bridge that tells the Professor which CLI to drive: an adopter on GitLab forks + releases professor through `/h:glab`, a GitHub adopter through `/h:gh`, and `/pfm:release` and `/git` read this marker to target the right host. These host-local bridges are KEEP-LOCAL — excluded from the portable blueprint. Absent tools get no command. Then resolve the blueprint repo target: if the user has push access to the canonical repo, set `{BLUEPRINT_REPO}`/`{GH_USER}`/`{BLUEPRINT_CLONE_PATH}` to it; otherwise have them fork it and use the fork.
 
-**Phase 3 — Smoke test:** Run `/wave:builder` with a tiny test feature to verify end-to-end.
+**Phase 3 — Smoke test:** Run `/dev status`, then one tiny `/jc` task and watch its project checks.
 
 ## 5. Public README
 
@@ -153,13 +166,13 @@ One-paragraph pitch: portable .claude/ that turns Claude Code into a self-discip
 - Single git owner (gitter)
 - Hotfix mode (/jc)
 - Self-improvement at source (/pfm)
-- Manifest-driven updates (`/pfm:update` — git tag pinning, interview replay, three-bucket diff)
+- Scaffold-and-own updates (`pfm update check` — reported template diffs, reviewed hand application, per-file pins)
 - Epics — cross-conversation context persistence via manifest files (PLANNING → IN_PROGRESS → SHIPPED)
 - Path conventions ($DOCS, $WORKTREE, $CDOCS)
 - Documentation discipline (one agent writes permanent docs)
 
 ## Quick start
-git clone, cd your-project, claude → read blueprint → follow SETUP.md → interview → customize → smoke test
+install pfm, cd your-project, `pfm init .`, claude → follow the printed SETUP.md install interview → customize → smoke test
 
 ## The cast — Tier A
 Professor, /jc, /pfm, /wave:builder, /dev, /git, /wave:orchestrator, /documenter

@@ -4,13 +4,9 @@ description: Message the tmux-based agent chats in this repo through `pfm chat` 
 ---
 
 <!--
-HAND-WRITTEN CARD — codex-mirror.sh never overwrites this file (its directory
-name is listed in the script's HANDWRITTEN list). Note that this card has NO
-generated counterpart: `chat` is a HOST-level command family (`~/.claude/commands/chat/`,
-not this repo's `.claude/commands/`), so the mirror — which only scans
-`.claude/commands/**` — never sees it and generates nothing for it, not even a
-per-subcommand pointer. This card fills that gap with the one page a lane
-actually needs mid-wave.
+HAND-WRITTEN CARD — no generated marker. `pfm codex build` preserves it because
+chat is a host-level MCP/CLI surface with no project-local Claude command source.
+This card carries the one page a Codex lane actually needs mid-wave.
 -->
 
 # pfm chat essentials (Codex shape)

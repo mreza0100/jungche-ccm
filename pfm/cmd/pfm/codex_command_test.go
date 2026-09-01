@@ -20,11 +20,13 @@ func TestCodexCommandHelpAndOnlyBuildCheckActions(t *testing.T) {
 		"--model alias=value",
 		"--root-adapter",
 		"--agent-preamble",
-		"--overrides-dir",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("codex help missing %q:\n%s", want, stdout.String())
 		}
+	}
+	if strings.Contains(stdout.String(), "--overrides-dir") {
+		t.Fatalf("codex help still advertises retired override support:\n%s", stdout.String())
 	}
 	stdout.Reset()
 	stderr.Reset()
@@ -82,6 +84,13 @@ func TestCodexCommandStrictRepoConfigAndCLIModelValidation(t *testing.T) {
 		t.Fatalf("unknown repo config key code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
+	writeCodexCLIFile(t, filepath.Join(repo, ".claude", "codex-build.json"), `{"version":1,"overridesDir":".claude/codex-overrides"}`)
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"codex", "build", repo}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "overridesDir") {
+		t.Fatalf("retired overridesDir config key code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
 	stdout.Reset()
 	stderr.Reset()
 	if code := run([]string{"codex", "build", "--model", "broken", repo}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "alias=value") {
@@ -89,17 +98,10 @@ func TestCodexCommandStrictRepoConfigAndCLIModelValidation(t *testing.T) {
 	}
 }
 
-func TestCodexCommandFlagsReachCompilerAndReportOverrideStatus(t *testing.T) {
+func TestCodexCommandFlagsReachCompiler(t *testing.T) {
 	jailTest(t)
 	repo := filepath.Join(os.Getenv("PFM_HOME"), "flags-repo")
 	writeCodexCLIFile(t, filepath.Join(repo, "CLAUDE.md"), "# Fixture\n\n## Subagents\n\nUse sonnet.\n")
-	writeCodexCLIFile(t, filepath.Join(repo, ".claude", "codex-overrides", "subagents.json"), `{
-  "version": 1,
-  "source": "CLAUDE.md",
-  "mode": "replace-section",
-  "headingPath": ["## Subagents"],
-  "content": "## Subagents\n\nUse the selected Codex worker.\n"
-}`)
 
 	var stdout, stderr bytes.Buffer
 	args := []string{
@@ -108,13 +110,10 @@ func TestCodexCommandFlagsReachCompilerAndReportOverrideStatus(t *testing.T) {
 		"--agent-preamble", "Fixture preamble", "--exclude-dir", "skip",
 		"--exclude-project", "ignored", "--never-register", "secret",
 		"--suffix-mode", "project", "--suffix-prefix", "fixture-",
-		"--overrides-dir", ".claude/codex-overrides", repo,
+		repo,
 	}
 	if code := run(args, &stdout, &stderr); code != 0 {
 		t.Fatalf("codex flag build code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "override:") {
-		t.Fatalf("build did not report override status: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 	agents, err := os.ReadFile(filepath.Join(repo, "AGENTS.md"))
 	if err != nil {

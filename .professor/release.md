@@ -8,6 +8,10 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
 
+- B: pfm + project scaffolding — `pfm init` now scaffolds project templates once with per-file baseline pins; local files own truth, `pfm update check` reports upstream deltas for reviewed hand application, and the dormant Codex override layer is removed.
+
+#### → For: adopters — run `pfm update check`, review and apply wanted template diffs, then pin each accepted local file; do not regenerate the project or replay its install interview.
+
 - A: `templates/CLAUDE.md` — docs-map example gains the truth hierarchy (code truth: grep; schema truth: introspect the live DB) + `docs/runbooks/{project}/`, `docs/features/`, `docs/references/`, `docs/business/` trees; /documenter rule routes officer/mentor/marketer output to `docs/business/{compliance,marketing}/`
 - B: officer/mentor/marketer/pm/jc commands — owned-document paths migrate `$CDOCS/{cmd}/$REFS/` → `docs/business/{compliance,marketing}/` and `docs/agents/features/` → `docs/features/`
 - A: wave commands — builder reads the spec spine (`spec.md` index + `tasks/T{n}.md` per task, monolithic fallback); refine fans out `tracer` agents and splits architect findings into auto-folded gaps vs user-ruled judgment; live appends lane events to `tmp/wave-sensor/events.log` as a guaranteed-wake fallback; walker follows threads past the diff's edge

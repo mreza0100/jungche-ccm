@@ -1,5 +1,5 @@
 ---
-# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); project-scaffold customization belongs in its installed local source; engine mirrors are never hand-edited.
 name: tokens
 description: "Runtime token-spend attribution for both harnesses — Claude Code sub-agents and Workflow runs (local JSONL transcripts) and Codex CLI session threads (`--codex`, ~/.codex rollouts) — ranked heaviest-first with estimated USD cost. Modes: `--all`, `--by-workflow`, `--filter <substr>`, `--detail <id>`, `--by-day`; `--help` lists every flag. Triggers: 'token ledger', 'token attribution', 'heaviest token burner', 'which agent burned the most tokens', 'what did the run/workflow/wave cost', 'codex spend', 'token breakdown'. Static context size routes to /context-meter; after-the-fact spend here."
 ---

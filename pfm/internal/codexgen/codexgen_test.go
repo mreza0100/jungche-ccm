@@ -1,8 +1,6 @@
 package codexgen
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"sort"
@@ -246,40 +244,6 @@ func TestFrontmatterAndRosterTransform(t *testing.T) {
 	}
 }
 
-func TestOverridesApplyExactAndRejectStalePin(t *testing.T) {
-	root := t.TempDir()
-	source := "# Root\n\nkeep\n\n## Replace me\n\nold body\n\n## Tail\n\nend\n"
-	region := "## Replace me\n\nold body\n"
-	sum := sha256.Sum256([]byte(region))
-	overridePath := filepath.Join(root, ".claude", "codex-overrides", "root.json")
-	writeTestFile(t, overridePath, `{
-  "version": 1,
-  "source": "CLAUDE.md",
-  "mode": "replace-section",
-  "headingPath": ["Root", "Replace me"],
-  "content": "## Replace me\n\nnew body\n",
-  "sourceHash": "sha256:`+hex.EncodeToString(sum[:])+`"
-}`)
-
-	cfg := defaultConfig()
-	cfg.OverridesDir = ".claude/codex-overrides"
-	got, statuses, err := applyOverrides(root, "CLAUDE.md", source, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(got, "new body") || strings.Contains(got, "old body") {
-		t.Fatalf("override result = %q", got)
-	}
-	if len(statuses) != 1 || statuses[0].Status != "applied" {
-		t.Fatalf("statuses = %#v", statuses)
-	}
-
-	writeTestFile(t, overridePath, strings.ReplaceAll(string(mustReadTestFile(t, overridePath)), hex.EncodeToString(sum[:]), strings.Repeat("0", 64)))
-	if _, statuses, err = applyOverrides(root, "CLAUDE.md", source, cfg); err == nil || len(statuses) != 1 || statuses[0].Status != "stale-pin" {
-		t.Fatalf("stale pin: statuses=%#v err=%v", statuses, err)
-	}
-}
-
 func TestDanglingGlobalCommandIsHonestAndCheckWritesNothing(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
@@ -312,37 +276,6 @@ func TestDanglingGlobalCommandIsHonestAndCheckWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("check wrote AGENTS.md: %v", err)
-	}
-}
-
-func TestOverrideModesAndMissingAnchor(t *testing.T) {
-	root := t.TempDir()
-	cfg := defaultConfig()
-	cfg.OverridesDir = ".claude/codex-overrides"
-	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "01-replace.json"), `{"version":1,"source":"CLAUDE.md","mode":"replace-exact","anchor":"replace literal","content":"replaced"}`)
-	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "02-delete.json"), `{"version":1,"source":"CLAUDE.md","mode":"delete","anchor":"delete literal"}`)
-	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "03-insert.json"), `{"version":1,"source":"CLAUDE.md","mode":"insert-after","anchor":"anchor literal","content":" + inserted"}`)
-	source := "replace literal\ndelete literal\nanchor literal\n"
-	got, statuses, err := applyOverrides(root, "CLAUDE.md", source, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "replaced\n\nanchor literal + inserted\n" {
-		t.Fatalf("all override modes = %q", got)
-	}
-	if len(statuses) != 3 {
-		t.Fatalf("statuses = %#v", statuses)
-	}
-	for _, status := range statuses {
-		if status.Status != "applied" {
-			t.Fatalf("status = %#v", status)
-		}
-	}
-
-	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "04-missing.json"), `{"version":1,"source":"CLAUDE.md","mode":"delete","anchor":"not present"}`)
-	_, statuses, err = applyOverrides(root, "CLAUDE.md", source, cfg)
-	if err == nil || !strings.Contains(err.Error(), "anchor-missing") || statuses[len(statuses)-1].Status != "anchor-missing" {
-		t.Fatalf("missing anchor: statuses=%#v err=%v", statuses, err)
 	}
 }
 

@@ -9,6 +9,18 @@ Shortest path first.
 
 ---
 
+## Contents
+
+- [Runtime prerequisites](#runtime-prerequisites-for-the-pfm-install-paths)
+- [Binary install](#1-binary-install--pfm-only-2-minutes)
+- [Build from source](#2-build-from-source--pfm-only)
+- [Full Professor adoption](#3-full-professor-adoption--the-discipline-layer)
+- [What gets written where](#what-gets-written-where)
+- [Updating](#updating)
+- [Uninstall](#uninstall)
+
+---
+
 ## Runtime prerequisites for the `pfm` install paths
 
 Paths 1 and 2 use the same host runtime. Both require Linux or macOS on `amd64` or `arm64`,
@@ -154,38 +166,28 @@ Same eight base surfaces, the same optional VS Code surface, and the same rc-97 
 
 ## 3. Full Professor adoption — the discipline layer
 
-Everything above, plus `CLAUDE.md`, per-project agents, commands, docs scaffolding, and the whole pipeline — customized to your project through a Claude-guided interview. Nothing here duplicates what paths 1/2 already do; the interview invokes them for you if you opt into a host extra.
+Everything above, plus `CLAUDE.md`, per-project agents, commands, docs scaffolding, and the whole pipeline. `pfm init` scaffolds the project layer once, with template tokens intact and per-file baseline pins; the Claude-guided interview then adapts those local files in place. Nothing here duplicates what paths 1/2 already do.
 
-**Prerequisites:** Claude Code CLI, logged in. A git repository — if the project isn't one, Claude asks before `git init`. `jq` — required by the host installer and several hooks (`brew install jq` / `apt install jq`). Optional, per opt-in: `prettier` via `npx` (markdown format hook), `tmux` (host fleet), `node` (Codex mirror compiler), `gh`/`glab` (git-host skill). Ten to fifteen minutes of your attention.
+**Prerequisites:** Claude Code CLI, logged in. A git repository — if the project isn't one, Claude asks before `git init`. `jq` — required by the host installer and several hooks (`brew install jq` / `apt install jq`). Optional, per opt-in: `prettier` via `npx` (markdown format hook), `tmux` (host fleet), `gh`/`glab` (git-host skill). Ten to fifteen minutes of your attention.
 
-Open Claude Code in your target project and paste:
+Initialize the target project, then follow the path printed by `pfm init`:
 
+```bash
+cd /path/to/your-project
+pfm init .
+claude
 ```
-Read https://raw.githubusercontent.com/mreza0100/professor/main/INSTALL.md and walk me through
-the interactive install. Ask me each section's questions one at a time and wait for my answers
-before proceeding. Do not assume — confirm everything.
-```
 
-Claude interviews you — structure, stack, disciplines, optional roles, persona, host extras — shows the full write plan (files, persona, doc re-homing), waits for you to type **"go"**, then generates. Ten to fifteen minutes, commits nothing.
+Tell Claude to read the printed `docs/SETUP.md` path and execute its **Install interview** section. Claude interviews you — structure, stack, optional roles, persona, and host extras — fills the scaffolded local files, deploys and pins per-project agents, shows the full write plan, waits for you to type **"go"**, then applies it. Ten to fifteen minutes, commits nothing.
 
 **Guarantees, stated by the installer up front:**
 
 - Never commits, pushes, or runs `git add` — files only; you review and commit.
-- Never overwrites an existing `CLAUDE.md` / `.claude/` without asking (overwrite / merge / abort).
+- Never overwrites an existing project file by default — `pfm init` reports `CONFLICT` and leaves that path unpinned; `--force` is the explicit overwrite choice.
 - Never installs an opt-in piece — Tier B roles, Codex, statusline, hooks, host fleet, memory backup — without an explicit yes.
 - Never touches a path outside the plan.
 
 **Full protocol:** [`docs/SETUP.md`](./docs/SETUP.md) — the interview questions, pre-flight checks, existing-doc re-homing rules, generation steps, and verification. [`docs/PLACEHOLDERS.md`](./docs/PLACEHOLDERS.md) is the substitution law, [`docs/BLUEPRINT.md`](./docs/BLUEPRINT.md) the philosophy. Read all three before writing any file.
-
-### Corrections to SETUP.md — this list wins until a release folds them in
-
-1. **Smoke test:** `/wave:builder add-readme-section` no longer works — `/wave:builder` is orchestrated-only and refuses anything but a brief path. Verify with `/dev status` and a tiny `/jc` task instead.
-2. **`AGENTS.md` is compiled, not symlinked.** If Codex is opted in, `scripts/build-codex.mjs` generates it from `CLAUDE.md`; never `ln -sf CLAUDE.md AGENTS.md`.
-3. **`codex-mirror.sh` does not exist.** The Codex layer is `scripts/build-codex.mjs` (compiler) + `scripts/codex-sync.sh` (hooks).
-4. **Skip the Council interview question.** No `/council` command ships; omit `council_panel` from the manifest.
-5. **Clone at the latest tag**, not SETUP.md's hardcoded example — `git ls-remote --tags --sort=-v:refname <repo> 'v*'` gets the newest (same command as path 1 above).
-
----
 
 ## What gets written where
 
@@ -194,7 +196,7 @@ One writer per surface — the law that keeps the two installers from fighting o
 | Surface                                        | Written by                            | Paths                                                                                                                                                                                               |
 | ---------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Host fleet wiring                              | `pfm install` — the only writer       | `~/.local/share/pfm/install/`, `~/.claude/commands/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/{prompts,skills,agents,hooks.json}`, one `~/.zshrc` line, and the opt-in VS Code user/remote `settings.json` |
-| Project discipline layer                       | The interview — the only writer       | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                                               |
+| Project discipline layer                       | `pfm init` scaffolds and pins; the interview owns later local adaptation | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                                               |
 | Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the host-fleet surfaces above — the interview never writes them directly                                                                                                           |
 | Source-fetched themes (default; `--skip-themes` opts out) | `pfm install` | `~/.claude/themes/tokyo-night.json` and other targets declared by `templates/themes/sources.json`; exact ownership is recorded in the install ledger |
 
@@ -223,19 +225,22 @@ With an empty list, PFM does not fall back to the default home.
 
 ## Updating
 
-**Any existing installation:** follow the
-[v0.64.0 LLM upgrade runbook](releases/v0.64.0.md#llm-upgrade-runbook). Installations already on
-`v0.60.1` or later use `pfm update --to v0.64.0`; `v0.60.0` or earlier must bootstrap the
-checksum-verified v0.64.0 binary directly because the older updater cannot validate its own
-replacement safely.
+Each tier has one source of truth and one update mechanism:
 
-**`pfm` (machine layer, from `v0.60.1` onward):** `pfm update` consumes a tagged source-clone release
-transactionally, then runs `install --yes` and `doctor`. `pfm init` scaffolds a project from the
-clone recorded by install.
+| Tier | Truth | Staying current |
+| --- | --- | --- |
+| Machine-global commands, agents, and skills | Blueprint originals | `pfm update` advances the tagged source clone, rebuilds the binary, runs `pfm install --yes`, and refreshes the registry symlinks. |
+| Project files (`CLAUDE.md`, `.claude/**`, docs, scripts) | The local files | `pfm init` scaffolds them once. `pfm update check` reports template deltas; you review and hand-apply each wanted change, then pin it. |
+| Engine mirrors (`AGENTS.md`, `.codex/**`, OpenCode outputs) | Generated from local project files | Never edit them by hand. Rebuild or verify them with their compiler, including `pfm codex build|check`. |
 
-**The discipline layer (path 3):** updating an installed project's blueprint content is deliberate,
-by-hand work — see `docs/SETUP.md` § "Staying current". Anything recorded in `.professor/drift.md`
-is a forced keep-local that is never blindly overwritten.
+The project flow is deliberately non-destructive:
+
+1. Run `pfm update check` for a report only. Bare `pfm update` performs the machine update first and appends the same report when run inside a managed project.
+2. For each `UPDATED` item, inspect the printed blueprint `git diff`, decide what belongs in the local file, and apply it by hand. `NEW`, `GONE-UPSTREAM`, and `LOCAL-DELETED` each print their own adoption or cleanup action.
+3. Accept a reviewed file with `pfm update pin <local>`. Adopt a new template mapping with `pfm update pin --template <template> <local>`; forget an obsolete mapping with `pfm update drop <local>`.
+4. Rebuild opted-in engine mirrors from the resulting local source files.
+
+No update regenerates scaffolded project files, replays the interview, or performs a three-way merge. See [`docs/SETUP.md`](docs/SETUP.md#staying-current) for the complete workflow.
 
 ---
 

@@ -23,7 +23,7 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - `.claude/commands/*.md` — slash commands (/wave:builder, /jc, /pfm, …)
 - `.claude/agents/*.md` — root pipeline agents (gitter) + qa-{proj} wrappers, one per project (registered QA gates that read the child protocol and carry the test-output filter hook)
 - `.claude/skills/*/SKILL.md` — reusable skills (`ls .claude/skills/` for the current set)
-- `.claude/scripts/*.{sh,mjs}` — worktree.sh, alloc-ports.sh, dev.sh, build-codex.mjs (Claude→Codex compiler)
+- `.claude/scripts/*.{sh,mjs}` — worktree.sh, alloc-ports.sh, dev.sh, codex-sync.sh (the `pfm codex` hook bridge)
 - `.claude/workflows/*.js` — saved Workflow scripts, invocable as Workflow({name, args}) — each a declared copy of its command file's orchestration section (§ Critical invariants, workflow-scripts-are-schedulers); a skill may embed its own engine as {skill}/workflow.js via Workflow({scriptPath})
 - `{project}/.claude/agents/*.md` — child project agents; `{project}/CLAUDE.md` — child project conventions. A `{project}` held as a git submodule lands its commits in the child repo, and the monorepo pins a pointer (gitter-owned)
 - `docs/commands/{cmd}/references/` — command-owned reference docs ($CDOCS/$CMD/$REFS/); `docs/agents/` — documenter-owned cross-project reference clusters (`api/`, `architecture/`, `map/`, `features/`) + `standards.md`, `graph/`; `docs/facts/` — user-ruled system facts (main-loop-written, on explicit ruling only)
@@ -90,18 +90,21 @@ For things that must happen every time (formatting, validation, secret-scanning)
 - Agents: `.claude/agents/*.md` (root) + `{project}/.claude/agents/*.md` (child)
 - Commands: `.claude/commands/*.md`; skills: `.claude/skills/*/SKILL.md`
 - Scripts: `.claude/scripts/*.{sh,mjs}`; workflows: `.claude/workflows/*.js`; settings: `.claude/settings.json`
-- Codex mirror: `.codex/` + `AGENTS.md` files + `$HOME/.codex/` — all generated from the Claude sources by `node .claude/scripts/build-codex.mjs`. Auto-compiled at turn end by the `codex-sync.sh` hooks whenever an Edit/Write touches a Claude source (Bash-driven writes are outside that hook's coverage — run `generate` yourself after one); `check` gates drift. Hand-written keepers: `.codex/config.toml` (except its generated `mcp_servers` fence, compiled from `.mcp.json`), `.codex/rules`
+- Codex mirror: `.codex/` + `AGENTS.md` files + `$HOME/.codex/` — generated from the local Claude sources by `pfm codex build`; `pfm codex check` gates drift. The `codex-sync.sh` hooks run both after a Claude-source edit. Hand-written keepers: `.codex/config.toml` (except its generated `mcp_servers` fence, compiled from `.mcp.json`), `.codex/rules`
 - PFM reference docs: `docs/commands/pfm/references/`
 
 ---
 
-## Where a change lands — drift vs release
+## Where a change lands
 
-Classify FIRST — before any edit. The classification decides the edit target, the ledger, and what survives an update. The test: an improvement to the framework itself (any Professor adopter could use it) → **release-bound**. A customization for this project → **drift**. **Unsure? Ask the user — never guess.**
+Classify FIRST — before any edit. The classification decides the source of truth. **Unsure? Ask the user — never guess.**
 
-- **Drift** → edit this install's live files; log `.professor/drift.md` (the KEEP-LOCAL set an update must preserve). The runtime mirrors recompile per § What you own.
-- **Release-bound** → the canonical home is the framework clone at `{BLUEPRINT_CLONE_PATH}`: the change is made to its templates, under that repo's own law and gates, and this install re-derives from the updated templates. A local stopgap edit to unblock now is legal — the `release.md` bullet then names the change AND the stopgap file, so the stopgap dissolves when the regenerated template arrives. Log `.professor/release.md` — framework changes pending upstream, consumed by the framework repo's release flow.
-- **Two transforms, in order:** the specification transform first (template ↔ install — placeholder values swap, prose ships verbatim), then the runtime transform (the Claude sources compile to the Codex mirror per § What you own). A release-bound change flows template → install → mirrors; an edit that skips the template layer strands the fix in one install.
+- **Framework change** → edit the canonical blueprint template at `{BLUEPRINT_CLONE_PATH}` under that repo's own law and gates, then log `.professor/release.md` for its release flow. Never put project-specific behavior into the blueprint.
+- **Project customization** → edit this project's local file directly. That local file is the source of truth; it is not regenerated from the template. Use `.professor/drift.md` only when a human-readable customization note is useful, never as merge machinery.
+- **Engine mirror** → never edit the generated output by hand. Change its local Claude source, then run `pfm codex build` and `pfm codex check` (or the owning compiler for another engine).
+- **Upstream project-template delta** → run `pfm update check`, inspect the printed template diff, hand-apply the parts that belong locally, then advance that file's pin with `pfm update pin <local>`. New or retired mappings use the report's `pin --template` or `drop` action.
+
+There is no local-stopgap-to-regeneration ceremony. A framework fix and a project customization are separate changes in their respective sources of truth.
 
 Ledger entries append as FINAL changelog bullets — `- {Tier}: {scope} — {semantic change}`, plus `#### → For:` when adopters must act and `(cost)` on env/hook/permission/model deltas — the framework repo's release copies them verbatim.
 
@@ -173,9 +176,9 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 
 ### Step 6 — Report
 
-Report, in order: "Infrastructure updated, N files changed" — the changes (what and why) — consistency verified (stale references none/N-fixed; pipeline flow valid; agent definitions consistent) — "Logged to: drift.md | release.md — {one-line entry}" — repos touched beyond this one ({BLUEPRINT_CLONE_PATH}, $HOME) with their uncommitted state, or "none" — manual verification needed (list, or "none").
+Report, in order: "Infrastructure updated, N files changed" — the changes (what and why) — consistency verified (stale references none/N-fixed; pipeline flow valid; agent definitions consistent) — for a framework change, "Logged to: release.md — {one-line entry}"; for a project customization, "Local source changed directly" — repos touched beyond this one ({BLUEPRINT_CLONE_PATH}, $HOME) with their uncommitted state, or "none" — manual verification needed (list, or "none").
 
-Record the ledger line (§ Where a change lands) before reporting — no change ships unlogged.
+For a release-bound framework change, record the `.professor/release.md` ledger line (§ Where a change lands) before reporting.
 
 ---
 

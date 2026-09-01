@@ -32,7 +32,6 @@ type Config struct {
 	NeverRegister   []string          `json:"neverRegister"`
 	SuffixMode      string            `json:"suffixMode"`
 	SuffixPrefix    string            `json:"suffixPrefix"`
-	OverridesDir    string            `json:"overridesDir"`
 }
 
 // CLIOverrides contains values supplied by a codex command.  A non-nil slice
@@ -49,11 +48,9 @@ type CLIOverrides struct {
 	NeverRegister   []string
 	SuffixMode      string
 	SuffixPrefix    string
-	OverridesDir    string
 
 	SetRootAdapter   bool
 	SetAgentPreamble bool
-	SetOverridesDir  bool
 }
 
 // defaultConfig is intentionally free of project-specific paths.  A caller
@@ -72,7 +69,6 @@ func defaultConfig() Config {
 		RootAdapter:   defaultRootAdapter,
 		AgentPreamble: defaultAgentPreamble,
 		SuffixMode:    "project",
-		OverridesDir:  ".claude/codex-overrides",
 	}
 }
 
@@ -140,9 +136,6 @@ func loadConfig(root string, cli CLIOverrides) (Config, error) {
 		if file.SuffixPrefix != nil {
 			cfg.SuffixPrefix = *file.SuffixPrefix
 		}
-		if file.OverridesDir != nil {
-			cfg.OverridesDir = *file.OverridesDir
-		}
 	}
 
 	applyCLIOverrides(&cfg, cli)
@@ -167,7 +160,6 @@ type configFile struct {
 	NeverRegister   []string          `json:"neverRegister"`
 	SuffixMode      *string           `json:"suffixMode"`
 	SuffixPrefix    *string           `json:"suffixPrefix"`
-	OverridesDir    *string           `json:"overridesDir"`
 }
 
 func decodeConfigFile(data []byte, path string) (configFile, error) {
@@ -220,9 +212,6 @@ func applyCLIOverrides(cfg *Config, cli CLIOverrides) {
 	if cli.SuffixPrefix != "" {
 		cfg.SuffixPrefix = cli.SuffixPrefix
 	}
-	if cli.OverridesDir != "" || cli.SetOverridesDir {
-		cfg.OverridesDir = cli.OverridesDir
-	}
 }
 
 func validateConfig(cfg Config) error {
@@ -259,9 +248,6 @@ func validateConfig(cfg Config) error {
 	}
 	if cfg.SuffixMode == "strip-prefix" && cfg.SuffixPrefix == "" {
 		return errors.New("suffixPrefix is required when suffixMode is strip-prefix")
-	}
-	if err := validateRelativePath(cfg.OverridesDir, "overridesDir"); err != nil {
-		return err
 	}
 	return nil
 }

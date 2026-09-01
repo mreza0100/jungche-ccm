@@ -80,7 +80,7 @@ func runInit(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime
 	}
 	fmt.Fprintf(stdout, "initialized %s from %s\n", target, source)
 	fmt.Fprintf(stdout, "deployed %d project files; baseline: %s\n", deployed, professor.BaselinePath(target))
-	fmt.Fprintln(stdout, "open Claude here: /pfm:install")
+	fmt.Fprintf(stdout, "open Claude here and follow %s § Install interview — it fills tokens and deploys per-project agents\n", filepath.Join(source, "docs", "SETUP.md"))
 	return 0
 }
 

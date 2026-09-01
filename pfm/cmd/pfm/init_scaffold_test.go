@@ -72,7 +72,8 @@ func TestInitDeploysMappedTemplatesAndPinsExactlyTheDeployedSet(t *testing.T) {
 	if info, err := os.Stat(scriptPath); err != nil || info.Mode().Perm()&0o111 == 0 {
 		t.Fatalf("script executable mode=%v err=%v", info, err)
 	}
-	if !strings.Contains(stdout.String(), "deployed 10 project files") || !strings.Contains(stdout.String(), "open Claude here: /pfm:install") {
+	handoff := "open Claude here and follow " + filepath.Join(source, "docs", "SETUP.md") + " § Install interview — it fills tokens and deploys per-project agents"
+	if !strings.Contains(stdout.String(), "deployed 10 project files") || !strings.Contains(stdout.String(), handoff) {
 		t.Fatalf("init output=%q", stdout.String())
 	}
 }

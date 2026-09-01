@@ -1,5 +1,5 @@
 ---
-# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); a project-only customization is an override under .professor/overrides/, never an edit to a generated copy.
+# professor: SOURCE TEMPLATE — edit here for a framework change (routes through /pfm); project-scaffold customization belongs in its installed local source; engine mirrors are never hand-edited.
 name: wave:live
 description: Batch a set of tasks live on `main` — grouping and parallelism for related changes that don't need worktree isolation: parallel sub-agent builds, end-of-wave {project}-qa agents write tests, one /documenter + gitter commit, then /wave:walker with inline remediation. Trigger — /wave:live [file|tasks] (empty → root wave.md).
 argument-hint: [task file | inline tasks]

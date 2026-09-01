@@ -50,7 +50,6 @@ func runCodex(args []string, stdout, stderr io.Writer, runtime commandRuntime) i
 	flags.Var(&neverRegister, "never-register", "do not register an agent; repeatable")
 	suffixMode := flags.String("suffix-mode", "", "agent suffix mode")
 	suffixPrefix := flags.String("suffix-prefix", "", "agent suffix prefix")
-	overridesDir := flags.String("overrides-dir", "", "section override directory")
 	positionals, code, ok := parseFlagsAnywhere(flags, args[1:])
 	if !ok {
 		return code
@@ -84,7 +83,7 @@ func runCodex(args []string, stdout, stderr io.Writer, runtime commandRuntime) i
 		return 1
 	}
 
-	overrides, err := codexCLIOverrides(models, *rootAdapter, *agentPreamble, excludeDirs, excludeProjects, neverRegister, *suffixMode, *suffixPrefix, *overridesDir)
+	overrides, err := codexCLIOverrides(models, *rootAdapter, *agentPreamble, excludeDirs, excludeProjects, neverRegister, *suffixMode, *suffixPrefix)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm codex %s: %v\n", args[0], err)
 		return 2
@@ -95,8 +94,6 @@ func runCodex(args []string, stdout, stderr io.Writer, runtime commandRuntime) i
 			overrides.SetRootAdapter = true
 		case "agent-preamble":
 			overrides.SetAgentPreamble = true
-		case "overrides-dir":
-			overrides.SetOverridesDir = true
 		}
 	})
 	options := codexgen.Options{Root: root, Home: resolvedHome, Mode: mode, CLIOverrides: overrides}
@@ -123,7 +120,6 @@ func printCodexUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --exclude-project NAME    repeatable")
 	fmt.Fprintln(w, "  --never-register NAME     repeatable")
 	fmt.Fprintln(w, "  --suffix-mode MODE [--suffix-prefix TEXT]")
-	fmt.Fprintln(w, "  --overrides-dir PATH")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "usage: pfm codex agents [--home PATH]")
 	fmt.Fprintln(w, "  compiles every {home}/.professor/templates/global/agents/*.md into a sibling .toml,")
@@ -211,7 +207,7 @@ func (list *repeatString) Set(value string) error {
 	return nil
 }
 
-func codexCLIOverrides(models repeatString, adapter, preamble string, dirs, projects, agents repeatString, suffixMode, suffixPrefix, overridesDir string) (codexgen.CLIOverrides, error) {
+func codexCLIOverrides(models repeatString, adapter, preamble string, dirs, projects, agents repeatString, suffixMode, suffixPrefix string) (codexgen.CLIOverrides, error) {
 	result := codexgen.CLIOverrides{
 		RootAdapter:     adapter,
 		AgentPreamble:   preamble,
@@ -220,7 +216,6 @@ func codexCLIOverrides(models repeatString, adapter, preamble string, dirs, proj
 		NeverRegister:   []string(agents),
 		SuffixMode:      suffixMode,
 		SuffixPrefix:    suffixPrefix,
-		OverridesDir:    overridesDir,
 	}
 	modelMap := make(map[string]string, len(models))
 	for _, item := range models {
@@ -242,9 +237,6 @@ func printCodexResult(stdout, stderr io.Writer, result codexgen.Result) {
 	}
 	for _, problem := range result.Problems {
 		fmt.Fprintf(stderr, "pfm codex: %s\n", problem)
-	}
-	for _, status := range result.OverrideStatuses {
-		fmt.Fprintf(stdout, "override: %s %s %s (%s)\n", status.Status, status.Source, status.Anchor, status.File)
 	}
 }
 

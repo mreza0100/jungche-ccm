@@ -26,14 +26,13 @@ type Options struct {
 }
 
 type Result struct {
-	OK               bool
-	Warnings         []string
-	Problems         []string
-	OverrideStatuses []OverrideStatus
-	Wrote            int
-	Unchanged        int
-	Deleted          int
-	Actions          []Action
+	OK        bool
+	Warnings  []string
+	Problems  []string
+	Wrote     int
+	Unchanged int
+	Deleted   int
+	Actions   []Action
 }
 
 // Action is one filesystem mutation a build performs. Check returns the same
@@ -80,8 +79,8 @@ func Run(options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{Warnings: []string{}, Problems: []string{}, OverrideStatuses: []OverrideStatus{}}
-	outputs, notes := make([]generatedFile, 0), []string{}
+	result := Result{Warnings: []string{}, Problems: []string{}}
+	outputs := make([]generatedFile, 0)
 	add := func(output generatedFile) { outputs = append(outputs, output) }
 	warn := func(message string) { result.Warnings = append(result.Warnings, message) }
 	problem := func(message string) { result.Problems = append(result.Problems, message) }
@@ -94,9 +93,7 @@ func Run(options Options) (Result, error) {
 
 	for _, project := range projects {
 		src := filepath.Join(root, project, "CLAUDE.md")
-		content, sourceNotes, statuses, ok := compileSourceMarkdown(root, src, cfg, agentsDocumentTransform, problem)
-		result.OverrideStatuses = append(result.OverrideStatuses, statuses...)
-		notes = append(notes, sourceNotes...)
+		content, ok := compileSourceMarkdown(src, agentsDocumentTransform, problem)
 		if !ok {
 			continue
 		}
@@ -125,9 +122,6 @@ func Run(options Options) (Result, error) {
 		}
 		result.Warnings = append(result.Warnings, mcp.Notes...)
 		result.Problems = append(result.Problems, mcp.Problems...)
-	}
-	for _, note := range notes {
-		warn(note)
 	}
 	if options.Mode == ModeCheck {
 		for _, warning := range result.Warnings {
@@ -193,7 +187,7 @@ func RunGlobalCommands(options GlobalCommandsOptions) (Result, error) {
 			return Result{}, err
 		}
 	}
-	result := Result{Warnings: []string{}, Problems: []string{}, OverrideStatuses: []OverrideStatus{}}
+	result := Result{Warnings: []string{}, Problems: []string{}}
 	outputs := make([]generatedFile, 0)
 	add := func(output generatedFile) { outputs = append(outputs, output) }
 	warn := func(message string) { result.Warnings = append(result.Warnings, message) }
@@ -420,19 +414,13 @@ func excludedSource(exclusions []string, relative, name string) bool {
 	return false
 }
 
-func compileSourceMarkdown(root, source string, cfg Config, options TransformOptions, problem func(string)) (string, []string, []OverrideStatus, bool) {
+func compileSourceMarkdown(source string, options TransformOptions, problem func(string)) (string, bool) {
 	raw, err := os.ReadFile(source)
 	if err != nil {
 		problem(fmt.Sprintf("read %s: %v", source, err))
-		return "", nil, nil, false
+		return "", false
 	}
-	rel, _ := filepath.Rel(root, source)
-	overridden, statuses, overrideErr := applyOverrides(root, filepath.ToSlash(rel), string(raw), cfg)
-	if overrideErr != nil {
-		problem(overrideErr.Error())
-		return "", nil, statuses, false
-	}
-	return transformMarkdown(overridden, options), nil, statuses, true
+	return transformMarkdown(string(raw), options), true
 }
 
 func compileAgents(root string, projects []string, cfg Config, options TransformOptions, add func(generatedFile), problem func(string), warn func(string), result *Result) {
@@ -475,12 +463,7 @@ func compileAgents(root string, projects []string, cfg Config, options Transform
 				continue
 			}
 			rel, _ := filepath.Rel(root, entry.path)
-			content, statuses, overrideErr := applyOverrides(root, filepath.ToSlash(rel), string(raw), cfg)
-			result.OverrideStatuses = append(result.OverrideStatuses, statuses...)
-			if overrideErr != nil {
-				problem(overrideErr.Error())
-				continue
-			}
+			content := string(raw)
 			fields, body, parseErr := parseFrontmatter(content)
 			if parseErr != nil {
 				problem(fmt.Sprintf("parse %s: %v", entry.path, parseErr))
@@ -529,7 +512,7 @@ func compileRepoCommands(root string, cfg Config, options TransformOptions, rost
 			add(generatedFile{Path: dst, Link: relativeLink(dst, entry.path)})
 			continue
 		}
-		compileCommandFile(root, root, sourceRoot, entry, ".claude/commands", filepath.Join(root, ".codex", "skills"), cfg, options, add, problem, warn, result, false)
+		compileCommandFile(root, sourceRoot, entry, ".claude/commands", filepath.Join(root, ".codex", "skills"), options, add, problem, warn, result, false)
 	}
 }
 
@@ -545,7 +528,7 @@ func compileGlobalCommands(root, sourceHome, outputHome string, cfg Config, opti
 			add(generatedFile{Path: dst, Link: link})
 			continue
 		}
-		compileCommandFile(root, outputHome, sourceRoot, entry, "$HOME/.claude/commands", "", cfg, options, add, problem, warn, result, true)
+		compileCommandFile(outputHome, sourceRoot, entry, "$HOME/.claude/commands", "", options, add, problem, warn, result, true)
 	}
 }
 
@@ -561,7 +544,7 @@ func compileInstalledGlobalCommands(sourceHome, outputHome string, add func(gene
 	compileGlobalCommands(outputHome, sourceHome, outputHome, cfg, transform, add, problem, warn, result)
 }
 
-func compileCommandFile(overrideRoot, outputBase, sourceRoot string, entry sourceEntry, label, outputRoot string, cfg Config, options TransformOptions, add func(generatedFile), problem func(string), warn func(string), result *Result, global bool) {
+func compileCommandFile(outputBase, sourceRoot string, entry sourceEntry, label, outputRoot string, options TransformOptions, add func(generatedFile), problem func(string), warn func(string), result *Result, global bool) {
 	raw, err := os.ReadFile(entry.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -574,12 +557,7 @@ func compileCommandFile(overrideRoot, outputBase, sourceRoot string, entry sourc
 	rel, _ := filepath.Rel(sourceRoot, entry.path)
 	rel = filepath.ToSlash(rel)
 	relSource := filepath.ToSlash(filepath.Join(label, rel))
-	content, statuses, overrideErr := applyOverrides(overrideRoot, relSource, string(raw), cfg)
-	result.OverrideStatuses = append(result.OverrideStatuses, statuses...)
-	if overrideErr != nil {
-		problem(overrideErr.Error())
-		return
-	}
+	content := string(raw)
 	fields, body, parseErr := parseFrontmatter(content)
 	if parseErr != nil {
 		problem(fmt.Sprintf("parse %s: %v", entry.path, parseErr))

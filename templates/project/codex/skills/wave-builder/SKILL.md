@@ -4,10 +4,9 @@ description: Act as a {PROJECT_NAME} wave-builder lane (Codex dialect) when a me
 ---
 
 <!--
-HAND-WRITTEN CARD — codex-mirror.sh never overwrites this file (its directory
-name is listed in the script's HANDWRITTEN list). It exists because the Codex
-harness differs from the Claude harness in ways `.claude/commands/wave/builder.md`
-has no reason to know about. It maps mechanics ONLY; it never restates protocol.
+HAND-WRITTEN CARD — no generated marker. `pfm codex build` preserves it because
+the binding builder protocol is machine-global, not a project-local generated
+skill source. It maps Codex mechanics ONLY; it never restates protocol.
 
 This is also the WORKED EXAMPLE for writing your own hand-written card: point at
 the binding protocol first, then enumerate the deltas, then stop. If a card
@@ -17,21 +16,18 @@ belongs in `.claude/`, not here.
 
 # Codex Wave Builder — lane dialect card
 
-**Binding protocol:** read `builder.md` (symlinked here → `.claude/commands/wave/builder.md`) § Orchestrated mode FIRST — every rule there binds you; this card ONLY maps Claude-harness mechanics onto the Codex harness. The root `AGENTS.md` (= `CLAUDE.md`, symlinked) MANDATORY rules apply in full, including: never edit code on `main`, only gitter runs git, never swallow exceptions, surgical changes, and the guarded paths (`.claude/**`, any `CLAUDE.md`, `{AI_PROJECT}/knowledge/**`) are stop-and-ping, never an edit.
+**Binding protocol:** read `$HOME/.claude/commands/wave/builder.md` § Orchestrated mode FIRST — `pfm install` links that machine-global original, and every rule there binds you. This card ONLY maps Claude-harness mechanics onto the Codex harness. The compiled root `AGENTS.md` carries the project's MANDATORY rules in full, including: never edit code on `main`, only gitter runs git, never swallow exceptions, surgical changes, and the guarded paths (`.claude/**`, any `CLAUDE.md`, `{AI_PROJECT}/knowledge/**`) are stop-and-ping, never an edit.
 
-## Toolset (symlinked into this skill dir — one source of truth)
+## Toolset (read at its source)
 
-Symlink each of these into the card's own directory at install, so the lane reads ONE path for
-each tool. The repo-scoped links are RELATIVE, so a worktree lane resolves them inside its OWN
-checkout; `chat/` is the one exception — HOST-anchored ($HOME), because the chat family lives at
-`~/.claude/commands/chat/`, not under this repo at all, so every worktree resolves it to the
-same shared toolset:
+Read each tool at its canonical path. Repo-relative paths resolve inside the lane's own worktree;
+host-level paths deliberately resolve to the shared machine surface:
 
-- `builder.md` → `.claude/commands/wave/builder.md` — the binding protocol.
-- `chat/` → `~/.claude/commands/chat/` (absolute — see above) — the chat instruction set. Your ping channel: `$HOME/.local/bin/pfm chat inject {orchestrator-session} '{one-line msg}'`; your identity: `$HOME/.local/bin/pfm whoami`. Read `chat/inject.md` for receipt semantics.
-- `scripts/` → `.claude/scripts/` — `filter-test-output.sh -p` (redirect EVERY test run to a file and filter the FILE, with `timeout`), `worktree.sh` (read-only for you: `list`).
-- `agents-{project}/` → `{project}/.claude/agents/` — one link per roster entry; every per-project agent protocol (qa, developer, ui-ux, db-admin, devops, …). This is the role library behind delta 1's inline-execution rule. A roster of one gets exactly one link.
-- `agents-root/` → `.claude/agents/` — the repo-global pipeline agents. The Codex compiler registers each source, including gitter; read these only to understand a role, because `spawn_agent` loads the registered protocol.
+- `$HOME/.claude/commands/wave/builder.md` — the binding protocol.
+- `$HOME/.local/bin/pfm chat` — the chat CLI. Ping with `pfm chat inject {orchestrator-session} '{one-line msg}'`; resolve your identity with `pfm whoami`.
+- `.claude/scripts/` — project scripts such as `filter-test-output.sh -p` and `worktree.sh`.
+- `{project}/.claude/agents/` — per-project agent sources; the compiler registers their Codex roles.
+- `.claude/agents/` — project-root agent sources; read only for role context because `spawn_agent` loads the registered protocol.
 
 ## Law enforcement (execpolicy — not optional)
 

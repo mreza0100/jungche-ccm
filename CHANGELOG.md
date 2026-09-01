@@ -4,22 +4,22 @@ All notable changes to the Professor blueprint will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**For adopters:** run `/pcm update` in your installed project to apply changes between your local version and the latest release. The update command parses this file to walk you through changes interactively. Each release's full notes live in [`releases/`](releases/) — one file per version, so you read one release at a time.
+**For adopters:** run `pfm update` to advance the machine-global install and append the current project's report, or `pfm update check` for the read-only project report alone. Review each printed template diff, hand-apply what belongs locally, then advance that file's baseline with `pfm update pin`. Each release's full notes live in [`releases/`](releases/) — one file per version.
 
 ---
 
-## How `/pcm update` reads this file
+## How release notes guide adoption
 
 Each release file (`releases/vX.Y.Z.md`) uses categorized headings the update flow understands:
 
-| Heading        | Apply how                                                                       |
-| -------------- | ------------------------------------------------------------------------------- |
-| `## Added`     | Auto-apply mechanics changes; ask before adding Tier B archetypes               |
-| `## Changed`   | Auto-apply mechanics; show diff + ask for character changes                     |
-| `## Fixed`     | Auto-apply (bug fixes don't touch customization)                                |
-| `## Removed`   | Walk through interactively — never auto-delete                                  |
-| `## Breaking`  | **Interactive walkthrough required.** Each change has explicit migration steps. |
-| `## Migration` | Step-by-step transformation instructions for adopters                           |
+| Heading | Review guidance |
+| --- | --- |
+| `## Added` | Decide whether to adopt each new project file or optional role |
+| `## Changed` | Review the reported template diff and hand-apply relevant parts |
+| `## Fixed` | Review the reported fix before applying it to a customized local file |
+| `## Removed` | Decide whether the local file remains project-owned or should be removed |
+| `## Breaking` | Follow the explicit manual migration steps |
+| `## Migration` | Apply the step-by-step adopter transformation |
 
 Bullets MUST follow this shape:
 
@@ -27,11 +27,15 @@ Bullets MUST follow this shape:
 - {Tier}: {file path or scope} — {what changed semantically}
 ```
 
-`{Tier}` is a non-empty display/routing label, not a closed enum. The `##` heading is the authoritative semantic category; a prefix never reclassifies a Fixed bullet as Changed, for example. Optional trailing tags: `(opt-in)` for optional additions, `(breaking)` if it requires migration even outside a Breaking section, `(safe-auto)` to mark unconditional auto-apply, and `(cost)` for environment, hook, permission, or model/config cost.
+`{Tier}` is a non-empty display/routing label, not a closed enum. The `##` heading is the authoritative semantic category; a prefix never reclassifies a Fixed bullet as Changed, for example. Optional trailing tags: `(opt-in)` for optional additions, `(breaking)` if it requires migration even outside a Breaking section, `(safe-auto)` for machine-global installer changes that need no project-file edit, and `(cost)` for environment, hook, permission, or model/config cost. No tag authorizes automatic rewriting of a scaffolded project file.
 
 ---
 
 ## [Unreleased]
+
+- B: pfm + project scaffolding — `pfm init` now scaffolds project templates once with per-file baseline pins; local files own truth, `pfm update check` reports upstream deltas for reviewed hand application, and the dormant Codex override layer is removed.
+
+#### → For: adopters — run `pfm update check`, review and apply wanted template diffs, then pin each accepted local file; do not regenerate the project or replay its install interview.
 
 ---
 
