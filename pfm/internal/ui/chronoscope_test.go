@@ -170,7 +170,7 @@ func TestChronoscopeReplayRendersADeadChatAsAGhostNotAnAlarm(t *testing.T) {
 		SenderUUID: rows[0].ID, Target: rows[1].Name, ReceiverSocket: rows[1].Socket,
 		Message: "dying words",
 	}
-	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, []shared.CommsEvent{oldEvent}, fixtureNowNS)
+	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, []shared.CommsEvent{oldEvent}, fixtureNowNS, false)
 
 	model := NewModel(snapshot)
 	model.tab = TabCosmos
@@ -333,7 +333,7 @@ func TestNavigatorSelectionCyclesAndReconciles(t *testing.T) {
 		AtNS: fixtureNowNS, Kind: shared.KindInject,
 		SenderUUID: newSnapshot.Rows[1].ID, Target: newSnapshot.Rows[4].Name, ReceiverSocket: "",
 		Message: "unrelated traffic",
-	}}, fixtureNowNS)
+	}}, fixtureNowNS, false)
 	updated, _ := down1.Update(RefreshMsg{Snapshot: newSnapshot})
 	refreshed := updated.(Model)
 	if refreshed.cosmosSelected != "" {
@@ -425,7 +425,7 @@ func TestNavigatorSpotlightDimsEveryOtherEdge(t *testing.T) {
 		SenderUUID: rows[4].ID, Target: rows[5].Name,
 		Message: "does not touch the selection",
 	}
-	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{touching, unrelated}, fixtureNowNS)
+	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{touching, unrelated}, fixtureNowNS, false)
 	model := NewModel(snapshot)
 	model.tab = TabCosmos
 	selectedKey := "chat:id:" + rows[0].ID
@@ -508,7 +508,7 @@ func TestSystemFocusCyclesAndPushesOtherStarsOffFrame(t *testing.T) {
 		SenderUUID: rows[0].ID, Target: rows[4].Name,
 		Message: "leaves for beta",
 	}
-	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{intraAlpha, crossToBeta}, fixtureNowNS)
+	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{intraAlpha, crossToBeta}, fixtureNowNS, false)
 	model := NewModel(snapshot)
 	model.tab = TabCosmos
 
@@ -827,7 +827,7 @@ func TestNavigatorEnterOpensALiveSplitRowWithNoPaneID(t *testing.T) {
 		SenderUUID: rows[0].ID, Target: splitRow.Name, ReceiverSocket: splitRow.Socket,
 		Message: "hello split",
 	}
-	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{touching}, fixtureNowNS)
+	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{touching}, fixtureNowNS, false)
 	model := NewModel(snapshot)
 	model.tab = TabCosmos
 
@@ -872,7 +872,7 @@ func TestCosmosSelectionHUDNamesAllFourLifecycleStates(t *testing.T) {
 		{AtNS: fixtureNowNS, Kind: shared.KindInject, SenderUUID: rows[0].ID, Target: rows[1].Name, ReceiverSocket: rows[1].Socket, Message: "live and running"},
 		{AtNS: fixtureNowNS, Kind: shared.KindInject, SenderUUID: rows[4].ID, Target: "resumable reply", Message: "from a resumable row"},
 	}
-	snapshot.Cosmos = compose.BuildCosmos(rows, events, fixtureNowNS)
+	snapshot.Cosmos = compose.BuildCosmos(rows, events, fixtureNowNS, false)
 	model := NewModel(snapshot)
 	model.tab = TabCosmos
 	// The ghost and killed cases are appended by hand rather than routed
@@ -945,7 +945,7 @@ func TestNoSkyChronoscopeClockTracksTheRefreshSnapshot(t *testing.T) {
 	refreshAt := func(nowNS int64) Snapshot {
 		snapshot := cosmosGoldenSnapshot(80, true)
 		snapshot.NowNS = nowNS
-		snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, cosmosGoldenEvents(nowNS, snapshot.Rows), nowNS)
+		snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, cosmosGoldenEvents(nowNS, snapshot.Rows), nowNS, false)
 		return snapshot
 	}
 
@@ -1051,7 +1051,7 @@ func TestNavigatorSpotlightDimsTheCometBurstAndShockwaveRing(t *testing.T) {
 		SenderUUID: rows[4].ID, Target: rows[5].Name,
 		Message: "mid-comet, does not touch the selection",
 	}
-	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{givesSelectionItsOwnNode, unrelated}, fixtureNowNS)
+	snapshot.Cosmos = compose.BuildCosmos(rows, []shared.CommsEvent{givesSelectionItsOwnNode, unrelated}, fixtureNowNS, false)
 	model := NewModel(snapshot)
 	model.tab = TabCosmos
 	selectedKey := "chat:id:" + rows[0].ID

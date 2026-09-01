@@ -559,7 +559,7 @@ func composeFleet(
 		output.KilledCount = data.cachedCounts.Killed
 		output.SuppressedCount = data.cachedCounts.Suppressed
 	}
-	cosmos := compose.BuildCosmos(output.Rows, nil, environment.nowNS)
+	cosmos := compose.BuildCosmos(output.Rows, nil, environment.nowNS, true)
 	if request.Comms != nil {
 		events, err := request.Comms.CommsSince(
 			ctx,
@@ -569,7 +569,7 @@ func composeFleet(
 		if err != nil {
 			cosmos.Err = fmt.Errorf("read comms ledger: %w", err).Error()
 		} else {
-			cosmos = compose.BuildCosmos(output.Rows, events, environment.nowNS)
+			cosmos = compose.BuildCosmos(output.Rows, events, environment.nowNS, true)
 			if len(events) == compose.CosmosEventCap {
 				cosmos.Warnings = append(cosmos.Warnings, compose.CosmosTruncationWarning)
 			}

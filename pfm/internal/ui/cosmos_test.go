@@ -89,7 +89,7 @@ func TestCosmosParentlessSpawnIsNotEmptyInEitherLayout(t *testing.T) {
 	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, []shared.CommsEvent{{
 		AtNS: fixtureNowNS, Kind: shared.KindSpawn, Target: "orphan",
 		ReceiverSocket: "cx-orphan",
-	}}, fixtureNowNS)
+	}}, fixtureNowNS, false)
 	if len(snapshot.Cosmos.Nodes) != 1 || len(snapshot.Cosmos.Edges) != 0 {
 		t.Fatalf("parentless spawn fixture = %#v, want one node and zero edges", snapshot.Cosmos)
 	}
@@ -415,7 +415,7 @@ func cosmosTestModel(width int, noSky bool) Model {
 		SenderUUID: "11111111-1111-4111-8111-111111111111",
 		Target:     "RR",
 		Message:    "hello cosmos",
-	}}, fixtureNowNS)
+	}}, fixtureNowNS, false)
 	return NewModel(snapshot)
 }
 
@@ -673,7 +673,7 @@ func TestCosmosRendersARawSessionAddressedSendOnTheExistingNode(t *testing.T) {
 			ReceiverSocket: "/tmp/tmux-1000/" + receiverSession,
 			ReceiverPane:   "%0",
 			Message:        "hello cosmos",
-		}}, fixtureNowNS)
+		}}, fixtureNowNS, false)
 		model := NewModel(snapshot)
 		model.tab = TabCosmos
 		return model

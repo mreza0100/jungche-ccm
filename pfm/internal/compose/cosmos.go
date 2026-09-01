@@ -151,12 +151,38 @@ type cosmosBuilder struct {
 // once animating is likewise still not this function's job:
 // model.applyCosmosGraph (internal/ui) owns that, keyed on the
 // render-detection moment only a caller with memory across calls can know.
-func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGraph {
+//
+// seedLive controls whether every live pane row (liveRow) earns a node up
+// front, before the event walk runs at all: the user's ruling is that an
+// active pane IS a node whether or not it ever spoke through the chat MCP,
+// so a quiet live chat must not read as absent just because chatNode never
+// had an event to resolve it from. A seeded node carries no edges and is
+// stamped with the row's own last activity (Row.ActivityNS), or nowNS when
+// the row carries none — never nowNS outright, or a chat idle for hours
+// would read as having just spoken; the event walk beneath still advances a
+// node's LastNS past its seed the moment real traffic is newer, since touch
+// only ever moves a node's clock forward. A caller rendering the past
+// disables this: chronoscope replay stays events-only, because the past is
+// the ledger, not the roster as it stands today.
+func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive bool) CosmosGraph {
 	builder := cosmosBuilder{
 		directory: resolve.NewDirectory(rows, rowAddress),
 		nodes:     make(map[string]CosmosNode),
 		edges:     make(map[string]CosmosEdge),
 		nowNS:     nowNS,
+	}
+
+	if seedLive {
+		for _, row := range rows {
+			if row.Killed || row.BG || !liveRow(row) {
+				continue
+			}
+			at := row.ActivityNS
+			if at == 0 {
+				at = nowNS
+			}
+			builder.touch(builder.chatNode(rowAddress(row)), at)
+		}
 	}
 
 	unsigned := 0
@@ -281,6 +307,25 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 		return graph.Edges[left].Kind < graph.Edges[right].Kind
 	})
 	return graph
+}
+
+// liveRow reports whether row carries a live pane — a real process a human
+// can be looking at right now — the exact Kind set compose.defaultEligible
+// already treats as self-evidently real: LiveSplit, Agent, and Booting are
+// wholly exempt from its transcript-emptiness test for that reason, and
+// LiveCodex is exempt from its size/prompt half for the same one. LiveClaude
+// joins them here because a live Claude pane is equally real evidence on its
+// own; BuildCosmos's seeding only asks "is there a pane", never "has this
+// pane's transcript accumulated content yet" — that emptiness question
+// belongs to the picker's default view, not to whether the cosmos shows a
+// chat the user is actively looking at.
+func liveRow(row Row) bool {
+	switch row.Kind {
+	case LiveClaude, LiveCodex, LiveSplit, Agent, Booting:
+		return true
+	default:
+		return false
+	}
 }
 
 // rowAddress projects one fleet row into the shared identity address space.

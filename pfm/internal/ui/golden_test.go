@@ -159,6 +159,13 @@ func TestRenderGoldens(t *testing.T) {
 			},
 		},
 		{
+			name: "Cosmos seeded live node ansi 80 columns",
+			path: "ui_cosmos_seeded_80.ansi",
+			got: func() string {
+				return quoteANSI(cosmosSeededGoldenModel(80).View().Content)
+			},
+		},
+		{
 			name: "plain",
 			path: "ui_plain.txt",
 			got: func() string {
@@ -320,7 +327,31 @@ func cosmosGoldenSnapshot(width int, noSky bool) Snapshot {
 			snapshot.Rows[index].ActivityNS += clockShift
 		}
 	}
-	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, cosmosGoldenEvents(cosmosNowNS, snapshot.Rows), snapshot.NowNS)
+	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, cosmosGoldenEvents(cosmosNowNS, snapshot.Rows), snapshot.NowNS, false)
+	return snapshot
+}
+
+// cosmosGoldenSnapshotSeeded is cosmosGoldenSnapshot's seedLive=true sibling
+// — the live-build shape (ui/model.go's own BuildCosmos call), not the
+// replay shape every other cosmos golden above pins. It renders through the
+// SAME fixture rows and the SAME cosmosGoldenEvents ledger, so the only
+// difference from ui_cosmos_80.ansi is the seeded node: fixtureSnapshot's
+// row[2] (LiveSplit, "🚀🧭🛠️📦🧪✨ fleet") is never a sender or receiver in
+// cosmosGoldenEvents, so under seedLive=false it renders as no node at all —
+// exactly the traffic-free-live-row-is-absent law this change replaced. With
+// seedLive=true it must appear on its home ring with zero edges.
+func cosmosGoldenSnapshotSeeded(width int) Snapshot {
+	snapshot := fixtureSnapshot(width)
+	snapshot.NoSky = true
+	cosmosNowNS := time.Date(2027, time.January, 15, 8, 0, 0, 0, time.UTC).UnixNano()
+	clockShift := cosmosNowNS - snapshot.NowNS
+	snapshot.NowNS = cosmosNowNS
+	for index := range snapshot.Rows {
+		if snapshot.Rows[index].ActivityNS != 0 {
+			snapshot.Rows[index].ActivityNS += clockShift
+		}
+	}
+	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, cosmosGoldenEvents(cosmosNowNS, snapshot.Rows), snapshot.NowNS, true)
 	return snapshot
 }
 
@@ -375,6 +406,17 @@ func cosmosSelectGoldenModel(width int) Model {
 
 func cosmosGoldenModel(width int) Model {
 	model := NewModel(cosmosGoldenSnapshot(width, true))
+	model.tab = TabCosmos
+	return model
+}
+
+// cosmosSeededGoldenModel renders cosmosGoldenSnapshotSeeded: the same
+// no-sky cosmos as cosmosGoldenModel, but built with seedLive=true, so the
+// quiet LiveSplit row (fixtureSnapshot's row[2], never named by
+// cosmosGoldenEvents) now draws as a zero-edge node on its own ring instead
+// of being absent.
+func cosmosSeededGoldenModel(width int) Model {
+	model := NewModel(cosmosGoldenSnapshotSeeded(width))
 	model.tab = TabCosmos
 	return model
 }

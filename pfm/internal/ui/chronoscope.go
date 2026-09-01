@@ -72,7 +72,7 @@ func (model *Model) rebuildCosmosPast() {
 		return
 	}
 	count := model.cosmosPrefix(model.cosmosViewNS)
-	graph := compose.BuildCosmos(model.rows, model.cosmosTimeline[:count], model.cosmosViewNS)
+	graph := compose.BuildCosmos(model.rows, model.cosmosTimeline[:count], model.cosmosViewNS, false)
 	for _, warning := range model.cosmos.Warnings {
 		if warning == compose.CosmosTruncationWarning {
 			// The sample holds the newest events of the window, so a replay

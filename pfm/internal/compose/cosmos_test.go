@@ -10,12 +10,26 @@ import (
 	"hostops/pfm/internal/shared"
 )
 
+// TestBuildCosmosResolvesParticipantsAndAggregatesEdges pins the current
+// user ruling directly against the old one it replaced: a traffic-free LIVE
+// row (Quiet) now IS a cosmos node, seeded by BuildCosmos's live-row walk
+// before events are ever considered — the previous law, asserted by this
+// same test until this change, was the exact opposite ("traffic-free live
+// row became a cosmos node" was a FAILURE message).
+//
+// Every row here also carries its own ActivityNS, deliberately EARLIER than
+// where its events end up, so the three chatty rows' final LastNS proves the
+// event walk still wins once real traffic is newer than the seed — the seed
+// is a floor, never a ceiling — while Quiet, which gets no events at all,
+// keeps exactly its seeded ActivityNS (45) rather than falling back to
+// nowNS (100): that distinguishes "the seed timestamp was asserted" from
+// "the fallback happened to also produce a plausible number".
 func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 	rows := []Row{
-		{Kind: LiveClaude, ID: "alpha-id", Name: "Alpha", Socket: "cc-alpha", PaneID: "%1"},
-		{Kind: LiveCodex, ID: "beta-id", Name: "Beta", Socket: "cx-beta", PaneID: "%2"},
-		{Kind: LiveClaude, ID: "child-id", Name: "Child", Socket: "cc-child", PaneID: "%3"},
-		{Kind: LiveClaude, ID: "quiet-id", Name: "Quiet", Socket: "cc-quiet", PaneID: "%4"},
+		{Kind: LiveClaude, ID: "alpha-id", Name: "Alpha", Socket: "cc-alpha", PaneID: "%1", ActivityNS: 5},
+		{Kind: LiveCodex, ID: "beta-id", Name: "Beta", Socket: "cx-beta", PaneID: "%2", ActivityNS: 15},
+		{Kind: LiveClaude, ID: "child-id", Name: "Child", Socket: "cc-child", PaneID: "%3", ActivityNS: 30},
+		{Kind: LiveClaude, ID: "quiet-id", Name: "Quiet", Socket: "cc-quiet", PaneID: "%4", ActivityNS: 45},
 	}
 	events := []shared.CommsEvent{
 		{AtNS: 10, Kind: shared.KindInject, SenderUUID: "alpha-id", SenderLabel: "stale alpha", Target: "Beta", ReceiverSocket: "cx-beta", ReceiverPane: "%2", Message: "first"},
@@ -23,7 +37,7 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 		{AtNS: 40, Kind: shared.KindSpawn, SenderSession: "beta-id", Target: "Child", ReceiverSocket: "cc-child", Message: "initial prompt"},
 	}
 
-	graph := BuildCosmos(rows, events, 100)
+	graph := BuildCosmos(rows, events, 100, true)
 	if graph.Err != "" || len(graph.Warnings) != 0 {
 		t.Fatalf("BuildCosmos() state = err %q warnings %v", graph.Err, graph.Warnings)
 	}
@@ -31,6 +45,7 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 		{Key: "chat:id:alpha-id", Label: resolve.Named("Alpha"), Engine: "cc", RowKey: "alpha-id", Live: true, LastNS: 20},
 		{Key: "chat:id:beta-id", Label: resolve.Named("Beta"), Engine: "cx", RowKey: "beta-id", Live: true, LastNS: 40},
 		{Key: "chat:id:child-id", Label: resolve.Named("Child"), Engine: "cc", RowKey: "child-id", Live: true, LastNS: 40},
+		{Key: "chat:id:quiet-id", Label: resolve.Named("Quiet"), Engine: "cc", RowKey: "quiet-id", Live: true, LastNS: 45},
 	}
 	if !reflect.DeepEqual(graph.Nodes, wantNodes) {
 		t.Fatalf("nodes = %#v, want %#v", graph.Nodes, wantNodes)
@@ -42,10 +57,126 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 	if !reflect.DeepEqual(graph.Edges, wantEdges) {
 		t.Fatalf("edges = %#v, want %#v", graph.Edges, wantEdges)
 	}
-	for _, node := range graph.Nodes {
-		if nodeLabel(node) == "Quiet" {
-			t.Fatal("traffic-free live row became a cosmos node")
+}
+
+// TestBuildCosmosSeedLiveSkipsNonLiveKilledAndBGRows pins the three ways a
+// row is excluded from live seeding even though it is traffic-free exactly
+// like Quiet above: a RESUMABLE row carries no live pane at all (liveRow
+// false), a KILLED live row is positively known gone, and a BG live row is
+// deliberately excluded from the picker's default view — none of the three
+// earns a node from seedLive, and with no events either, BuildCosmos must
+// produce an entirely empty graph.
+func TestBuildCosmosSeedLiveSkipsNonLiveKilledAndBGRows(t *testing.T) {
+	rows := []Row{
+		{Kind: ResumeClaude, ID: "resumable-id", Name: "Resumable", ActivityNS: 5},
+		{Kind: LiveClaude, ID: "killed-id", Name: "KilledLive", Socket: "cc-killed", PaneID: "%1", Killed: true, ActivityNS: 5},
+		{Kind: LiveClaude, ID: "bg-id", Name: "BGLive", Socket: "cc-bg", PaneID: "%2", BG: true, ActivityNS: 5},
+	}
+	graph := BuildCosmos(rows, nil, 100, true)
+	if len(graph.Nodes) != 0 {
+		t.Fatalf("nodes = %#v, want none: a resumable row, a killed live row, and a BG live row must none of them seed", graph.Nodes)
+	}
+}
+
+// TestBuildCosmosSeedLiveFalseSeedsNothing pins the replay contract: the
+// exact same rows that TestBuildCosmosResolvesParticipantsAndAggregatesEdges
+// proves DO seed under seedLive=true must seed NOTHING under seedLive=false
+// — the shape the chronoscope replay path always calls with, because the
+// past is the ledger of what happened, not today's roster of who is
+// currently sitting at a pane.
+func TestBuildCosmosSeedLiveFalseSeedsNothing(t *testing.T) {
+	rows := []Row{
+		{Kind: LiveClaude, ID: "quiet-id", Name: "Quiet", Socket: "cc-quiet", PaneID: "%1", ActivityNS: 5},
+		{Kind: LiveSplit, Name: "split", Socket: "cc-split", SplitCount: 2, ActivityNS: 5},
+	}
+	graph := BuildCosmos(rows, nil, 100, false)
+	if len(graph.Nodes) != 0 {
+		t.Fatalf("nodes = %#v, want none: seedLive=false must not seed a node even for live rows", graph.Nodes)
+	}
+}
+
+// TestBuildCosmosSeededRowMergesWithLaterEventOnSameRowKey pins the merge
+// rule directly: a seeded row that also matches an event by RowKey must
+// converge on exactly ONE node (same key), never a duplicate, with
+// LastNS = max(row.ActivityNS, event.AtNS) — proved in both directions,
+// since builder.touch only ever advances a node's clock forward and never
+// backward.
+func TestBuildCosmosSeededRowMergesWithLaterEventOnSameRowKey(t *testing.T) {
+	t.Run("event newer than the seed wins", func(t *testing.T) {
+		rows := []Row{{Kind: LiveClaude, ID: "dual-id", Name: "Dual", Socket: "cc-dual", PaneID: "%1", ActivityNS: 10}}
+		events := []shared.CommsEvent{{AtNS: 50, Kind: shared.KindInject, SenderUUID: "dual-id", Target: "Someone", Message: "hi"}}
+		graph := BuildCosmos(rows, events, 100, true)
+		matches := 0
+		for _, node := range graph.Nodes {
+			if node.Key != "chat:id:dual-id" {
+				continue
+			}
+			matches++
+			if node.LastNS != 50 {
+				t.Fatalf("LastNS = %d, want the event's AtNS 50 (newer than the seed's ActivityNS 10)", node.LastNS)
+			}
 		}
+		if matches != 1 {
+			t.Fatalf("dual-id produced %d node(s), want exactly 1: %#v", matches, graph.Nodes)
+		}
+	})
+	t.Run("seed newer than the event wins", func(t *testing.T) {
+		rows := []Row{{Kind: LiveClaude, ID: "dual-id", Name: "Dual", Socket: "cc-dual", PaneID: "%1", ActivityNS: 80}}
+		events := []shared.CommsEvent{{AtNS: 30, Kind: shared.KindInject, SenderUUID: "dual-id", Target: "Someone", Message: "hi"}}
+		graph := BuildCosmos(rows, events, 100, true)
+		matches := 0
+		for _, node := range graph.Nodes {
+			if node.Key != "chat:id:dual-id" {
+				continue
+			}
+			matches++
+			if node.LastNS != 80 {
+				t.Fatalf("LastNS = %d, want the seed's ActivityNS 80 (newer than the event's AtNS 30 — touch never moves backward)", node.LastNS)
+			}
+		}
+		if matches != 1 {
+			t.Fatalf("dual-id produced %d node(s), want exactly 1: %#v", matches, graph.Nodes)
+		}
+	})
+}
+
+// TestBuildCosmosSeedLiveStarsQuietProjectWithZeroTraffic pins the star
+// assembly's promise for a seeded-only home: a quiet live row in a project
+// with no events at all still earns a Stars entry (every distinct Home
+// among the built nodes gets one, full stop — the same rule
+// TestBuildCosmosStarsCountTrafficOncePerHomeInsideTheHour pins for
+// event-warmed homes), with Home set and TrafficHour == 0 because
+// builder.warm — the only thing that increments TrafficHour — is never
+// called by the seeding loop; only the event walk warms.
+func TestBuildCosmosSeedLiveStarsQuietProjectWithZeroTraffic(t *testing.T) {
+	rows := []Row{{Kind: LiveClaude, ID: "solo-id", Name: "Solo", Socket: "cc-solo", PaneID: "%1", Project: "solohome", ActivityNS: 10}}
+	graph := BuildCosmos(rows, nil, 100, true)
+	star, ok := graph.Stars["solohome"]
+	if !ok {
+		t.Fatalf("Stars missing entry for solohome: %#v", graph.Stars)
+	}
+	if star.Home != "solohome" {
+		t.Fatalf("star.Home = %q, want %q", star.Home, "solohome")
+	}
+	if star.TrafficHour != 0 {
+		t.Fatalf("star.TrafficHour = %d, want 0: seeding a node never warms a star", star.TrafficHour)
+	}
+}
+
+// TestBuildCosmosSeedLiveFallsBackToNowNSWhenActivityIsZero pins the
+// documented fallback explicitly: a live row with no ActivityNS at all
+// (the zero value — a row whose activity clock was never populated) seeds
+// its node at nowNS, not at 0, which would otherwise read as a chat
+// billions of nanoseconds dead the instant it was seeded.
+func TestBuildCosmosSeedLiveFallsBackToNowNSWhenActivityIsZero(t *testing.T) {
+	rows := []Row{{Kind: LiveClaude, ID: "zero-id", Name: "Zero", Socket: "cc-zero", PaneID: "%1", ActivityNS: 0}}
+	graph := BuildCosmos(rows, nil, 555, true)
+	node, found := nodeWithKey(graph, "chat:id:zero-id")
+	if !found {
+		t.Fatalf("seeded node missing: %#v", graph.Nodes)
+	}
+	if node.LastNS != 555 {
+		t.Fatalf("LastNS = %d, want nowNS 555 (ActivityNS was 0, the documented fallback)", node.LastNS)
 	}
 }
 
@@ -53,7 +184,7 @@ func TestBuildCosmosParentlessSpawnCreatesOnlyTheChildNode(t *testing.T) {
 	graph := BuildCosmos(nil, []shared.CommsEvent{{
 		AtNS: 60, Kind: shared.KindSpawn, Target: "Orphan",
 		ReceiverSocket: "cx-orphan", Message: "born",
-	}}, 100)
+	}}, 100, false)
 	if len(graph.Edges) != 0 {
 		t.Fatalf("parentless spawn edges = %#v", graph.Edges)
 	}
@@ -69,7 +200,7 @@ func TestBuildCosmosTimestampTieKeepsNewestFirstMessage(t *testing.T) {
 	graph := BuildCosmos(nil, []shared.CommsEvent{
 		{ID: 2, AtNS: 70, Kind: shared.KindInject, SenderLabel: "Alpha", Target: "Beta", Message: "newest id"},
 		{ID: 1, AtNS: 70, Kind: shared.KindInject, SenderLabel: "Alpha", Target: "Beta", Message: "older id"},
-	}, 100)
+	}, 100, false)
 	want := []CosmosEdge{{
 		From: "chat:name:Alpha", To: "chat:name:Beta", Kind: shared.KindInject,
 		Count: 2, LastNS: 70, LastMessage: "newest id",
@@ -80,7 +211,7 @@ func TestBuildCosmosTimestampTieKeepsNewestFirstMessage(t *testing.T) {
 }
 
 func TestBuildCosmosUnknownKindWarnsInsteadOfVanishingSilently(t *testing.T) {
-	graph := BuildCosmos(nil, []shared.CommsEvent{{ID: 9, AtNS: 80, Kind: "reload"}}, 100)
+	graph := BuildCosmos(nil, []shared.CommsEvent{{ID: 9, AtNS: 80, Kind: "reload"}}, 100, false)
 	if len(graph.Nodes) != 0 || len(graph.Edges) != 0 || len(graph.Warnings) != 1 ||
 		!strings.Contains(graph.Warnings[0], `event 9`) ||
 		!strings.Contains(graph.Warnings[0], `unknown kind "reload"`) {
@@ -99,7 +230,7 @@ func TestBuildCosmosUnknownKindWarnsInsteadOfVanishingSilently(t *testing.T) {
 // above, TestBuildCosmosUnknownKindWarnsInsteadOfVanishingSilently, pins the
 // other half: a genuinely unknown kind still warns.
 func TestBuildCosmosRetiredGroupKindSkipsSilently(t *testing.T) {
-	graph := BuildCosmos(nil, []shared.CommsEvent{{ID: 9, AtNS: 80, Kind: "group"}}, 100)
+	graph := BuildCosmos(nil, []shared.CommsEvent{{ID: 9, AtNS: 80, Kind: "group"}}, 100, false)
 	if graph.Err != "" || len(graph.Nodes) != 0 || len(graph.Edges) != 0 || len(graph.Warnings) != 0 {
 		t.Fatalf("retired group-kind graph = %#v, want a silent skip", graph)
 	}
@@ -131,7 +262,7 @@ func TestBuildCosmosDeadChatConvergesSpawnAndInjectOnOneGhostNode(t *testing.T) 
 	}
 	// No rows at all: the chat has fully vanished from the roster, exactly
 	// the state the operator described after killing ten test chats.
-	graph := BuildCosmos(nil, events, 100)
+	graph := BuildCosmos(nil, events, 100, false)
 	var matches []CosmosNode
 	for _, node := range graph.Nodes {
 		if strings.Contains(node.Key, deadSession) {
@@ -164,7 +295,7 @@ func TestBuildCosmosLiveChatStillYieldsOneNodeAcrossSpawnAndInject(t *testing.T)
 			Message: "reply",
 		},
 	}
-	graph := BuildCosmos(rows, events, 100)
+	graph := BuildCosmos(rows, events, 100, false)
 	count := 0
 	for _, node := range graph.Nodes {
 		if node.Live && nodeLabel(node) == "ghost" {
@@ -199,7 +330,7 @@ func TestBuildCosmosDoesNotPruneDeadNodesByTime(t *testing.T) {
 	// Ten hours past a zero-timestamp event would have been many orders of
 	// magnitude past CosmosDeathBlink+CosmosDeathFade under the old
 	// nowNS-based prune. It changes nothing here now.
-	graph := BuildCosmos(nil, events, int64(10*time.Hour))
+	graph := BuildCosmos(nil, events, int64(10*time.Hour), false)
 	if len(graph.Nodes) != 2 || len(graph.Edges) != 1 {
 		t.Fatalf("BuildCosmos dropped a dead node or its edge by age: nodes=%#v edges=%#v", graph.Nodes, graph.Edges)
 	}
@@ -227,7 +358,7 @@ func TestBuildCosmosNoRowMatchIsPendingWithinGraceThenDead(t *testing.T) {
 	}}
 	grace := int64(CosmosDeathBlink + CosmosDeathFade)
 
-	pending := BuildCosmos(nil, events, grace)
+	pending := BuildCosmos(nil, events, grace, false)
 	pendingFound := false
 	for _, node := range pending.Nodes {
 		if node.Key != "chat:name:Newborn" {
@@ -242,7 +373,7 @@ func TestBuildCosmosNoRowMatchIsPendingWithinGraceThenDead(t *testing.T) {
 		t.Fatal("pending node missing from the graph entirely")
 	}
 
-	gone := BuildCosmos(nil, events, grace+1)
+	gone := BuildCosmos(nil, events, grace+1, false)
 	goneFound := false
 	for _, node := range gone.Nodes {
 		if node.Key != "chat:name:Newborn" {
@@ -300,7 +431,7 @@ func TestBuildCosmosResolvesReceiverAddressedByARawSessionID(t *testing.T) {
 		Message: "hello",
 	}}
 
-	graph := BuildCosmos(rows, events, 100)
+	graph := BuildCosmos(rows, events, 100, false)
 	if len(graph.Nodes) != 2 {
 		t.Fatalf("a message between two known chats minted a node: got %d nodes, want 2\nnodes = %#v", len(graph.Nodes), graph.Nodes)
 	}
@@ -328,7 +459,7 @@ func TestBuildCosmosResolvesSenderByItsTmuxSessionName(t *testing.T) {
 		Target: "Somebody", Message: "hi",
 	}}
 
-	graph := BuildCosmos(rows, events, 100)
+	graph := BuildCosmos(rows, events, 100, false)
 	node, found := nodeWithKey(graph, "chat:id:p-do-id")
 	if !found {
 		t.Fatalf("sender did not resolve to its existing row by session name\nnodes = %#v", graph.Nodes)
@@ -358,7 +489,7 @@ func TestBuildCosmosResolvesSpawnReceiverRecordedWithNoPane(t *testing.T) {
 		Message:        "born",
 	}}
 
-	graph := BuildCosmos(rows, events, 100)
+	graph := BuildCosmos(rows, events, 100, false)
 	if len(graph.Nodes) != 2 {
 		t.Fatalf("spawn between two known chats minted a node: got %d, want 2\nnodes = %#v", len(graph.Nodes), graph.Nodes)
 	}
@@ -385,7 +516,7 @@ func TestBuildCosmosUnresolvedIdentityNeverRendersAsAName(t *testing.T) {
 	graph := BuildCosmos(nil, []shared.CommsEvent{{
 		AtNS: 10, Kind: shared.KindInject, SenderSession: sender,
 		Target: target, Message: "neither end has a row",
-	}}, 100)
+	}}, 100, false)
 	if len(graph.Nodes) != 2 {
 		t.Fatalf("nodes = %#v, want one per unresolved end", graph.Nodes)
 	}
@@ -432,7 +563,7 @@ func TestBuildCosmosSpawnResolvesASplitRowThatCarriesNoPaneID(t *testing.T) {
 				AtNS: 10, Kind: shared.KindSpawn, SenderLabel: "Parent",
 				Target: "child-at-birth", ReceiverSocket: recorded.socket,
 				ReceiverPane: "", Message: "born",
-			}}, 100)
+			}}, 100, false)
 			node, found := nodeWithKey(graph, "chat:pane:"+session+"\t")
 			if !found {
 				t.Fatalf("the split row was not resolved; the spawn minted a ghost instead\nnodes = %#v", graph.Nodes)
@@ -481,12 +612,12 @@ func TestBuildCosmosStarsCountTrafficOncePerHomeInsideTheHour(t *testing.T) {
 
 	// Intra-system warms its ONE star ONCE, not twice: if warm() failed to
 	// dedupe by Home, a1->a2 (both alpha) would count 2, not 1.
-	intraOnly := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, nowNS)
+	intraOnly := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, nowNS, false)
 	if got := intraOnly.Stars["alpha"].TrafficHour; got != 1 {
 		t.Fatalf("intra-system event warmed alpha %d times, want exactly 1: %#v", got, intraOnly.Stars["alpha"])
 	}
 
-	all := BuildCosmos(rows, []shared.CommsEvent{intraAlpha, crossAlphaBeta, oldGamma}, nowNS)
+	all := BuildCosmos(rows, []shared.CommsEvent{intraAlpha, crossAlphaBeta, oldGamma}, nowNS, false)
 	if got := all.Stars["alpha"].TrafficHour; got != 2 {
 		t.Fatalf("alpha traffic = %d, want 2 (one intra + one cross)", got)
 	}
@@ -512,11 +643,11 @@ func TestBuildCosmosStarsCountTrafficOncePerHomeInsideTheHour(t *testing.T) {
 	// counts the trailing hour relative to whichever clock it was HANDED,
 	// not a real wall clock the pure function never reads. The same event,
 	// judged from two different clocks, must disagree on whether it is hot.
-	hotFromThen := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, intraAlpha.AtNS+30*int64(time.Minute))
+	hotFromThen := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, intraAlpha.AtNS+30*int64(time.Minute), false)
 	if got := hotFromThen.Stars["alpha"].TrafficHour; got != 1 {
 		t.Fatalf("event 30m before the given clock should be hot: TrafficHour=%d", got)
 	}
-	coldFromThen := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, intraAlpha.AtNS+2*int64(time.Hour))
+	coldFromThen := BuildCosmos(rows, []shared.CommsEvent{intraAlpha}, intraAlpha.AtNS+2*int64(time.Hour), false)
 	if got := coldFromThen.Stars["alpha"].TrafficHour; got != 0 {
 		t.Fatalf("the SAME event, judged from a clock 2h later, should be cold: TrafficHour=%d", got)
 	}
@@ -534,7 +665,7 @@ func TestBuildCosmosNodeCarriesRowKeyOnlyWhenFound(t *testing.T) {
 		AtNS: 10, Kind: shared.KindInject,
 		SenderUUID: "row-1", Target: "ghost-name", Message: "hi",
 	}}
-	graph := BuildCosmos(rows, events, 100)
+	graph := BuildCosmos(rows, events, 100, false)
 
 	resolved, found := nodeWithKey(graph, "chat:id:row-1")
 	if !found {
@@ -602,7 +733,7 @@ func TestBuildCosmosSplitRowResolvesToARowKeyNotAGhost(t *testing.T) {
 	graph := BuildCosmos(rows, []shared.CommsEvent{{
 		AtNS: 10, Kind: shared.KindSpawn, SenderLabel: "Parent",
 		Target: "child-at-birth", ReceiverSocket: session, ReceiverPane: "", Message: "born",
-	}}, 100)
+	}}, 100, false)
 
 	node, found := nodeWithKey(graph, "chat:pane:"+session+"\t")
 	if !found {
@@ -634,7 +765,7 @@ func TestBuildCosmosUnsignedSpawnWarmsOnlyTheChildsHome(t *testing.T) {
 		AtNS: 10, Kind: shared.KindSpawn,
 		Target: "Child", ReceiverSocket: "cc-child", // no SenderSession/SenderUUID/SenderLabel
 	}
-	graph := BuildCosmos(rows, []shared.CommsEvent{event}, 100)
+	graph := BuildCosmos(rows, []shared.CommsEvent{event}, 100, false)
 
 	if len(graph.Warnings) != 1 || !strings.Contains(graph.Warnings[0], "no sender identity") {
 		t.Fatalf("unsigned spawn did not warn by name: %#v", graph.Warnings)

@@ -331,7 +331,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			model.cosmos.Err = message.err.Error()
 		} else {
 			model.cosmosEvents = append(model.cosmosEvents[:0], message.events...)
-			model.applyCosmosGraph(compose.BuildCosmos(model.rows, model.cosmosEvents, model.cosmosNowNS))
+			model.applyCosmosGraph(compose.BuildCosmos(model.rows, model.cosmosEvents, model.cosmosNowNS, true))
 			if len(message.events) >= compose.CosmosEventCap {
 				model.cosmos.Warnings = append(model.cosmos.Warnings, compose.CosmosTruncationWarning)
 			}
