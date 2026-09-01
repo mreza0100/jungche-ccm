@@ -87,7 +87,7 @@ func selectHighestSemver(tags []string) (string, error) {
 func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	if len(args) > 0 {
 		switch args[0] {
-		case "check", "pin", "drop":
+		case "check", "pin", "drop", "adopt", "ignore":
 			runtime, err := optionalCommandRuntime(runtimes)
 			if err != nil {
 				fmt.Fprintf(stderr, "pfm update: config: %v\n", err)
@@ -98,7 +98,7 @@ func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	}
 	flags := newFlagSet(
 		"update",
-		"usage: pfm update [--to vX.Y.Z] [--repo PATH] [--skip-harvest] [--root DIR] [--json]\n       pfm update {check|pin|drop} [options]",
+		"usage: pfm update [--to vX.Y.Z] [--repo PATH] [--skip-harvest] [--root DIR] [--json]\n       pfm update {check|adopt|pin|ignore|drop} [options]",
 		stderr,
 	)
 	target := flags.String("to", "", "target semantic-version tag")
@@ -144,6 +144,7 @@ func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	if found {
 		return renderProjectCheck(root, runtime.Paths.Home, *jsonOutput, stdout)
 	}
+	writeProjectFailure(stdout, *jsonOutput, errBaselineNotFound)
 	return 0
 }
 

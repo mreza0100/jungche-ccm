@@ -33,6 +33,38 @@ func TestBaselineRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBaselineRoundTripNormalizesIgnored(t *testing.T) {
+	root := t.TempDir()
+	want := Baseline{
+		Version: BaselineVersion,
+		Files:   map[string]FilePin{},
+		Ignored: []string{"project/z.md", "project/a.md", "project/a.md", "project/m.md"},
+	}
+	if err := Save(root, want); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	got, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	wantIgnored := []string{"project/a.md", "project/m.md", "project/z.md"}
+	if len(got.Ignored) != len(wantIgnored) {
+		t.Fatalf("Load() Ignored = %#v, want %#v", got.Ignored, wantIgnored)
+	}
+	for index, template := range wantIgnored {
+		if got.Ignored[index] != template {
+			t.Fatalf("Load() Ignored = %#v, want %#v", got.Ignored, wantIgnored)
+		}
+	}
+	raw, err := os.ReadFile(BaselinePath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(raw), "project/a.md") != 1 {
+		t.Fatalf("Save() did not dedupe on disk: %s", raw)
+	}
+}
+
 func TestBaselineMalformedAndUnsupportedAreNamed(t *testing.T) {
 	for _, test := range []struct {
 		name    string

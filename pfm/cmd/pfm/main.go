@@ -532,7 +532,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
 	fmt.Fprintln(w, "  install   wire or remove the self-contained host integration")
 	fmt.Fprintln(w, "  uninstall remove the self-contained host integration")
-	fmt.Fprintln(w, "  update    update the binary; check, pin, or drop project template baselines")
+	fmt.Fprintln(w, "  update    update the binary; check, adopt, pin, ignore, or drop project template baselines")
 	fmt.Fprintln(w, "  init      scaffold project templates once and pin their baselines")
 	fmt.Fprintln(w, "  config    initialize, inspect, or validate machine configuration")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")

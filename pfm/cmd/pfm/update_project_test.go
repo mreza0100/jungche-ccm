@@ -27,6 +27,7 @@ func TestUpdateCheckReportsEveryProjectStatusAndIsSideEffectFree(t *testing.T) {
 	}
 	for _, want := range []string{
 		"current       1",
+		"ignored       0",
 		"UPDATED       2",
 		"NEW           1",
 		"GONE-UPSTREAM 1",
@@ -140,6 +141,310 @@ func TestProfessorDoctorProjectLine(t *testing.T) {
 	if warnings != 1 || !strings.Contains(output.String(), "professor: UNREADABLE") {
 		t.Fatalf("unreadable doctor warnings=%d output=%q", warnings, output.String())
 	}
+}
+
+func TestUpdateAdoptPinsExistingInstall(t *testing.T) {
+	store := newScaffoldStoreFixture(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+	if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeProjectFixtureFile(t, project, "CLAUDE.md", "# local\n")
+	writeProjectFixtureFile(t, project, ".claude/commands/dev.md", "---\nname: dev\n---\nlocal\n")
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+	headSHA := projectGitShortSHA(t, store)
+
+	storeStruct, err := professor.ResolveStore(project, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := planInitCopies(storeStruct)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"adopt", "--root", project}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("adopt code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "adopted 2 file(s)") {
+		t.Fatalf("adopt stdout=%q", stdout.String())
+	}
+	wantAbsent := len(plan) - 2
+	if !strings.Contains(stdout.String(), fmt.Sprintf("absent        %d", wantAbsent)) {
+		t.Fatalf("adopt absent count stdout=%q, want absent %d (plan size %d)", stdout.String(), wantAbsent, len(plan))
+	}
+
+	baseline, err := professor.Load(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baseline.Files) != 2 {
+		t.Fatalf("pinned files=%#v, want exactly 2", baseline.Files)
+	}
+	if baseline.Blueprint.SHA != headSHA {
+		t.Fatalf("Blueprint.SHA=%q, want store HEAD %q", baseline.Blueprint.SHA, headSHA)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"adopt", "--root", project}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("second adopt code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "adopted 0 file(s)") || !strings.Contains(stdout.String(), "kept          2") {
+		t.Fatalf("second adopt stdout=%q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	// The fixture's raw template tree (walked by check's NEW pass) also
+	// carries templates/project/agents/per-project/developer.md — a file
+	// planInitCopies deliberately skips, so it is never in plan and is
+	// never absent, but check still counts it NEW: NEW = plan size - 2 + 1.
+	if code := runUpdate([]string{"check", "--root", project}, &stdout, &stderr, runtime); code != 3 {
+		t.Fatalf("check code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	wantNew := len(plan) - 2 + 1
+	for _, want := range []string{"current       2", fmt.Sprintf("NEW           %d", wantNew)} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("check output missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestUpdateAdoptAtPinsAgainstBlueprintRefAndValidatesIt(t *testing.T) {
+	store, oldSHA, headSHA := newAdoptAtStoreFixture(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+	if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeProjectFixtureFile(t, project, ".claude/commands/dev.md", "local dev\n")
+	writeProjectFixtureFile(t, project, ".claude/commands/later.md", "local later\n")
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"adopt", "--root", project, "--at", oldSHA}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("adopt --at code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "absent-at-ref 1") {
+		t.Fatalf("adopt --at stdout missing absent-at-ref: %q", stdout.String())
+	}
+	baseline, err := professor.Load(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	devPin, pinned := baseline.Files[".claude/commands/dev.md"]
+	if !pinned {
+		t.Fatalf("dev.md was not pinned: %#v", baseline.Files)
+	}
+	wantHash := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("old\n")))
+	if devPin.TemplateHash != wantHash {
+		t.Fatalf("dev.md TemplateHash=%q, want %q", devPin.TemplateHash, wantHash)
+	}
+	if devPin.PinnedSHA != oldSHA {
+		t.Fatalf("dev.md PinnedSHA=%q, want %q", devPin.PinnedSHA, oldSHA)
+	}
+	if baseline.Blueprint.SHA != oldSHA {
+		t.Fatalf("Blueprint.SHA=%q, want %q", baseline.Blueprint.SHA, oldSHA)
+	}
+	if _, pinned := baseline.Files[".claude/commands/later.md"]; pinned {
+		t.Fatal("later.md was pinned even though it did not exist at --at ref")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"check", "--root", project}, &stdout, &stderr, runtime); code != 3 {
+		t.Fatalf("check code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), ".claude/commands/dev.md   project/commands/dev.md  pinned @"+oldSHA) ||
+		!strings.Contains(stdout.String(), fmt.Sprintf("review: git -C %s diff %s..%s", store, oldSHA, headSHA)) {
+		t.Fatalf("check did not report dev.md UPDATED with the expected review line:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "project/commands/later.md — adopt:") {
+		t.Fatalf("check did not report later.md NEW:\n%s", stdout.String())
+	}
+
+	noGitStore := t.TempDir()
+	for relative, content := range map[string]string{
+		"VERSION":                                                  "0.65.0\n",
+		"templates/project/CLAUDE.md":                              "# x\n",
+		"templates/project/settings.json":                          "{}\n",
+		"templates/project/commands/dev.md":                        "old\n",
+		"templates/project/agents/gitter.md":                       "body\n",
+		"templates/project/scripts/dev.sh":                         "#!/usr/bin/env bash\n",
+		"templates/project/skills/legal/SKILL.md":                  "body\n",
+		"templates/project/workflows/audit.js":                     "export default {};\n",
+		"templates/project/codex/config.toml":                      "model=\"x\"\n",
+		"templates/project/docs-commands/jc/references/jc-core.md": "# JC\n",
+		"templates/project/docs-agents/_index.md":                  "# Agents\n",
+	} {
+		writeProjectFixtureFile(t, noGitStore, relative, content)
+	}
+	noGitProject := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(noGitProject, ".professor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	noGitManifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", noGitStore)
+	if err := os.WriteFile(filepath.Join(noGitProject, ".professor", "manifest.json"), []byte(noGitManifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"adopt", "--root", noGitProject, "--at", "HEAD"}, &stdout, &stderr, runtime); code != 1 || !strings.Contains(stderr.String(), "--at requires a git blueprint clone") {
+		t.Fatalf("no-.git adopt --at code=%d stderr=%q", code, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"adopt", "--root", project, "--at", "nosuchref"}, &stdout, &stderr, runtime); code != 1 || !strings.Contains(stderr.String(), "resolve --at nosuchref") {
+		t.Fatalf("bad --at ref code=%d stderr=%q", code, stderr.String())
+	}
+}
+
+// TestUpdateIgnoreManagesBaselineIgnored is a REGRESSION test for the NEW
+// walk skipping ignored templates: watched failing against a build where
+// buildProjectReport's ignored-skip was neutralized (every ignored template
+// still surfaced NEW) — see the RED-first record in the qa report.
+func TestUpdateIgnoreManagesBaselineIgnored(t *testing.T) {
+	fixture := newProjectUpdateFixture(t)
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"ignore", "project/new.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 0 {
+		t.Fatalf("ignore new.md code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "ignored 1 template(s)") {
+		t.Fatalf("ignore stdout=%q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"check", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 3 {
+		t.Fatalf("check after ignore code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{"NEW           0", "ignored       1", "REVIEW REQUIRED — 4 items"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("check after ignore missing %q:\n%s", want, stdout.String())
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"check", "--json", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 3 {
+		t.Fatalf("check --json after ignore code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var object map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &object); err != nil {
+		t.Fatalf("json output is not one object: %v\n%s", err, stdout.String())
+	}
+	ignoredList, ok := object["ignored"].([]any)
+	if !ok || len(ignoredList) != 1 || ignoredList[0] != "project/new.md" {
+		t.Fatalf("json ignored=%#v, want [\"project/new.md\"]", object["ignored"])
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"ignore", "project/current.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 1 || !strings.Contains(stderr.String(), "is pinned by .claude/current.md") {
+		t.Fatalf("ignore pinned template code=%d stderr=%q", code, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"ignore", "project/nope.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 1 || !strings.Contains(stderr.String(), "does not exist upstream") {
+		t.Fatalf("ignore missing template code=%d stderr=%q", code, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"ignore", "--undo", "project/new.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 0 || !strings.Contains(stdout.String(), "un-ignored 1 template(s)") {
+		t.Fatalf("undo ignore code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"check", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 3 || !strings.Contains(stdout.String(), "NEW           1") {
+		t.Fatalf("check after undo code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"ignore", "project/new.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 0 {
+		t.Fatalf("re-ignore code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	writeProjectFixtureFile(t, fixture.project, ".claude/new.md", "adapted locally\n")
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"pin", "--template", "project/new.md", ".claude/new.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 0 {
+		t.Fatalf("pin adopted ignored template code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	baseline, err := professor.Load(fixture.project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baseline.Ignored) != 0 {
+		t.Fatalf("baseline.Ignored=%#v after pinning a formerly ignored template, want empty", baseline.Ignored)
+	}
+}
+
+// TestUpdateCheckMissingBaselineNamesAdoptCommand is a REGRESSION test for
+// the "no baseline" message text: watched failing against the old text
+// ".professor/baseline.json not found" (no "pfm update adopt" guidance) —
+// see the RED-first record in the qa report.
+func TestUpdateCheckMissingBaselineNamesAdoptCommand(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"check", "--root", dir}, &stdout, &stderr, runtime); code != 1 {
+		t.Fatalf("missing baseline check code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "pfm update adopt pins an existing install") {
+		t.Fatalf("missing baseline stdout=%q, want it to name pfm update adopt", stdout.String())
+	}
+}
+
+// newAdoptAtStoreFixture builds a full planInitCopies-compatible blueprint
+// store (every initTemplatePaths source must exist or planInitCopies fails)
+// with two commits: old has templates/project/commands/dev.md = "old\n";
+// new changes dev.md to "new\n" and adds templates/project/commands/later.md.
+func newAdoptAtStoreFixture(t *testing.T) (store, oldSHA, headSHA string) {
+	t.Helper()
+	root := t.TempDir()
+	for relative, content := range map[string]string{
+		"VERSION":                                                  "0.65.0\n",
+		"templates/project/CLAUDE.md":                              "# {TOKEN} contract\n",
+		"templates/project/settings.json":                          "{}\n",
+		"templates/project/commands/dev.md":                        "old\n",
+		"templates/project/agents/gitter.md":                       "---\nname: gitter\n---\nbody\n",
+		"templates/project/scripts/dev.sh":                         "#!/usr/bin/env bash\nset -euo pipefail\n",
+		"templates/project/skills/legal/SKILL.md":                  "---\nname: legal\n---\nbody\n",
+		"templates/project/workflows/audit.js":                     "export default {};\n",
+		"templates/project/codex/config.toml":                      "model = \"{TOKEN}\"\n",
+		"templates/project/docs-commands/jc/references/jc-core.md": "# JC\n",
+		"templates/project/docs-agents/_index.md":                  "# Agents\n",
+	} {
+		writeProjectFixtureFile(t, root, relative, content)
+	}
+	gitTemp(t, root, "init", "-q")
+	gitTemp(t, root, "config", "user.email", "fixture.invalid")
+	gitTemp(t, root, "config", "user.name", "fixture-identity")
+	gitTemp(t, root, "add", ".")
+	gitTemp(t, root, "commit", "-qm", "old templates")
+	oldSHA = projectGitShortSHA(t, root)
+
+	writeProjectFixtureFile(t, root, "templates/project/commands/dev.md", "new\n")
+	writeProjectFixtureFile(t, root, "templates/project/commands/later.md", "later\n")
+	gitTemp(t, root, "add", "-A")
+	gitTemp(t, root, "commit", "-qm", "new templates")
+	headSHA = projectGitShortSHA(t, root)
+	return root, oldSHA, headSHA
 }
 
 type projectUpdateFixture struct {

@@ -1,17 +1,21 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/professor"
 )
 
@@ -19,6 +23,7 @@ type projectStatus string
 
 const (
 	projectCurrent      projectStatus = "current"
+	projectIgnored      projectStatus = "ignored"
 	projectUpdated      projectStatus = "UPDATED"
 	projectNew          projectStatus = "NEW"
 	projectGoneUpstream projectStatus = "GONE-UPSTREAM"
@@ -27,11 +32,19 @@ const (
 
 var projectStatusOrder = []projectStatus{
 	projectCurrent,
+	projectIgnored,
 	projectUpdated,
 	projectNew,
 	projectGoneUpstream,
 	projectLocalDeleted,
 }
+
+// missingBaselineMessage is the one text every "no .professor/baseline.json"
+// surface renders — check (human + json), the bare `pfm update` post-report,
+// and pin/drop/ignore stderr — so the guidance never drifts between copies.
+const missingBaselineMessage = ".professor/baseline.json not found — pfm update adopt pins an existing install; pfm init scaffolds a new one"
+
+var errBaselineNotFound = errors.New(missingBaselineMessage)
 
 type projectReportItem struct {
 	Status   projectStatus     `json:"status"`
@@ -72,7 +85,7 @@ func runProjectUpdate(action string, args []string, stdout, stderr io.Writer, ru
 			return 1
 		}
 		if !found {
-			writeProjectFailure(stdout, *jsonOutput, errors.New(".professor/baseline.json not found"))
+			writeProjectFailure(stdout, *jsonOutput, errBaselineNotFound)
 			return 1
 		}
 		return renderProjectCheck(root, runtime.Paths.Home, *jsonOutput, stdout)
@@ -80,6 +93,10 @@ func runProjectUpdate(action string, args []string, stdout, stderr io.Writer, ru
 		return runProjectPin(args, stdout, stderr, runtime)
 	case "drop":
 		return runProjectDrop(args, stdout, stderr)
+	case "adopt":
+		return runProjectAdopt(args, stdout, stderr, runtime)
+	case "ignore":
+		return runProjectIgnore(args, stdout, stderr, runtime)
 	default:
 		fmt.Fprintf(stderr, "pfm update: unknown project action %q\n", action)
 		return 2
@@ -125,6 +142,10 @@ func buildProjectReport(root, home string) (projectReport, error) {
 		report.Counts[status] = 0
 	}
 	pinnedTemplates := make(map[string]bool, len(baseline.Files))
+	ignoredTemplates := make(map[string]bool, len(baseline.Ignored))
+	for _, template := range baseline.Ignored {
+		ignoredTemplates[template] = true
+	}
 	locals := make([]string, 0, len(baseline.Files))
 	for local := range baseline.Files {
 		locals = append(locals, local)
@@ -185,6 +206,10 @@ func buildProjectReport(root, home string) (projectReport, error) {
 		}
 		template := filepath.ToSlash(relative)
 		if pinnedTemplates[template] {
+			return nil
+		}
+		if ignoredTemplates[template] {
+			report.Counts[projectIgnored]++
 			return nil
 		}
 		if _, err := professor.HashTemplate(path); err != nil {
@@ -256,6 +281,7 @@ func writeProjectJSON(stdout io.Writer, report projectReport) error {
 		Blueprint      blueprintJSON         `json:"blueprint"`
 		Counts         map[projectStatus]int `json:"counts"`
 		Items          []projectReportItem   `json:"items"`
+		Ignored        []string              `json:"ignored"`
 		ReviewRequired int                   `json:"reviewRequired"`
 		Terminal       string                `json:"terminal"`
 	}{
@@ -263,6 +289,7 @@ func writeProjectJSON(stdout io.Writer, report projectReport) error {
 		Blueprint:      blueprintJSON{Pinned: report.Baseline.Blueprint.SHA, Current: report.Store.SHA},
 		Counts:         report.Counts,
 		Items:          report.Items,
+		Ignored:        report.Baseline.Ignored,
 		ReviewRequired: report.reviewRequired(),
 	}
 	if payload.ReviewRequired == 0 {
@@ -305,7 +332,7 @@ func runProjectPin(args []string, stdout, stderr io.Writer, runtime commandRunti
 	root, found, err := resolveProjectRoot(*rootFlag)
 	if err != nil || !found {
 		if err == nil {
-			err = errors.New(".professor/baseline.json not found")
+			err = errBaselineNotFound
 		}
 		fmt.Fprintf(stderr, "pfm update pin: %v\n", err)
 		return 1
@@ -349,6 +376,7 @@ func runProjectPin(args []string, stdout, stderr io.Writer, runtime commandRunti
 			return 1
 		}
 		report.Baseline.Files[local] = professor.FilePin{Template: template, TemplateHash: hash, PinnedSHA: report.Store.SHA, PinnedAt: time.Now().Format(time.DateOnly)}
+		report.Baseline.Ignored = removeIgnored(report.Baseline.Ignored, template)
 		selected[0] = local
 	} else {
 		for index, value := range selected {
@@ -403,7 +431,7 @@ func runProjectDrop(args []string, stdout, stderr io.Writer) int {
 	root, found, err := resolveProjectRoot(*rootFlag)
 	if err != nil || !found {
 		if err == nil {
-			err = errors.New(".professor/baseline.json not found")
+			err = errBaselineNotFound
 		}
 		fmt.Fprintf(stderr, "pfm update drop: %v\n", err)
 		return 1
@@ -432,6 +460,312 @@ func runProjectDrop(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "dropped %d pin(s)\n", len(locals))
 	return 0
+}
+
+// runProjectAdopt bootstraps pins for an install that already has its
+// project files — never scaffolded by `pfm init`. It reuses planInitCopies
+// (init_command.go) so the pinnable set never drifts from what init deploys.
+func runProjectAdopt(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
+	flags := newFlagSet("update adopt", "usage: pfm update adopt [--root DIR] [--at REF]", stderr)
+	rootFlag := flags.String("root", "", "project root")
+	atFlag := flags.String("at", "", "blueprint ref to pin against (defaults to the store HEAD)")
+	positional, code, ok := parseFlagsAnywhere(flags, args)
+	if !ok {
+		return code
+	}
+	if len(positional) != 0 {
+		flags.Usage()
+		return 2
+	}
+
+	root, found, err := resolveProjectRoot(*rootFlag)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm update adopt: %v\n", err)
+		return 1
+	}
+	var baseline professor.Baseline
+	if found {
+		baseline, err = professor.Load(root)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm update adopt: %v\n", err)
+			return 1
+		}
+	} else {
+		start := strings.TrimSpace(*rootFlag)
+		if start == "" {
+			start, err = os.Getwd()
+			if err != nil {
+				fmt.Fprintf(stderr, "pfm update adopt: resolve current directory: %v\n", err)
+				return 1
+			}
+		}
+		root, err = filepath.Abs(start)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm update adopt: resolve project root %s: %v\n", start, err)
+			return 1
+		}
+		baseline = professor.Baseline{Version: professor.BaselineVersion, Files: make(map[string]professor.FilePin)}
+	}
+
+	store, err := professor.ResolveStore(root, runtime.Paths.Home)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm update adopt: %v\n", err)
+		return 1
+	}
+	plan, err := planInitCopies(store)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm update adopt: %v\n", err)
+		return 1
+	}
+
+	ref := strings.TrimSpace(*atFlag)
+	usingAt := ref != ""
+	var sha, version string
+	if usingAt {
+		if store.SHA == professor.UnknownSelfHostedSHA {
+			fmt.Fprintf(stderr, "pfm update adopt: --at requires a git blueprint clone; %s has no .git\n", store.Root)
+			return 1
+		}
+		shaOut, shaErrText, gitErr := adoptGit(store.Root, "rev-parse", "--short", ref+"^{commit}")
+		if gitErr != nil {
+			fmt.Fprintf(stderr, "pfm update adopt: %v\n", adoptGitFailure("resolve --at "+ref, gitErr, shaErrText))
+			return 1
+		}
+		sha = strings.TrimSpace(shaOut)
+		versionOut, versionErrText, gitErr := adoptGit(store.Root, "show", ref+":VERSION")
+		if gitErr != nil {
+			fmt.Fprintf(stderr, "pfm update adopt: %v\n", adoptGitFailure("resolve --at "+ref+": a blueprint ref without VERSION is not a blueprint", gitErr, versionErrText))
+			return 1
+		}
+		version = strings.TrimSpace(versionOut)
+	} else {
+		sha = store.SHA
+		version = store.Version
+	}
+
+	kept, absent, absentAtRef, pinned := 0, 0, 0, 0
+	pinnedAt := time.Now().Format(time.DateOnly)
+	for _, entry := range plan {
+		if _, exists := baseline.Files[entry.local]; exists {
+			kept++
+			continue
+		}
+		localPath := filepath.Join(root, filepath.FromSlash(entry.local))
+		if _, statErr := os.Stat(localPath); errors.Is(statErr, fs.ErrNotExist) {
+			absent++
+			continue
+		}
+		if err := requireReadableLocal(root, entry.local); err != nil {
+			fmt.Fprintf(stderr, "pfm update adopt: %v\n", err)
+			return 1
+		}
+		var hash string
+		if usingAt {
+			raw, missing, gitErr := adoptGitShowTemplate(store.Root, ref, entry.template)
+			if gitErr != nil {
+				fmt.Fprintf(stderr, "pfm update adopt: %v\n", gitErr)
+				return 1
+			}
+			if missing {
+				absentAtRef++
+				continue
+			}
+			hash = fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+		} else {
+			hash, err = professor.HashTemplate(entry.source)
+			if err != nil {
+				fmt.Fprintf(stderr, "pfm update adopt: %v\n", err)
+				return 1
+			}
+		}
+		baseline.Files[entry.local] = professor.FilePin{
+			Template:     entry.template,
+			TemplateHash: hash,
+			PinnedSHA:    sha,
+			PinnedAt:     pinnedAt,
+		}
+		pinned++
+	}
+
+	if pinned > 0 {
+		baseline.Blueprint = professor.BlueprintPin{Version: version, SHA: sha}
+	}
+	if err := professor.Save(root, baseline); err != nil {
+		fmt.Fprintf(stderr, "pfm update adopt: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "adopted %d file(s) at %s\n", pinned, sha)
+	fmt.Fprintf(stdout, "  %-13s %-3d (%s)\n", "kept", kept, "already pinned, untouched")
+	fmt.Fprintf(stdout, "  %-13s %-3d (%s)\n", "absent", absent, "mapped template, no local file — check reports NEW")
+	if usingAt {
+		fmt.Fprintf(stdout, "  %-13s %-3d (template did not exist at %s; check reports NEW)\n", "absent-at-ref", absentAtRef, ref)
+	}
+	fmt.Fprintln(stdout, "next: pfm update check")
+	return 0
+}
+
+// adoptGit runs git inside the blueprint store, returning stdout and stderr
+// SEPARATELY — `git show REF:path` returns the file's raw bytes on stdout,
+// which must never be merged with git's own diagnostic text on stderr.
+func adoptGit(root string, args ...string) (string, string, error) {
+	command := exec.Command(deps.Executable("git"), args...)
+	command.Dir = root
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err := command.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+func adoptGitFailure(action string, err error, stderrText string) error {
+	return fmt.Errorf("%s: %w: %s", action, err, strings.TrimSpace(stderrText))
+}
+
+// adoptGitShowTemplate reads templates/<template> at ref. missing is true
+// when git reports the path did not exist at that ref (exit 128, stderr
+// containing "does not exist in" or "exists on disk, but not in") — the
+// caller treats that as absent-at-ref rather than a hard failure.
+func adoptGitShowTemplate(root, ref, template string) (raw []byte, missing bool, err error) {
+	stdout, stderrText, gitErr := adoptGit(root, "show", ref+":templates/"+template)
+	if gitErr == nil {
+		return []byte(stdout), false, nil
+	}
+	trimmed := strings.TrimSpace(stderrText)
+	var exitErr *exec.ExitError
+	if errors.As(gitErr, &exitErr) && exitErr.ExitCode() == 128 &&
+		(strings.Contains(trimmed, "does not exist in") || strings.Contains(trimmed, "exists on disk, but not in")) {
+		return nil, true, nil
+	}
+	return nil, false, adoptGitFailure(fmt.Sprintf("show %s at %s", template, ref), gitErr, stderrText)
+}
+
+// runProjectIgnore maintains Baseline.Ignored — templates a NEW walk should
+// count and skip rather than surface for adoption.
+func runProjectIgnore(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
+	flags := newFlagSet("update ignore", "usage: pfm update ignore <template>... [--undo] [--root DIR]", stderr)
+	rootFlag := flags.String("root", "", "project root")
+	undo := flags.Bool("undo", false, "remove templates from the ignore list")
+	values, code, ok := parseFlagsAnywhere(flags, args)
+	if !ok {
+		return code
+	}
+	if len(values) == 0 {
+		flags.Usage()
+		return 2
+	}
+	root, found, err := resolveProjectRoot(*rootFlag)
+	if err != nil || !found {
+		if err == nil {
+			err = errBaselineNotFound
+		}
+		fmt.Fprintf(stderr, "pfm update ignore: %v\n", err)
+		return 1
+	}
+	baseline, err := professor.Load(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm update ignore: %v\n", err)
+		return 1
+	}
+	templates := make([]string, 0, len(values))
+	for _, value := range values {
+		template, err := safeTemplateRelative(value)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm update ignore: %v\n", err)
+			return 1
+		}
+		templates = append(templates, template)
+	}
+
+	ignored := make(map[string]bool, len(baseline.Ignored))
+	for _, template := range baseline.Ignored {
+		ignored[template] = true
+	}
+
+	if *undo {
+		for _, template := range templates {
+			if !ignored[template] {
+				fmt.Fprintf(stderr, "pfm update ignore: %s is not ignored\n", template)
+				return 1
+			}
+		}
+		for _, template := range templates {
+			delete(ignored, template)
+		}
+	} else {
+		store, err := professor.ResolveStore(root, runtime.Paths.Home)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm update ignore: %v\n", err)
+			return 1
+		}
+		for _, template := range templates {
+			templatePath := filepath.Join(store.Templates, filepath.FromSlash(template))
+			if _, statErr := os.Stat(templatePath); errors.Is(statErr, fs.ErrNotExist) {
+				fmt.Fprintf(stderr, "pfm update ignore: %s does not exist upstream\n", template)
+				return 1
+			} else if statErr != nil {
+				fmt.Fprintf(stderr, "pfm update ignore: UNREADABLE %s: %v\n", templatePath, statErr)
+				return 1
+			}
+			if local, pinned := findPinByTemplate(baseline, template); pinned {
+				fmt.Fprintf(stderr, "pfm update ignore: %s is pinned by %s; pfm update drop %s first\n", template, local, local)
+				return 1
+			}
+		}
+		for _, template := range templates {
+			ignored[template] = true
+		}
+	}
+
+	result := make([]string, 0, len(ignored))
+	for template := range ignored {
+		result = append(result, template)
+	}
+	sort.Strings(result)
+	baseline.Ignored = result
+	if err := professor.Save(root, baseline); err != nil {
+		fmt.Fprintf(stderr, "pfm update ignore: %v\n", err)
+		return 1
+	}
+	if *undo {
+		fmt.Fprintf(stdout, "un-ignored %d template(s)\n", len(templates))
+	} else {
+		fmt.Fprintf(stdout, "ignored %d template(s)\n", len(templates))
+	}
+	return 0
+}
+
+func findPinByTemplate(baseline professor.Baseline, template string) (string, bool) {
+	locals := make([]string, 0, len(baseline.Files))
+	for local := range baseline.Files {
+		locals = append(locals, local)
+	}
+	sort.Strings(locals)
+	for _, local := range locals {
+		if baseline.Files[local].Template == template {
+			return local, true
+		}
+	}
+	return "", false
+}
+
+// removeIgnored drops template from an Ignored list (a newly adopted pin
+// un-ignores it) and returns nil rather than an empty non-nil slice, so
+// Baseline.Ignored's json:",omitempty" drops cleanly once the list empties.
+func removeIgnored(ignored []string, template string) []string {
+	if len(ignored) == 0 {
+		return ignored
+	}
+	result := make([]string, 0, len(ignored))
+	for _, value := range ignored {
+		if value != template {
+			result = append(result, value)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func printProfessorDoctor(stdout io.Writer, start, home string) int {

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 const BaselineVersion = 1
@@ -15,6 +16,7 @@ type Baseline struct {
 	Version   int                `json:"version"`
 	Blueprint BlueprintPin       `json:"blueprint"`
 	Files     map[string]FilePin `json:"files"`
+	Ignored   []string           `json:"ignored,omitempty"`
 }
 
 type BlueprintPin struct {
@@ -49,7 +51,25 @@ func Load(root string) (Baseline, error) {
 	if baseline.Files == nil {
 		baseline.Files = make(map[string]FilePin)
 	}
+	baseline.Ignored = normalizeIgnored(baseline.Ignored)
 	return baseline, nil
+}
+
+// normalizeIgnored returns a sorted, duplicate-free copy of an Ignored list
+// (nil for an empty result, so json:",omitempty" drops it cleanly).
+func normalizeIgnored(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	sorted := append([]string(nil), values...)
+	sort.Strings(sorted)
+	deduped := make([]string, 0, len(sorted))
+	for index, value := range sorted {
+		if index == 0 || value != sorted[index-1] {
+			deduped = append(deduped, value)
+		}
+	}
+	return deduped
 }
 
 func Save(root string, baseline Baseline) (resultErr error) {
@@ -59,6 +79,7 @@ func Save(root string, baseline Baseline) (resultErr error) {
 	if baseline.Files == nil {
 		baseline.Files = make(map[string]FilePin)
 	}
+	baseline.Ignored = normalizeIgnored(baseline.Ignored)
 	raw, err := json.MarshalIndent(baseline, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode baseline: %w", err)
