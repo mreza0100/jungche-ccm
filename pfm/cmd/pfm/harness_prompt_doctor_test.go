@@ -21,19 +21,35 @@ func TestHarnessPromptVerdictThreeOutcomes(t *testing.T) {
 	sum := sha256.Sum256([]byte(captured))
 	matching := hex.EncodeToString(sum[:])
 
-	line, warn := harnessPromptVerdict(matching, "harness-original-v2.1.251.md", captured, nil)
-	if warn || !strings.Contains(line, "matches baseline harness-original-v2.1.251.md") {
+	line, warn := harnessPromptVerdict(matching, "harness-original-v2.1.257.md", captured, nil)
+	if warn || !strings.Contains(line, "matches baseline harness-original-v2.1.257.md") {
 		t.Fatalf("match outcome = (%q, %v), want an ok line", line, warn)
 	}
 
-	line, warn = harnessPromptVerdict(strings.Repeat("0", 64), "harness-original-v2.1.251.md", captured, nil)
+	line, warn = harnessPromptVerdict(strings.Repeat("0", 64), "harness-original-v2.1.257.md", captured, nil)
 	if !warn || !strings.Contains(line, "DRIFT") {
 		t.Fatalf("drift outcome = (%q, %v), want a DRIFT warning", line, warn)
 	}
 
-	line, warn = harnessPromptVerdict(matching, "harness-original-v2.1.251.md", "", errors.New("no API request reached the capture sink"))
+	line, warn = harnessPromptVerdict(matching, "harness-original-v2.1.257.md", "", errors.New("no API request reached the capture sink"))
 	if !warn || !strings.Contains(line, "CHECK FAILED") || strings.Contains(line, "DRIFT") || strings.Contains(line, "matches") {
 		t.Fatalf("capture-failure outcome = (%q, %v), want a distinct CHECK FAILED warning", line, warn)
+	}
+}
+
+func TestHarnessPromptVerdictMasksBuildStamp(t *testing.T) {
+	baseline := "x-anthropic-billing-header: cc_version=*; cc_entrypoint=sdk-cli;\n\n=== SYSTEM BLOCK ===\n\nprose\n"
+	sum := sha256.Sum256([]byte(baseline))
+	pin := hex.EncodeToString(sum[:])
+
+	released := "x-anthropic-billing-header: cc_version=2.1.257.9c3; cc_entrypoint=sdk-cli;\n\n=== SYSTEM BLOCK ===\n\nprose\n"
+	if line, warn := harnessPromptVerdict(pin, "b.md", released, nil); warn || !strings.Contains(line, "matches baseline") {
+		t.Fatalf("a new build stamp alone = (%q, %v), want a match", line, warn)
+	}
+
+	reworded := "x-anthropic-billing-header: cc_version=2.1.257.9c3; cc_entrypoint=sdk-cli;\n\n=== SYSTEM BLOCK ===\n\nreworded prose\n"
+	if line, warn := harnessPromptVerdict(pin, "b.md", reworded, nil); !warn || !strings.Contains(line, "DRIFT") {
+		t.Fatalf("changed prose behind a new stamp = (%q, %v), want DRIFT", line, warn)
 	}
 }
 

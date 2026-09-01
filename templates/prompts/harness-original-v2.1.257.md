@@ -1,4 +1,4 @@
-x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;
+x-anthropic-billing-header: cc_version=*; cc_entrypoint=sdk-cli;
 
 === SYSTEM BLOCK ===
 
@@ -214,7 +214,7 @@ When you use a pronoun for someone — the user or anyone else you mention — a
 # Environment
  - You are powered by the model named Sonnet 5. The exact model ID is claude-sonnet-5.
  - Assistant knowledge cutoff is January 2026.
- - The most recent Claude models are the Claude 5 family and Haiku 4.5. Model IDs — Fable 5: 'claude-fable-5', Opus 5: 'claude-opus-5', Sonnet 5: 'claude-sonnet-5', Haiku 4.5: 'claude-haiku-4-5-20251001'. When building AI applications, default to the latest and most capable Claude models.
+ - The most recent Claude models are the Claude 5 family and Haiku 4.5. Model IDs — Fable 5.1: 'claude-fable-5-1', Opus 5: 'claude-opus-5', Sonnet 5: 'claude-sonnet-5', Haiku 4.5: 'claude-haiku-4-5-20251001'. When building AI applications, default to the latest and most capable Claude models.
  - Claude Code is available as a CLI in the terminal, desktop app (Mac/Windows), web app (claude.ai/code), and IDE extensions (VS Code, JetBrains).
 
 # Context management

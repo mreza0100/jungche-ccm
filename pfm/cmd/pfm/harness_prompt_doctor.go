@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -63,13 +64,22 @@ func configuredHarnessCapture(ctx context.Context, machine config.Config) (strin
 	return captureHarnessPrompt(ctx, machine)
 }
 
+// harnessBuildStamp is the CLI build stamp inside the billing-header system
+// block. Every Claude Code release changes it, so both the live capture and
+// the stored baseline are masked before hashing — DRIFT means prose drift.
+var harnessBuildStamp = regexp.MustCompile(`cc_version=[^; ]*;`)
+
+func maskHarnessBuildStamp(prompt string) string {
+	return harnessBuildStamp.ReplaceAllLiteralString(prompt, "cc_version=*;")
+}
+
 // harnessPromptVerdict is the pure comparator: baseline hash + name, the
 // captured prompt, and the capture error map to exactly one doctor line.
 func harnessPromptVerdict(baselineSHA, baselineName, captured string, captureErr error) (string, bool) {
 	if captureErr != nil {
 		return fmt.Sprintf("doctor: harness-prompt: CHECK FAILED to run (%v) — drift unknown", captureErr), true
 	}
-	sum := sha256.Sum256([]byte(captured))
+	sum := sha256.Sum256([]byte(maskHarnessBuildStamp(captured)))
 	live := hex.EncodeToString(sum[:])
 	if live == baselineSHA {
 		return "doctor: harness-prompt: matches baseline " + baselineName, false
