@@ -13,7 +13,7 @@ Run a batch of tasks live on `main`: $ARGUMENTS
 
 A task list runs here; a single coherent change goes to `/jc`.
 
-The fix machinery the steps below cite is the jc-core card, `docs/references/jc-core.md`; missing or stale → fall back to `/jc` rather than stalling.
+The fix machinery the steps below cite is the jc-core card, `docs/commands/jc/references/jc-core.md`; missing or stale → fall back to `/jc` rather than stalling.
 
 ## W1 — Resolve, stage & pre-flight
 

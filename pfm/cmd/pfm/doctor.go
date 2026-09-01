@@ -265,6 +265,7 @@ func runDoctor(
 		len(roots)-rootWarnings,
 		len(roots),
 	)
+	warnings += printProfessorDoctor(stdout, ".", resolved.Home)
 
 	warnings += printCodexPaneBindingDoctor(ctx, stdout, database, runtime)
 

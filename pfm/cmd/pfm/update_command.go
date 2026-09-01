@@ -85,14 +85,27 @@ func selectHighestSemver(tags []string) (string, error) {
 }
 
 func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "check", "pin", "drop":
+			runtime, err := optionalCommandRuntime(runtimes)
+			if err != nil {
+				fmt.Fprintf(stderr, "pfm update: config: %v\n", err)
+				return 1
+			}
+			return runProjectUpdate(args[0], args[1:], stdout, stderr, runtime)
+		}
+	}
 	flags := newFlagSet(
 		"update",
-		"usage: pfm update [--to vX.Y.Z] [--repo PATH] [--skip-harvest]",
+		"usage: pfm update [--to vX.Y.Z] [--repo PATH] [--skip-harvest] [--root DIR] [--json]\n       pfm update {check|pin|drop} [options]",
 		stderr,
 	)
 	target := flags.String("to", "", "target semantic-version tag")
 	repoFlag := flags.String("repo", "", "source clone to update")
 	skipHarvest := flags.Bool("skip-harvest", false, "leave the optional harvestpy runtime unmanaged")
+	projectRoot := flags.String("root", "", "project root used for the post-update template report")
+	jsonOutput := flags.Bool("json", false, "write the project report as one JSON object")
 	positional, code, ok := parseFlagsAnywhere(flags, args)
 	if !ok {
 		return code
@@ -122,6 +135,14 @@ func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	if err := updateRepository(context.Background(), repo, *target, *skipHarvest, stdout, stderr, runtime); err != nil {
 		fmt.Fprintf(stderr, "pfm update: %v\n", err)
 		return 1
+	}
+	root, found, err := resolveProjectRoot(*projectRoot)
+	if err != nil {
+		writeProjectFailure(stdout, *jsonOutput, err)
+		return 1
+	}
+	if found {
+		return renderProjectCheck(root, runtime.Paths.Home, *jsonOutput, stdout)
 	}
 	return 0
 }
