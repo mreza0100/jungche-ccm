@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 const BaselineVersion = 1
@@ -56,16 +57,25 @@ func Load(root string) (Baseline, error) {
 }
 
 // normalizeIgnored returns a sorted, duplicate-free copy of an Ignored list
-// (nil for an empty result, so json:",omitempty" drops it cleanly).
+// (nil for an empty result, so json:",omitempty" drops it cleanly). Each
+// value is trimmed first and empties are dropped, so a hand-edited baseline
+// with stray whitespace or a blank entry never survives a round-trip.
 func normalizeIgnored(values []string) []string {
-	if len(values) == 0 {
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		trimmed = append(trimmed, value)
+	}
+	if len(trimmed) == 0 {
 		return nil
 	}
-	sorted := append([]string(nil), values...)
-	sort.Strings(sorted)
-	deduped := make([]string, 0, len(sorted))
-	for index, value := range sorted {
-		if index == 0 || value != sorted[index-1] {
+	sort.Strings(trimmed)
+	deduped := make([]string, 0, len(trimmed))
+	for index, value := range trimmed {
+		if index == 0 || value != trimmed[index-1] {
 			deduped = append(deduped, value)
 		}
 	}

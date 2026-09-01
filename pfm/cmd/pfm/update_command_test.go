@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -163,6 +164,90 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 	}
 	if got := updateGitBranch(t, repo); got != previousBranch {
 		t.Fatalf("source branch after successful update = %q, want unchanged %q", got, previousBranch)
+	}
+}
+
+// TestUpdateBareRunReportsNotManagedOutsideAnyProject is a REGRESSION test
+// for the bare `pfm update` post-report tail: watched failing against a
+// build where the NOT-MANAGED branch was reverted to writeProjectFailure
+// (running update from outside any managed project reported FAILED — a
+// baseline that was never expected to exist there). Only the human-readable
+// path is driven end to end through runUpdate here: the --json path cannot
+// be observed as a single parseable JSON object through this entry point
+// because runUpdate unconditionally writes a pre-existing "updated vX.Y.Z
+// from PATH" line ahead of the project report regardless of --json (see
+// update_command.go's `fmt.Fprintf(stdout, "updated %s from %s\n", ...)`,
+// unrelated to this fix). That full --json integration is a NAMED GAP; the
+// --json terminal contract itself is pinned directly against
+// writeProjectUnmanaged in TestWriteProjectUnmanagedHumanAndJSON below.
+func TestUpdateBareRunReportsNotManagedOutsideAnyProject(t *testing.T) {
+	repo := newUpdateGitFixture(t)
+	runtime := updateTestRuntime(t)
+	canonical := filepath.Join(runtime.Paths.Home, ".local", "bin", "pfm")
+	if err := os.MkdirAll(filepath.Dir(canonical), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(canonical, []byte("old\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.RecordCanonicalBinary(runtime.Paths.Home); err != nil {
+		t.Fatal(err)
+	}
+
+	oldBuild := updateBuildCandidate
+	oldInstall := updateApplyInstall
+	oldDoctor := updateRunDoctor
+	t.Cleanup(func() {
+		updateBuildCandidate = oldBuild
+		updateApplyInstall = oldInstall
+		updateRunDoctor = oldDoctor
+	})
+	updateBuildCandidate = func(_ context.Context, _ string, _ string, output string) error {
+		return os.WriteFile(output, []byte("new\n"), 0o755)
+	}
+	updateApplyInstall = func(context.Context, string, string, string, commandRuntime, bool, io.Writer, io.Writer) error {
+		return nil
+	}
+	updateRunDoctor = func(context.Context, string, commandRuntime, bool, io.Writer, io.Writer) error {
+		return nil
+	}
+
+	outside := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"--skip-harvest", "--repo", repo, "--root", outside}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("runUpdate() code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "NOT-MANAGED — ") {
+		t.Fatalf("stdout=%q, want a NOT-MANAGED terminal", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "FAILED") {
+		t.Fatalf("stdout=%q, want no FAILED terminal outside any managed project", stdout.String())
+	}
+}
+
+// TestWriteProjectUnmanagedHumanAndJSON pins writeProjectUnmanaged's own
+// contract directly (both output shapes) — the seam the test above names as
+// its integration gap for --json. REGRESSION coverage: watched failing
+// against a build where the "NOT-MANAGED — " prefix inside
+// writeProjectUnmanaged was swapped for "FAILED — " (the writeProjectFailure
+// prefix), which a caller piping --json output would read as a real error.
+func TestWriteProjectUnmanagedHumanAndJSON(t *testing.T) {
+	var human bytes.Buffer
+	writeProjectUnmanaged(&human, false)
+	wantHuman := "NOT-MANAGED — " + errBaselineNotFound.Error() + "\n"
+	if got := human.String(); got != wantHuman {
+		t.Fatalf("writeProjectUnmanaged(human) = %q, want %q", got, wantHuman)
+	}
+
+	var jsonBuf bytes.Buffer
+	writeProjectUnmanaged(&jsonBuf, true)
+	var object map[string]any
+	if err := json.Unmarshal(jsonBuf.Bytes(), &object); err != nil {
+		t.Fatalf("json output is not one object: %v\n%s", err, jsonBuf.String())
+	}
+	terminal, ok := object["terminal"].(string)
+	if !ok || !strings.HasPrefix(terminal, "NOT-MANAGED — ") {
+		t.Fatalf("json terminal=%#v, want a NOT-MANAGED — prefix", object["terminal"])
 	}
 }
 

@@ -87,7 +87,7 @@ func selectHighestSemver(tags []string) (string, error) {
 func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	if len(args) > 0 {
 		switch args[0] {
-		case "check", "pin", "drop", "adopt", "ignore":
+		case "check", "adopt", "pin", "ignore", "drop":
 			runtime, err := optionalCommandRuntime(runtimes)
 			if err != nil {
 				fmt.Fprintf(stderr, "pfm update: config: %v\n", err)
@@ -144,7 +144,7 @@ func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	if found {
 		return renderProjectCheck(root, runtime.Paths.Home, *jsonOutput, stdout)
 	}
-	writeProjectFailure(stdout, *jsonOutput, errBaselineNotFound)
+	writeProjectUnmanaged(stdout, *jsonOutput)
 	return 0
 }
 

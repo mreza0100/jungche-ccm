@@ -410,6 +410,265 @@ func TestUpdateCheckMissingBaselineNamesAdoptCommand(t *testing.T) {
 	}
 }
 
+// TestUpdateAdoptRemovesNewlyPinnedTemplateFromIgnored is a REGRESSION test
+// for adopt un-ignoring a template it just pinned: watched failing against a
+// build where the removeIgnored call in runProjectAdopt's pin loop was
+// neutralized (a newly adopted pin left its template sitting in
+// baseline.Ignored, so the very file adopt just pinned would still read
+// ignored on the next check).
+func TestUpdateAdoptRemovesNewlyPinnedTemplateFromIgnored(t *testing.T) {
+	store := newScaffoldStoreFixture(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+	if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeProjectFixtureFile(t, project, ".claude/commands/dev.md", "local dev\n")
+	baseline := professor.Baseline{
+		Version: professor.BaselineVersion,
+		Files:   map[string]professor.FilePin{},
+		Ignored: []string{"project/commands/dev.md"},
+	}
+	if err := professor.Save(project, baseline); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"adopt", "--root", project}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("adopt code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	got, err := professor.Load(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, pinned := got.Files[".claude/commands/dev.md"]; !pinned {
+		t.Fatalf("dev.md was not pinned: %#v", got.Files)
+	}
+	for _, template := range got.Ignored {
+		if template == "project/commands/dev.md" {
+			t.Fatalf("adopt left a newly pinned template in Ignored: %#v", got.Ignored)
+		}
+	}
+}
+
+// TestUpdateIgnoreRefusesDirectoryTemplate is a REGRESSION test for `pfm
+// update ignore` accepting a template directory rather than a single file:
+// watched failing against a build where the IsDir check in runProjectIgnore
+// was neutralized (a directory argument was silently accepted and written
+// into Ignored as if it were a template file).
+func TestUpdateIgnoreRefusesDirectoryTemplate(t *testing.T) {
+	store := newScaffoldStoreFixture(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+	if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := professor.Save(project, professor.Baseline{Version: professor.BaselineVersion, Files: map[string]professor.FilePin{}}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(professor.BaselinePath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+
+	var stdout, stderr bytes.Buffer
+	code := runUpdate([]string{"ignore", "project/commands", "--root", project}, &stdout, &stderr, runtime)
+	if code != 1 {
+		t.Fatalf("ignore directory code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "is a directory, not a template file") {
+		t.Fatalf("ignore directory stderr=%q", stderr.String())
+	}
+	after, err := os.ReadFile(professor.BaselinePath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("baseline mutated by refused ignore: before=%s after=%s", before, after)
+	}
+}
+
+// TestUpdateAdoptStdoutFirstLineNamesRootAndBlueprint pins the adopt header
+// line the review pass added: the project root and the resolved blueprint
+// store both appear on the very first line of stdout, before the per-status
+// tally.
+func TestUpdateAdoptStdoutFirstLineNamesRootAndBlueprint(t *testing.T) {
+	store := newScaffoldStoreFixture(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+	if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"adopt", "--root", project}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("adopt code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	firstLine, _, _ := strings.Cut(stdout.String(), "\n")
+	want := fmt.Sprintf("professor: %s  blueprint %s", project, store)
+	if firstLine != want {
+		t.Fatalf("adopt first stdout line=%q, want %q", firstLine, want)
+	}
+}
+
+// TestUpdateAdoptNothingToPinReportsBlueprintPinUnchanged pins the F5
+// wording: an adopt run that pins nothing reports the blueprint pin as
+// unchanged rather than implying a fresh pin at the current SHA, and leaves
+// baseline.Blueprint untouched either way.
+func TestUpdateAdoptNothingToPinReportsBlueprintPinUnchanged(t *testing.T) {
+	store := newScaffoldStoreFixture(t)
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+
+	t.Run("fresh baseline", func(t *testing.T) {
+		project := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+		if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runUpdate([]string{"adopt", "--root", project}, &stdout, &stderr, runtime); code != 0 {
+			t.Fatalf("adopt code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "adopted 0 file(s); blueprint pin unchanged (none)") {
+			t.Fatalf("adopt stdout=%q", stdout.String())
+		}
+		baseline, err := professor.Load(project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if baseline.Blueprint != (professor.BlueprintPin{}) {
+			t.Fatalf("Blueprint=%#v, want zero value", baseline.Blueprint)
+		}
+	})
+
+	t.Run("existing pin", func(t *testing.T) {
+		project := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+		if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		want := professor.BlueprintPin{Version: "0.60.0", SHA: "abc1234"}
+		if err := professor.Save(project, professor.Baseline{Version: professor.BaselineVersion, Blueprint: want, Files: map[string]professor.FilePin{}}); err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runUpdate([]string{"adopt", "--root", project}, &stdout, &stderr, runtime); code != 0 {
+			t.Fatalf("adopt code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "adopted 0 file(s); blueprint pin unchanged (abc1234)") {
+			t.Fatalf("adopt stdout=%q", stdout.String())
+		}
+		baseline, err := professor.Load(project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if baseline.Blueprint != want {
+			t.Fatalf("Blueprint=%#v, want unchanged %#v", baseline.Blueprint, want)
+		}
+	})
+}
+
+// TestUpdateIgnoreRefusalNamesEveryPinningLocal is a REGRESSION test for the
+// refusal that names only the FIRST local pinning a template: watched
+// failing against a build where findPinsByTemplate's caller only joined the
+// first match into the diagnostic (the second pinning local was silently
+// dropped from the message, so `pfm update drop` guidance was incomplete).
+func TestUpdateIgnoreRefusalNamesEveryPinningLocal(t *testing.T) {
+	store := newScaffoldStoreFixture(t)
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".professor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := fmt.Sprintf("{\"interview\":{\"blueprint_clone_path\":%q}}\n", store)
+	if err := os.WriteFile(filepath.Join(project, ".professor", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := professor.HashTemplate(filepath.Join(store, "templates", "project", "commands", "dev.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline := professor.Baseline{
+		Version: professor.BaselineVersion,
+		Files: map[string]professor.FilePin{
+			".claude/b-copy.md": {Template: "project/commands/dev.md", TemplateHash: hash, PinnedSHA: "abc1234", PinnedAt: "2026-08-31"},
+			".claude/a-copy.md": {Template: "project/commands/dev.md", TemplateHash: hash, PinnedSHA: "abc1234", PinnedAt: "2026-08-31"},
+		},
+	}
+	if err := professor.Save(project, baseline); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}}
+
+	var stdout, stderr bytes.Buffer
+	code := runUpdate([]string{"ignore", "project/commands/dev.md", "--root", project}, &stdout, &stderr, runtime)
+	if code != 1 {
+		t.Fatalf("ignore pinned-twice code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	want := "pfm update ignore: project/commands/dev.md is pinned by .claude/a-copy.md, .claude/b-copy.md; pfm update drop .claude/a-copy.md, .claude/b-copy.md first\n"
+	if stderr.String() != want {
+		t.Fatalf("ignore pinned-twice stderr=%q, want %q", stderr.String(), want)
+	}
+}
+
+// TestUpdateIgnoreCountsAlreadyIgnoredSeparately pins the ignore-count
+// wording: a run that changes nothing reports "0 template(s)" plus how many
+// were already ignored, and a mixed run separates the true delta from the
+// already-ignored count rather than reporting every argument as newly
+// ignored.
+func TestUpdateIgnoreCountsAlreadyIgnoredSeparately(t *testing.T) {
+	fixture := newProjectUpdateFixture(t)
+	writeProjectFixtureFile(t, fixture.store, "templates/project/extra.md", "extra\n")
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"ignore", "project/new.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 0 {
+		t.Fatalf("first ignore code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if got := strings.TrimRight(stdout.String(), "\n"); got != "ignored 1 template(s)" {
+		t.Fatalf("first ignore stdout=%q, want exactly %q", got, "ignored 1 template(s)")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"ignore", "project/new.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 0 {
+		t.Fatalf("repeat ignore code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if got := strings.TrimRight(stdout.String(), "\n"); got != "ignored 0 template(s) (1 already ignored)" {
+		t.Fatalf("repeat ignore stdout=%q, want exactly %q", got, "ignored 0 template(s) (1 already ignored)")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runUpdate([]string{"ignore", "project/extra.md", "project/new.md", "--root", fixture.project}, &stdout, &stderr, fixture.runtime); code != 0 {
+		t.Fatalf("mixed ignore code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if got := strings.TrimRight(stdout.String(), "\n"); got != "ignored 1 template(s) (1 already ignored)" {
+		t.Fatalf("mixed ignore stdout=%q, want exactly %q", got, "ignored 1 template(s) (1 already ignored)")
+	}
+}
+
 // newAdoptAtStoreFixture builds a full planInitCopies-compatible blueprint
 // store (every initTemplatePaths source must exist or planInitCopies fails)
 // with two commits: old has templates/project/commands/dev.md = "old\n";

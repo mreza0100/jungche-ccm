@@ -316,6 +316,21 @@ func writeProjectFailure(stdout io.Writer, jsonOutput bool, err error) {
 	fmt.Fprintln(stdout, terminal)
 }
 
+// writeProjectUnmanaged reports that no managed project sits at or above the
+// current directory — the bare `pfm update` post-report finding no baseline
+// to check. This is not a failure: the blueprint refresh already succeeded,
+// and a directory outside any project is an ordinary place to run it from.
+func writeProjectUnmanaged(stdout io.Writer, jsonOutput bool) {
+	terminal := "NOT-MANAGED — " + errBaselineNotFound.Error()
+	if jsonOutput {
+		if encodeErr := json.NewEncoder(stdout).Encode(map[string]any{"terminal": terminal}); encodeErr != nil {
+			fmt.Fprintf(stdout, "NOT-MANAGED — encode project report: %v\n", encodeErr)
+		}
+		return
+	}
+	fmt.Fprintln(stdout, terminal)
+}
+
 func runProjectPin(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
 	flags := newFlagSet("update pin", "usage: pfm update pin <local>... | --all [--template TEMPLATE] [--root DIR]", stderr)
 	rootFlag := flags.String("root", "", "project root")
@@ -584,6 +599,7 @@ func runProjectAdopt(args []string, stdout, stderr io.Writer, runtime commandRun
 			PinnedSHA:    sha,
 			PinnedAt:     pinnedAt,
 		}
+		baseline.Ignored = removeIgnored(baseline.Ignored, entry.template)
 		pinned++
 	}
 
@@ -595,7 +611,16 @@ func runProjectAdopt(args []string, stdout, stderr io.Writer, runtime commandRun
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "adopted %d file(s) at %s\n", pinned, sha)
+	fmt.Fprintf(stdout, "professor: %s  blueprint %s\n", root, store.Root)
+	if pinned > 0 {
+		fmt.Fprintf(stdout, "adopted %d file(s) at %s\n", pinned, sha)
+	} else {
+		unchanged := baseline.Blueprint.SHA
+		if unchanged == "" {
+			unchanged = "none"
+		}
+		fmt.Fprintf(stdout, "adopted 0 file(s); blueprint pin unchanged (%s)\n", unchanged)
+	}
 	fmt.Fprintf(stdout, "  %-13s %-3d (%s)\n", "kept", kept, "already pinned, untouched")
 	fmt.Fprintf(stdout, "  %-13s %-3d (%s)\n", "absent", absent, "mapped template, no local file — check reports NEW")
 	if usingAt {
@@ -682,6 +707,7 @@ func runProjectIgnore(args []string, stdout, stderr io.Writer, runtime commandRu
 		ignored[template] = true
 	}
 
+	var changed int
 	if *undo {
 		for _, template := range templates {
 			if !ignored[template] {
@@ -689,6 +715,9 @@ func runProjectIgnore(args []string, stdout, stderr io.Writer, runtime commandRu
 				return 1
 			}
 		}
+		// The refusal above already guarantees every template was ignored,
+		// so the whole list is the true delta.
+		changed = len(templates)
 		for _, template := range templates {
 			delete(ignored, template)
 		}
@@ -700,19 +729,28 @@ func runProjectIgnore(args []string, stdout, stderr io.Writer, runtime commandRu
 		}
 		for _, template := range templates {
 			templatePath := filepath.Join(store.Templates, filepath.FromSlash(template))
-			if _, statErr := os.Stat(templatePath); errors.Is(statErr, fs.ErrNotExist) {
+			info, statErr := os.Stat(templatePath)
+			if errors.Is(statErr, fs.ErrNotExist) {
 				fmt.Fprintf(stderr, "pfm update ignore: %s does not exist upstream\n", template)
 				return 1
 			} else if statErr != nil {
 				fmt.Fprintf(stderr, "pfm update ignore: UNREADABLE %s: %v\n", templatePath, statErr)
 				return 1
 			}
-			if local, pinned := findPinByTemplate(baseline, template); pinned {
-				fmt.Fprintf(stderr, "pfm update ignore: %s is pinned by %s; pfm update drop %s first\n", template, local, local)
+			if info.IsDir() {
+				fmt.Fprintf(stderr, "pfm update ignore: %s is a directory, not a template file\n", template)
+				return 1
+			}
+			if locals := findPinsByTemplate(baseline, template); len(locals) != 0 {
+				joined := strings.Join(locals, ", ")
+				fmt.Fprintf(stderr, "pfm update ignore: %s is pinned by %s; pfm update drop %s first\n", template, joined, joined)
 				return 1
 			}
 		}
 		for _, template := range templates {
+			if !ignored[template] {
+				changed++
+			}
 			ignored[template] = true
 		}
 	}
@@ -728,25 +766,29 @@ func runProjectIgnore(args []string, stdout, stderr io.Writer, runtime commandRu
 		return 1
 	}
 	if *undo {
-		fmt.Fprintf(stdout, "un-ignored %d template(s)\n", len(templates))
+		fmt.Fprintf(stdout, "un-ignored %d template(s)\n", changed)
 	} else {
-		fmt.Fprintf(stdout, "ignored %d template(s)\n", len(templates))
+		fmt.Fprintf(stdout, "ignored %d template(s)", changed)
+		if already := len(templates) - changed; already > 0 {
+			fmt.Fprintf(stdout, " (%d already ignored)", already)
+		}
+		fmt.Fprintln(stdout)
 	}
 	return 0
 }
 
-func findPinByTemplate(baseline professor.Baseline, template string) (string, bool) {
-	locals := make([]string, 0, len(baseline.Files))
-	for local := range baseline.Files {
-		locals = append(locals, local)
-	}
-	sort.Strings(locals)
-	for _, local := range locals {
-		if baseline.Files[local].Template == template {
-			return local, true
+// findPinsByTemplate returns every local file pinned to template, sorted —
+// possibly empty. A template can be pinned by more than one local file, and
+// a refusal that names only the first hides the rest of what needs dropping.
+func findPinsByTemplate(baseline professor.Baseline, template string) []string {
+	var locals []string
+	for local, pin := range baseline.Files {
+		if pin.Template == template {
+			locals = append(locals, local)
 		}
 	}
-	return "", false
+	sort.Strings(locals)
+	return locals
 }
 
 // removeIgnored drops template from an Ignored list (a newly adopted pin

@@ -237,7 +237,7 @@ The project flow is deliberately non-destructive:
 
 1. Run `pfm update check` for a report only. Bare `pfm update` performs the machine update first and appends the same report when run inside a managed project.
 2. For each `UPDATED` item, inspect the printed blueprint `git diff`, decide what belongs in the local file, and apply it by hand. `NEW`, `GONE-UPSTREAM`, and `LOCAL-DELETED` each print their own adoption or cleanup action.
-3. Accept a reviewed file with `pfm update pin <local>`. Adopt a new template mapping with `pfm update pin --template <template> <local>`; forget an obsolete mapping with `pfm update drop <local>`; silence a template you will never take with `pfm update ignore <template>`.
+3. Accept a reviewed file with `pfm update pin <local>`. Adopt a new template mapping with `pfm update pin --template <template> <local>`; forget an obsolete mapping with `pfm update drop <local>`; silence a template you will never take with `pfm update ignore <template>...`.
 4. Rebuild opted-in engine mirrors from the resulting local source files.
 
 No update regenerates scaffolded project files, replays the interview, or performs a three-way merge. See [`docs/SETUP.md`](docs/SETUP.md#staying-current) for the complete workflow.

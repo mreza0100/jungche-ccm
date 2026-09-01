@@ -539,7 +539,7 @@ New Professor versions ship as semver git tags. Each tier stays current from its
 1. Run `pfm update check` inside the project. It only reads the blueprint, `.professor/baseline.json`, and local paths; it does not fetch, build, install, or write. Bare `pfm update` performs the machine update and then appends this project report when it finds a baseline.
 2. Read every non-current row:
    - `UPDATED` — run the printed `git -C <blueprint> diff <pinned>..HEAD -- templates/<template>` command, then hand-apply the parts that belong in the local file.
-   - `NEW` — adopt it only if useful, then map it with `pfm update pin --template <template> <local>`; a template this project will never take is silenced with `pfm update ignore <template>` (`--undo` reverses; it counts as `ignored`, never as review).
+   - `NEW` — adopt it only if useful, then map it with `pfm update pin --template <template> <local>`; a template this project will never take is silenced with `pfm update ignore <template>...` (`--undo` reverses; it counts as `ignored`, never as review).
    - `GONE-UPSTREAM` — keep the local file as yours and drop its pin, or delete it and drop the pin.
    - `LOCAL-DELETED` — restore the local file or drop its pin.
 3. After reviewing and applying an `UPDATED` file, accept its new template baseline with `pfm update pin <local>`. Use `--all` only after every reported updated file has been reviewed and applied.

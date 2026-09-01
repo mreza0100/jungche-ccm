@@ -113,7 +113,7 @@ and append the current project's report. Run `pfm update check` when only the re
 report is wanted. For every `UPDATED` item, inspect the printed template diff, hand-apply what
 belongs in the local source, then run `pfm update pin <local>`. `NEW`, `GONE-UPSTREAM`, and
 `LOCAL-DELETED` print their own `pin --template` or `drop` actions. An install that predates `pfm init`
-runs `pfm update adopt [--at <ref>]` once to create its baseline; `pfm update ignore <template>` keeps an
+runs `pfm update adopt [--at <ref>]` once to create its baseline; `pfm update ignore <template>...` keeps an
 unwanted template out of `NEW`. Generated engine mirrors remain
 whole-file compiler outputs; symlinked machine-global files update through their blueprint
 original. Source-fetched skills (`templates/project/skills/sources.json`) update from their own

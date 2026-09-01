@@ -90,3 +90,19 @@ func TestBaselineMalformedAndUnsupportedAreNamed(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeIgnoredTrimsDropsEmptyAndDedupes is a REGRESSION test for
+// normalizeIgnored surviving a hand-edited baseline: watched failing against
+// a build where the trim was neutralized (padded and blank entries survived
+// the round-trip instead of being dropped or deduped against their trimmed
+// twin).
+func TestNormalizeIgnoredTrimsDropsEmptyAndDedupes(t *testing.T) {
+	got := normalizeIgnored([]string{"", "  ", " project/x.md ", "project/x.md"})
+	want := []string{"project/x.md"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("normalizeIgnored() = %#v, want %#v", got, want)
+	}
+	if got := normalizeIgnored([]string{"", "   ", "\t"}); got != nil {
+		t.Fatalf("normalizeIgnored(all-empty) = %#v, want nil", got)
+	}
+}
