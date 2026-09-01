@@ -4,7 +4,7 @@ All notable changes to the Professor blueprint will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**For adopters:** run `pfm update` to advance the machine-global install and append the current project's report, or `pfm update check` for the read-only project report alone. Review each printed template diff, hand-apply what belongs locally, then advance that file's baseline with `pfm update pin`. Each release's full notes live in [`releases/`](releases/) — one file per version.
+**For adopters:** run `pfm update` to advance the machine-global install and append the current project's report, or `pfm update check` for the read-only project report alone (an install that predates scaffolding first runs `pfm update adopt` once). Review each printed template diff, hand-apply what belongs locally, then advance that file's baseline with `pfm update pin`. Each release's full notes live in [`releases/`](releases/) — one file per version.
 
 ---
 

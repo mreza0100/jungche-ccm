@@ -102,7 +102,7 @@ Classify FIRST — before any edit. The classification decides the source of tru
 - **Framework change** → edit the canonical blueprint template at `{BLUEPRINT_CLONE_PATH}` under that repo's own law and gates, then log `.professor/release.md` for its release flow. Never put project-specific behavior into the blueprint.
 - **Project customization** → edit this project's local file directly. That local file is the source of truth; it is not regenerated from the template. Use `.professor/drift.md` only when a human-readable customization note is useful, never as merge machinery.
 - **Engine mirror** → never edit the generated output by hand. Change its local Claude source, then run `pfm codex build` and `pfm codex check` (or the owning compiler for another engine).
-- **Upstream project-template delta** → run `pfm update check`, inspect the printed template diff, hand-apply the parts that belong locally, then advance that file's pin with `pfm update pin <local>`. New or retired mappings use the report's `pin --template` or `drop` action.
+- **Upstream project-template delta** → run `pfm update check`, inspect the printed template diff, hand-apply the parts that belong locally, then advance that file's pin with `pfm update pin <local>`. New or retired mappings use the report's `pin --template` or `drop` action; a template this project will never take: `pfm update ignore <template>`. No baseline yet (the install predates `pfm init`): `pfm update adopt [--at <ref>]` once.
 
 There is no local-stopgap-to-regeneration ceremony. A framework fix and a project customization are separate changes in their respective sources of truth.
 
