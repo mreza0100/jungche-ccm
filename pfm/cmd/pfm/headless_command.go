@@ -223,7 +223,8 @@ func composedChatRows(
 	return scan.Output.Rows, nil
 }
 
-func matchChat(rows []compose.Row, name string) (headless.Chat, bool, error) {
+// rosterCandidates projects composed rows onto the matching rule's input.
+func rosterCandidates(rows []compose.Row) []resolve.RosterCandidate {
 	candidates := make([]resolve.RosterCandidate, 0, len(rows))
 	for _, row := range rows {
 		candidates = append(candidates, resolve.RosterCandidate{
@@ -232,7 +233,11 @@ func matchChat(rows []compose.Row, name string) (headless.Chat, bool, error) {
 			Engine: string(compose.EngineForKind(row.Kind)), Live: isLiveKind(row.Kind),
 		})
 	}
-	match, found, err := resolve.ResolveRosterName(candidates, name)
+	return candidates
+}
+
+func matchChat(rows []compose.Row, name string) (headless.Chat, bool, error) {
+	match, found, err := resolve.ResolveRosterName(rosterCandidates(rows), name)
 	if err != nil || !found {
 		return headless.Chat{}, false, err
 	}

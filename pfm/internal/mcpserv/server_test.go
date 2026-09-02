@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -164,6 +165,43 @@ func TestMCPRosterNameResolverKeepsCxWindowCodexScoped(t *testing.T) {
 	if err != nil || code != 0 || detail != "" || target.ID != "codex-id" ||
 		target.SocketPath != "/tmp/tmux-1000/cx-1-2-3" || target.Pane != "%2" {
 		t.Fatalf("ResolveName()=(%+v,%d,%q,%v), want Codex candidate", target, code, detail, err)
+	}
+}
+
+// TestMCPRosterNameResolverNamesTheCallersOwnSeat is the reverse lookup the
+// delivery footer is built from over the MCP door: the live roster row for
+// the caller's own id answers with its name, a killed or resume row never
+// does, and a roster that cannot be listed is a reported failure, not "no
+// name" — the engine must fall to the screen only for a real miss.
+func TestMCPRosterNameResolverNamesTheCallersOwnSeat(t *testing.T) {
+	rows := []ChatRow{
+		{ID: "5a3bb7cb-258d", Name: "LUNA:ORCHESTRATOR", Engine: pfmengine.Claude, Kind: compose.LiveClaude.String(), Socket: "cc-1788256324-1866070-42739", Pane: "%0"},
+		{ID: "5a3bb7cb-258d", Name: "LUNA:ORCHESTRATOR (old)", Engine: pfmengine.Claude, Kind: compose.LiveClaude.String(), Socket: "cc-dead", Pane: "%0", Killed: true},
+		{ID: "resume-only", Name: "Resume", Engine: pfmengine.Claude, Kind: "resume", Socket: "cc-2"},
+	}
+	resolver := mcpRosterNameResolver{
+		tmuxDir: "/tmp/tmux-1000",
+		operations: SharedOperations{List: func(context.Context, LSInput) (LSOutput, error) {
+			return LSOutput{Rows: rows}, nil
+		}},
+	}
+	name, found, err := resolver.SenderName(context.Background(), resolve.Identity{ID: "5a3bb7cb-258d"})
+	if err != nil || !found || name != "LUNA:ORCHESTRATOR" {
+		t.Fatalf("SenderName()=(%q,%t,%v), want the live row's name", name, found, err)
+	}
+	name, found, err = resolver.SenderName(context.Background(), resolve.Identity{ID: "resume-only"})
+	if err != nil || found || name != "" {
+		t.Fatalf("SenderName(resume row)=(%q,%t,%v), want not found", name, found, err)
+	}
+	resolver.operations.List = func(context.Context, LSInput) (LSOutput, error) {
+		return LSOutput{}, errors.New("fleet database busy")
+	}
+	if _, found, err := resolver.SenderName(context.Background(), resolve.Identity{ID: "5a3bb7cb-258d", Session: "cc-1788256324-1866070-42739"}); err == nil || found ||
+		!strings.Contains(err.Error(), "list live chats: fleet database busy") {
+		t.Fatalf("SenderName(list fails)=(found %t, err %v), want the listing failure reported", found, err)
+	}
+	if name, found, err := (mcpRosterNameResolver{}).SenderName(context.Background(), resolve.Identity{ID: "x"}); err != nil || found || name != "" {
+		t.Fatalf("SenderName(no List)=(%q,%t,%v), want a quiet miss", name, found, err)
 	}
 }
 

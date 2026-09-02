@@ -49,10 +49,26 @@ type Engine struct {
 	// the same directory the existing SID transcript crumbs and reload
 	// worker logs already share. See internal/rearm.
 	sidDir string
-	// senderSelf is this process's own identity, resolved at most once: it
-	// costs a tmux capture, and it cannot change while we run.
+	// senderSelf is this process's own identity, resolved at most once: the
+	// session and id cannot change while we run. Its Label is final only
+	// when it was handed to us (options.Sender, the stated environment);
+	// with senderLive the label is read afresh for every delivery from
+	// senderSeat, because a name CAN change while we run — chat_name renames
+	// at will, and an MCP server lives for days.
 	senderOnce sync.Once
 	senderSelf Sender
+	senderSeat resolve.Identity
+	senderLive bool
+}
+
+// senderKey pins one delivery's sender in its context (withSender).
+type senderKey struct{}
+
+// withSender pins the sender for one delivery, so every footer, waiter
+// environment and ledger row of that delivery names the same chat and the
+// roster is asked once, not once per footer.
+func withSender(ctx context.Context, sender Sender) context.Context {
+	return context.WithValue(ctx, senderKey{}, sender)
 }
 
 // New constructs a jailed-path-aware injection engine.
@@ -476,6 +492,7 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 	ctx context.Context,
 	request Request,
 ) (Result, error) {
+	ctx = withSender(ctx, engine.sender(ctx))
 	if request.Message == "" {
 		return refused(CodeUndelivered, "refusing to schedule an empty message"), nil
 	}
@@ -636,6 +653,7 @@ const SelfCompactStopNotice = " — STOP NOW: end this turn without running " +
 // Inject performs the delivery and records a successful direct send without
 // making the recipient pay for a ledger failure.
 func (engine *Engine) Inject(ctx context.Context, request Request) (Result, error) {
+	ctx = withSender(ctx, engine.sender(ctx))
 	result, err := engine.inject(ctx, request)
 	if err != nil || result.Code != 0 || !result.Typed || request.Origin != "" || engine.recorder == nil {
 		return result, err
@@ -653,9 +671,19 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		Message:        request.Message,
 	}
 	if recordErr := engine.recorder(ctx, event); recordErr != nil {
-		fmt.Fprintf(engine.warningWriter, "pfm: comms ledger: %v\n", recordErr)
+		engine.warnf("pfm: comms ledger: %v\n", recordErr)
 	}
 	return result, nil
+}
+
+// warnf reports a non-fatal failure on the configured writer, stderr when
+// none was configured — a nil writer must never turn a warning into a panic.
+func (engine *Engine) warnf(format string, args ...any) {
+	writer := engine.warningWriter
+	if writer == nil {
+		writer = os.Stderr
+	}
+	fmt.Fprintf(writer, format, args...)
 }
 
 // inject performs the full guard/type/submit/proof transaction.
@@ -1406,15 +1434,16 @@ func (engine *Engine) SignForResume(ctx context.Context, message string) (string
 // signatureParts builds the footer a recipient reads to know who spoke and
 // how to answer. Two rules it got wrong for a long time are load-bearing here.
 //
-// The reply hint advertises the LABEL whenever there is one. It used to
-// advertise sender.Session — a raw tmux session id — two lines above stating
-// the sender's label, while senderLabel's own contract is that the label is
-// carried bare precisely "since the recipient must be able to reply by
-// exactly the label the operator gave the chat". A caller obeying the old
-// footer replied with a raw session id, which landed in the comms ledger as
-// the target and minted a cosmos node named after a socket. The session is
-// still the fallback, and it is legitimate there: it is the literal argument
-// a caller must pass, not a name being presented as one.
+// The reply hint advertises the LABEL whenever there is one, and the sid
+// otherwise — never the tmux session. A chat knows names; the fleet's
+// resolver turns them into panes (ResolveRosterName: the exact name, or an
+// id prefix of eight or more characters — the same eight the sid part shows).
+// The session is a socket file name: it used to be the fallback here, and a
+// server whose first capture showed no statusline yet stamped it on every
+// message for a day, so peers replied to a socket, which landed in the
+// comms ledger as the target and minted a cosmos node named after it. A
+// sender with neither a label nor an id has nothing a peer could resolve,
+// and says so (unsignedFooter) instead of offering its socket.
 //
 // There is no 🔖 part any more, and its absence is deliberate rather than an
 // omission. 🔖 is the STATUSLINE's identity marker, and naming.BookmarkLabelFor
@@ -1466,6 +1495,10 @@ func unquoteTarget(name string) string {
 // session:window separator, but this is a chat_inject argument and never a
 // tmux target, and inject.Resolve hands a label to the label resolver, which
 // answers with a %pane id.
+//
+// Without a label the address is the sid — the same eight characters the
+// footer's sid part shows, which the roster resolves as an id prefix. It is
+// never the session: see signatureParts.
 func replyAddress(sender Sender) string {
 	if sender.Label != "" {
 		if strings.ContainsFunc(sender.Label, unicode.IsSpace) {
@@ -1473,7 +1506,7 @@ func replyAddress(sender Sender) string {
 		}
 		return sender.Label
 	}
-	return sender.Session
+	return headRunes(sender.UUID, 8)
 }
 
 // unsignedFooter states what was TRIED, never what happens to be unset. Reading
@@ -1485,6 +1518,8 @@ func unsignedFooter(sender Sender) string {
 	footer := "UNSIGNED — sender identity underivable"
 	if sender.Session == "" {
 		footer += "; no tmux session (ambient or via ancestry)"
+	} else if sender.Label == "" {
+		footer += "; no name for this seat in the fleet roster or on its statusline"
 	}
 	if sender.UUID == "" {
 		footer += "; no session id"
@@ -1492,9 +1527,15 @@ func unsignedFooter(sender Sender) string {
 	return footer
 }
 
-// sender answers who WE are, resolved at most once per process: the caller's
-// override (tests, the MCP surface), then the STATED sender, then live
-// derivation from this process.
+// sender answers who WE are. The identity — session and id — is resolved at
+// most once per process: the caller's override (tests, the MCP surface), then
+// the STATED sender, then live derivation from this process. The LABEL of a
+// derived sender is read afresh per delivery (pinned by withSender at each
+// door), never remembered: one MCP server serves a chat for days, and a
+// label cached at its first delivery outlived a blank first screen AND every
+// rename after it — LUNA:ORCHESTRATOR signed twenty-three messages as its
+// socket because its server's first capture, seconds after a reload, showed
+// no statusline yet.
 //
 // The stated rung exists because derivation is only possible where the chat
 // is. A --then waiter is spawned with setsid, which severs the process chain
@@ -1505,6 +1546,9 @@ func unsignedFooter(sender Sender) string {
 // which is why this is also resolved for a `/`-prefixed primary: that message
 // is exempt from signing, but its steers are not.
 func (engine *Engine) sender(ctx context.Context) Sender {
+	if pinned, ok := ctx.Value(senderKey{}).(Sender); ok {
+		return pinned
+	}
 	engine.senderOnce.Do(func() {
 		if engine.options.Sender != nil {
 			engine.senderSelf = *engine.options.Sender
@@ -1514,9 +1558,13 @@ func (engine *Engine) sender(ctx context.Context) Sender {
 			engine.senderSelf = stated
 			return
 		}
-		engine.senderSelf = engine.detectSender(ctx)
+		engine.senderSelf, engine.senderSeat, engine.senderLive = engine.detectSender(ctx)
 	})
-	return engine.senderSelf
+	sender := engine.senderSelf
+	if engine.senderLive {
+		sender.Label = engine.senderLabel(ctx, engine.senderSeat)
+	}
+	return sender
 }
 
 // statedSender reads the identity a spawning chat handed this process. It is
@@ -1539,7 +1587,11 @@ func statedSender() (Sender, bool) {
 // $TMUX, or from ANCESTRY RECOVERY when the engine spawned our shell without
 // passing tmux context through (the codex path), which is what left every
 // codex-origin message unsigned (chat.sh:65-96).
-func (engine *Engine) detectSender(ctx context.Context) Sender {
+//
+// The label is NOT derived here. What comes back is the identity the label
+// is read from, and whether it is live at all: a sender with no seat has no
+// label to read and signs by its session id alone.
+func (engine *Engine) detectSender(ctx context.Context) (Sender, resolve.Identity, bool) {
 	sender := Sender{UUID: os.Getenv("CLAUDE_CODE_SESSION_ID")}
 	identity, err := engine.whoami.Identify(ctx)
 	if (err != nil || identity.Session == "") &&
@@ -1549,25 +1601,39 @@ func (engine *Engine) detectSender(ctx context.Context) Sender {
 		identity, err = engine.codexSeat.Identify(ctx)
 	}
 	if err != nil || identity.Session == "" {
-		return sender
+		return sender, resolve.Identity{}, false
 	}
 	if sender.UUID == "" && identity.Engine == string(pfmengine.Codex) {
 		sender.UUID = identity.ID
 	}
+	if identity.ID == "" {
+		identity.ID = sender.UUID
+	}
 	sender.Session = identity.Session
-	sender.Label = engine.senderLabel(ctx, identity)
-	return sender
+	return sender, identity, true
 }
 
-// senderLabel scrapes this chat's own 🔖 label off its statusline, with
-// chat.sh's codex fallback (chat.sh:104-121): a codex chat has no 🔖
-// statusline, so its label is the tmux window name — the human thread name set
-// by pfm — returned BARE, since the recipient must be able to reply by
-// exactly the label the operator gave the chat.
+// senderLabel answers what this chat is CALLED, in the order a peer's reply
+// resolves it: the fleet roster first — the exact-name rung of
+// ResolveRosterName, asked through the same NameResolver the target went
+// through — then this chat's own 🔖 statusline, then chat.sh's codex fallback
+// (chat.sh:104-121): a codex chat has no 🔖 statusline, so its label is the
+// tmux window name — the human thread name set by pfm — returned BARE, since
+// the recipient must be able to reply by exactly the label the operator gave
+// the chat. A roster that fails to answer is reported, then read around: a
+// screen is a weaker witness than the registry, but it is not none.
 func (engine *Engine) senderLabel(
 	ctx context.Context,
 	identity resolve.Identity,
 ) string {
+	if namer, ok := engine.names.(SenderNamer); ok {
+		name, found, err := namer.SenderName(ctx, identity)
+		if err != nil {
+			engine.warnf("pfm: sender label: %v\n", err)
+		} else if found {
+			return name
+		}
+	}
 	target := identity.Session
 	if identity.Pane != "" {
 		target = identity.Pane

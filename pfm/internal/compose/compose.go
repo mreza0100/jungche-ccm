@@ -610,7 +610,7 @@ func (current *composer) splitRow(
 			transcript.LastPrompt,
 			true,
 		)
-		if name == "(unnamed)" {
+		if name == naming.Unnamed {
 			name = "?"
 		}
 		names = append(names, name)

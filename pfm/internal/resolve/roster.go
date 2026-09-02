@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"hostops/pfm/internal/naming"
 )
 
 // RosterCandidate is one composed fleet row projected onto the fields needed
@@ -99,4 +101,57 @@ func ResolveRosterName(
 		}
 	}
 	return matches[0], true, nil
+}
+
+// ResolveRosterSeat is ResolveRosterName read backwards: given a chat's own
+// live seat, what does the roster call it? The answer is the one string a
+// peer can hand straight back to ResolveRosterName's exact-name rung, which
+// is why the footer inject stamps on a delivery asks here first and never
+// advertises a tmux session — a chat knows names, and the roster turns names
+// into panes.
+//
+// The thread id is authoritative when the identity carries one. The seat —
+// socket plus pane — is the match otherwise: an ancestry-recovered or
+// OpenCode sender knows where it sits before it knows its id. Only live rows
+// answer, and several rows may host one chat (a label shown ⚠2srv); they
+// answer as one while they agree on the name. A machine-shaped name or the
+// unnamed sentinel is nothing a peer could reply to, so it is reported as no
+// name at all rather than as a name.
+func ResolveRosterSeat(candidates []RosterCandidate, identity Identity) (string, bool) {
+	socket := identity.SocketName
+	if socket == "" {
+		socket = SessionName(identity.SocketPath)
+	}
+	name, found := "", false
+	for _, candidate := range candidates {
+		if !candidate.Live || !seatMatches(candidate, identity, socket) {
+			continue
+		}
+		label := strings.TrimSpace(candidate.Name)
+		if label == "" || label == naming.Unnamed || Named(label).String() != label {
+			continue
+		}
+		if found && name != label {
+			return "", false
+		}
+		name, found = label, true
+	}
+	return name, found
+}
+
+func seatMatches(candidate RosterCandidate, identity Identity, socket string) bool {
+	if identity.ID != "" {
+		return candidate.ID == identity.ID
+	}
+	candidateSocket := candidate.Socket
+	if candidateSocket == "" {
+		candidateSocket = candidate.SocketPath
+	}
+	if socket == "" || SessionName(candidateSocket) != socket {
+		return false
+	}
+	if identity.Pane != "" {
+		return candidate.Pane == identity.Pane
+	}
+	return candidate.Session == identity.Session
 }

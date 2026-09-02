@@ -125,6 +125,15 @@ type NameResolver interface {
 	ResolveName(context.Context, string, string) (Target, int, string, error)
 }
 
+// SenderNamer is the roster read backwards: what the fleet calls the chat at
+// a live seat. A NameResolver that also implements it is asked before the
+// sender's own screen is scraped, so the reply hint a delivery carries is the
+// exact name ResolveName matches first. found=false is an answer (the seat is
+// not in the roster, or its rows disagree); an error is a failure to look.
+type SenderNamer interface {
+	SenderName(context.Context, resolve.Identity) (name string, found bool, err error)
+}
+
 // SelfIdentifier answers who the SENDER is — chat.sh's self_tmux, including
 // its ancestry recovery — so an inject from a codex-origin shell still signs.
 type SelfIdentifier interface {

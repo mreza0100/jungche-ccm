@@ -23,6 +23,7 @@ func (engine *Engine) DeliverThen(
 	steers []string,
 	selfTarget bool,
 ) (Result, error) {
+	ctx = withSender(ctx, engine.sender(ctx))
 	if target == "" || len(steers) == 0 || steers[0] == "" {
 		return refused(
 			1,

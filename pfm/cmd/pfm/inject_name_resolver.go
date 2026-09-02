@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"hostops/pfm/internal/compose"
@@ -21,18 +22,9 @@ func (resolver fleetNameResolver) ResolveName(
 	ctx context.Context,
 	name, requiredEngine string,
 ) (inject.Target, int, string, error) {
-	rows, err := composedChatRows(ctx, io.Discard, resolver.runtimes...)
+	liveRows, err := resolver.liveRows(ctx, requiredEngine)
 	if err != nil {
 		return inject.Target{}, inject.CodeUndelivered, "", err
-	}
-	liveRows := rows[:0]
-	for _, row := range rows {
-		if !isLiveKind(row.Kind) || row.Socket == "" ||
-			(row.PaneID == "" && row.SessionName == "") ||
-			(requiredEngine != "" && string(compose.EngineForKind(row.Kind)) != requiredEngine) {
-			continue
-		}
-		liveRows = append(liveRows, row)
 	}
 	chat, found, err := matchChat(liveRows, name)
 	if err != nil {
@@ -64,4 +56,40 @@ func (resolver fleetNameResolver) ResolveName(
 		ID:         chat.ID,
 		Session:    chat.Session,
 	}, 0, "", nil
+}
+
+// SenderName is the roster read backwards for the chat at identity's seat —
+// the name a peer's `pfm chat inject` resolves first.
+func (resolver fleetNameResolver) SenderName(
+	ctx context.Context,
+	identity resolve.Identity,
+) (string, bool, error) {
+	liveRows, err := resolver.liveRows(ctx, "")
+	if err != nil {
+		return "", false, fmt.Errorf("name sender seat %s: %w", identity.Session, err)
+	}
+	name, found := resolve.ResolveRosterSeat(rosterCandidates(liveRows), identity)
+	return name, found, nil
+}
+
+// liveRows is the composed fleet reduced to addressable live seats; a
+// requiredEngine keeps only that engine's rows.
+func (resolver fleetNameResolver) liveRows(
+	ctx context.Context,
+	requiredEngine string,
+) ([]compose.Row, error) {
+	rows, err := composedChatRows(ctx, io.Discard, resolver.runtimes...)
+	if err != nil {
+		return nil, err
+	}
+	liveRows := rows[:0]
+	for _, row := range rows {
+		if !isLiveKind(row.Kind) || row.Socket == "" ||
+			(row.PaneID == "" && row.SessionName == "") ||
+			(requiredEngine != "" && string(compose.EngineForKind(row.Kind)) != requiredEngine) {
+			continue
+		}
+		liveRows = append(liveRows, row)
+	}
+	return liveRows, nil
 }

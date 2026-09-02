@@ -114,35 +114,11 @@ func (resolver mcpRosterNameResolver) ResolveName(
 	if resolver.operations.List == nil {
 		return inject.Target{}, inject.CodeUnknown, "", nil
 	}
-	listed, err := resolver.operations.List(ctx, LSInput{All: true})
+	candidates, err := resolver.liveCandidates(ctx, requiredEngine)
 	if err != nil {
 		return inject.Target{}, inject.CodeUndelivered, "", fmt.Errorf(
-			"resolve roster name %q: list live chats: %w", name, err,
+			"resolve roster name %q: %w", name, err,
 		)
-	}
-	candidates := make([]resolve.RosterCandidate, 0, len(listed.Rows))
-	for _, row := range listed.Rows {
-		if row.Killed || !liveRosterKind(row.Kind) || row.Socket == "" ||
-			(requiredEngine != "" && string(row.Engine) != requiredEngine) {
-			continue
-		}
-		pane := row.Pane
-		if pane == "" {
-			pane = row.Session
-		}
-		if pane == "" {
-			continue
-		}
-		socketPath, pathErr := socketPathUnder(resolver.tmuxDir, row.Socket)
-		if pathErr != nil {
-			return inject.Target{}, inject.CodeUndelivered, "", fmt.Errorf(
-				"resolve roster name %q: row %q socket: %w", name, row.ID, pathErr,
-			)
-		}
-		candidates = append(candidates, resolve.RosterCandidate{
-			Name: row.Name, ID: row.ID, Socket: row.Socket, SocketPath: socketPath,
-			Session: row.Session, Pane: pane, Engine: string(row.Engine), Live: true,
-		})
 	}
 	match, found, err := resolve.ResolveRosterName(candidates, name)
 	if err != nil {
@@ -163,6 +139,60 @@ func (resolver mcpRosterNameResolver) ResolveName(
 		ID:         match.ID,
 		Session:    match.Session,
 	}, 0, "", nil
+}
+
+// SenderName is the roster read backwards for the chat at identity's seat —
+// the name a peer's chat_inject resolves first. Absent List, the answer is
+// "not in the roster", never an error: the engine then reads the sender's own
+// screen, exactly as ResolveName leaves the raw pane fallbacks to it.
+func (resolver mcpRosterNameResolver) SenderName(
+	ctx context.Context,
+	identity resolve.Identity,
+) (string, bool, error) {
+	if resolver.operations.List == nil {
+		return "", false, nil
+	}
+	candidates, err := resolver.liveCandidates(ctx, "")
+	if err != nil {
+		return "", false, fmt.Errorf("name sender seat %s: %w", identity.Session, err)
+	}
+	name, found := resolve.ResolveRosterSeat(candidates, identity)
+	return name, found, nil
+}
+
+// liveCandidates projects the live roster onto the matching rule's input.
+// requiredEngine, when set, keeps only that engine's rows.
+func (resolver mcpRosterNameResolver) liveCandidates(
+	ctx context.Context,
+	requiredEngine string,
+) ([]resolve.RosterCandidate, error) {
+	listed, err := resolver.operations.List(ctx, LSInput{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("list live chats: %w", err)
+	}
+	candidates := make([]resolve.RosterCandidate, 0, len(listed.Rows))
+	for _, row := range listed.Rows {
+		if row.Killed || !liveRosterKind(row.Kind) || row.Socket == "" ||
+			(requiredEngine != "" && string(row.Engine) != requiredEngine) {
+			continue
+		}
+		pane := row.Pane
+		if pane == "" {
+			pane = row.Session
+		}
+		if pane == "" {
+			continue
+		}
+		socketPath, pathErr := socketPathUnder(resolver.tmuxDir, row.Socket)
+		if pathErr != nil {
+			return nil, fmt.Errorf("row %q socket: %w", row.ID, pathErr)
+		}
+		candidates = append(candidates, resolve.RosterCandidate{
+			Name: row.Name, ID: row.ID, Socket: row.Socket, SocketPath: socketPath,
+			Session: row.Session, Pane: pane, Engine: string(row.Engine), Live: true,
+		})
+	}
+	return candidates, nil
 }
 
 func liveRosterKind(kind string) bool {

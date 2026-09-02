@@ -2,9 +2,11 @@ package inject
 
 import (
 	"context"
+	"errors"
 	pfmengine "hostops/pfm/internal/engine"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -306,7 +308,7 @@ func TestSignatureUsesAncestryRecoveredIdentity(t *testing.T) {
 	}
 	for _, want := range []string{
 		"sid thread-x",
-		"to reply: chat_inject cx-1700000000-1-1 <message>",
+		"to reply: chat_inject thread-x <message>",
 	} {
 		if !strings.Contains(lastLiteral(fake), want) {
 			t.Fatalf("typed text %q lacks %q", lastLiteral(fake), want)
@@ -433,6 +435,110 @@ func TestCaptureLabelAcceptsTheRetiredMedal(t *testing.T) {
 	}
 }
 
+// fakeNames is a roster that answers only the reverse lookup: ResolveName
+// always misses (the raw pane rungs resolve the target), SenderName answers
+// with whatever name the test set last — a rename, from the engine's side.
+type fakeNames struct {
+	mu   sync.Mutex
+	name string
+	err  error
+}
+
+func (fake *fakeNames) ResolveName(context.Context, string, string) (Target, int, string, error) {
+	return Target{}, CodeUnknown, "", nil
+}
+
+func (fake *fakeNames) SenderName(context.Context, resolve.Identity) (string, bool, error) {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	return fake.name, fake.name != "", fake.err
+}
+
+func (fake *fakeNames) set(name string, err error) {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	fake.name, fake.err = name, err
+}
+
+func (fake *fakeTmux) setCapture(capture string) {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	fake.capture = capture
+}
+
+// TestSignatureLabelIsReadPerDeliveryFromTheRosterFirst is the
+// LUNA:ORCHESTRATOR incident: one MCP server signed twenty-three messages as
+// its tmux socket because its first capture, seconds after a reload, showed
+// no statusline, and that blank was cached for the life of the process. The
+// label must be read for every delivery, the fleet roster must outrank the
+// screen (a rename lands there first), a roster that fails to answer is
+// warned about and read around, and the fallback is the sid — never the
+// session.
+func TestSignatureLabelIsReadPerDeliveryFromTheRosterFirst(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	names := &fakeNames{}
+	engine := newSignatureEngine(t, "cc-1-2-3", fake, fakeIdentifier{
+		identity: resolve.Identity{
+			Session:    "cc-1788256324-1866070-42739",
+			SocketPath: "/tmp/tmux-jail/cc-1788256324-1866070-42739",
+			SocketName: "cc-1788256324-1866070-42739",
+			Pane:       "%0",
+			Engine:     string(pfmengine.Claude),
+		},
+	})
+	engine.names = names
+	var warnings strings.Builder
+	engine.warningWriter = &warnings
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "5a3bb7cb-258d-4bdf-8a4e-7b0409fd329c")
+
+	deliver := func(message string) string {
+		t.Helper()
+		result, err := engine.Inject(context.Background(), Request{Target: "chat", Message: message})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Code != 0 || result.Unsigned {
+			t.Fatalf("Inject(%q) = %+v", message, result)
+		}
+		return lastLiteral(fake)
+	}
+
+	// Seconds after a reload: no statusline on screen, not in the roster yet.
+	first := deliver("first, before the statusline rendered")
+	if !strings.Contains(first, "sid 5a3bb7cb · to reply: chat_inject 5a3bb7cb <message>") ||
+		strings.Contains(first, "cc-1788256324-1866070-42739") {
+		t.Fatalf("blank-screen footer %q, want the sid and never the session", first)
+	}
+
+	// The statusline is up now. A label cached at the first delivery would
+	// still say nothing here.
+	fake.setCapture("🥇 │ 🔖 LUNA:ORCHESTRATOR │ ctx 12%\nconversation\n❯ ")
+	second := deliver("second, statusline rendered")
+	if !strings.Contains(second, "to reply: chat_inject LUNA:ORCHESTRATOR <message>") {
+		t.Fatalf("footer after the statusline appeared %q, want the label read afresh", second)
+	}
+
+	// The roster is the registry a peer's reply resolves first; it outranks
+	// the screen, and a rename shows there before the statusline catches up.
+	names.set("LUNA:RENAMED", nil)
+	third := deliver("third, renamed in the roster")
+	if !strings.Contains(third, "to reply: chat_inject LUNA:RENAMED <message>") ||
+		strings.Contains(third, "LUNA:ORCHESTRATOR") {
+		t.Fatalf("footer after a rename %q, want the roster name over the screen", third)
+	}
+
+	// A roster that cannot be listed is a reported failure, and the screen
+	// still signs the message. (Each submit replaces the fake pane's screen
+	// with the delivered text, so the statusline is put back first.)
+	names.set("", errors.New("fleet database busy"))
+	fake.setCapture("🥇 │ 🔖 LUNA:ORCHESTRATOR │ ctx 12%\nconversation\n❯ ")
+	fourth := deliver("fourth, roster unavailable")
+	if !strings.Contains(fourth, "to reply: chat_inject LUNA:ORCHESTRATOR <message>") ||
+		!strings.Contains(warnings.String(), "pfm: sender label: fleet database busy") {
+		t.Fatalf("footer with the roster down %q (warnings %q), want the screen's label and the failure reported", fourth, warnings.String())
+	}
+}
+
 // lastLiteral is the text most recently typed into the fake pane; the fake
 // clears its pending literal when a submit lands, so the history is what a
 // signature assertion must read.
@@ -495,7 +601,7 @@ func TestSignatureReplyHintCarriesTheLabelNotTheSessionID(t *testing.T) {
 // replyable, and its tmux session name is the only address it has. The raw
 // id is legitimate HERE — it is the literal argument a caller must pass —
 // and nowhere in a name position.
-func TestSignatureReplyHintFallsBackToTheSessionWhenUnlabelled(t *testing.T) {
+func TestSignatureReplyHintFallsBackToTheSidNeverTheSession(t *testing.T) {
 	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
 	engine := newSignatureEngine(
 		t,
@@ -516,8 +622,28 @@ func TestSignatureReplyHintFallsBackToTheSessionWhenUnlabelled(t *testing.T) {
 		t.Fatalf("Inject() = %+v", result)
 	}
 	typed := lastLiteral(fake)
-	if !strings.Contains(typed, "to reply: chat_inject cc-1787705979-3980493-30867 <message>") {
-		t.Fatalf("unlabelled footer %q lost its only replyable address", typed)
+	if !strings.Contains(typed, "sid 019ffd1e · to reply: chat_inject 019ffd1e <message>") {
+		t.Fatalf("unlabelled footer %q does not offer the sid the roster resolves", typed)
+	}
+	if strings.Contains(typed, "cc-1787705979-3980493-30867") {
+		t.Fatalf("footer %q advertises a tmux session — a chat never learns a socket", typed)
+	}
+
+	// With neither a label nor an id there is nothing a peer could resolve:
+	// the footer says so instead of offering the socket.
+	t.Setenv(SenderIDEnv, "")
+	nameless := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine = newSignatureEngineWith(t, "cc-1-2-3", nameless, fakeIdentifier{err: resolve.ErrNoTmux}, &fakeSpawner{},
+		func(options *Options) { options.AllowUnsigned = true })
+	t.Setenv(SenderSessionEnv, "cc-1787705979-3980493-30867")
+	result, err = engine.Inject(context.Background(), Request{Target: "chat", Message: "session only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed = lastLiteral(nameless)
+	if !result.Unsigned || !strings.Contains(typed, "UNSIGNED") ||
+		!strings.Contains(typed, "no name for this seat") || strings.Contains(typed, "to reply:") {
+		t.Fatalf("session-only sender = %+v typed %q, want UNSIGNED naming the missing roster name", result, typed)
 	}
 }
 

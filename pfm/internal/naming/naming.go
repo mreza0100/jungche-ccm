@@ -86,6 +86,11 @@ func DisplayName(customTitle, aiTitle, firstPrompt string) string {
 	return firstPrompt
 }
 
+// Unnamed is the name a live row gets when every naming source is empty. It
+// is a sentinel, not a name: a renderer shows it, but nothing may address a
+// chat by it — two unnamed chats are not one chat.
+const Unnamed = "(unnamed)"
+
 // LiveFallback applies the live-row naming chain. Claude sockets own a
 // generated tmux session name, so their meaningful live fallback is the pane
 // title; other socket types use their tmux session name.
@@ -109,7 +114,7 @@ func LiveFallback(
 	if lastPrompt != "" {
 		return lastPrompt
 	}
-	return "(unnamed)"
+	return Unnamed
 }
 
 // IsJunkPrompt reports whether prompt starts with one of the injected-record
