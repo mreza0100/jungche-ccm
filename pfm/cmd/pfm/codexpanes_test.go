@@ -56,10 +56,19 @@ func TestDecideCodexPaneRulings(t *testing.T) {
 		fresh   = "22222222-2222-4222-8222-222222222222"
 		sibling = "33333333-3333-4333-8333-333333333333"
 	)
+	// codexA and codexB are real Codex UUIDv7 ids from the live probe this
+	// fix answers (spec-codex-clear-title.md § Why): codexB's first 13
+	// characters ("01a05ef0-adc0") sort after codexA's ("01a05eef-6a09"), so
+	// codexB is the NEWER thread — codexThreadNewer(codexB, codexA) is true.
+	const (
+		codexA = "01a05eef-6a09-7063-a0f8-43fd0315dcc3"
+		codexB = "01a05ef0-adc0-7092-b696-df46f33d5461"
+	)
 	for _, test := range []struct {
 		name        string
 		observation codexPaneObservation
 		names       map[string]string
+		titles      map[string][]string
 		lineage     func(string) string
 		retired     codexThreadRetired
 		wantBind    string
@@ -136,6 +145,47 @@ func TestDecideCodexPaneRulings(t *testing.T) {
 			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0"},
 			wantSkip:    codexPaneNoThreadNamed,
 		},
+		// T3 — a status-line NAME that is really Codex's own thread TITLE may
+		// now move a binding, but only forward.
+		{
+			name:        "a title moves a binding FORWARD onto a single newer, differently-rooted thread",
+			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0", Name: "Reply with SECOND", Bound: codexA},
+			titles:      map[string][]string{"Reply with SECOND": {codexB}},
+			wantBind:    codexB,
+			wantKill:    codexA,
+		},
+		{
+			name:        "a title never moves a binding onto an OLDER thread",
+			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0", Name: "Reply with FIRST", Bound: codexB},
+			titles:      map[string][]string{"Reply with FIRST": {codexA}},
+			wantSkip:    codexPaneNameCannotMove,
+		},
+		{
+			name:        "a title resolving into the SAME lineage is a resume, not a clear",
+			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0", Name: "Reply with SECOND", Bound: codexA},
+			titles:      map[string][]string{"Reply with SECOND": {codexB}},
+			lineage:     staticLineage(map[string]string{codexA: "root", codexB: "root"}),
+			wantSkip:    codexPaneSameLineage,
+		},
+		{
+			name:        "a title matching two threads never moves a binding",
+			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0", Name: "Reply with SECOND", Bound: codexA},
+			titles:      map[string][]string{"Reply with SECOND": {codexB, sibling}},
+			wantSkip:    codexPaneNameCannotMove,
+		},
+		{
+			name:        "a title matching the binding itself is silent",
+			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0", Name: "Reply with SECOND", Bound: codexA},
+			titles:      map[string][]string{"Reply with SECOND": {codexA}},
+		},
+		{
+			name:        "a title move with unreadable lineage is refused loudly, never guessed",
+			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0", Name: "Reply with SECOND", Bound: codexA},
+			titles:      map[string][]string{"Reply with SECOND": {codexB}},
+			lineage:     brokenLineage,
+			wantSkip:    codexPaneLineageUnknown,
+			wantLoud:    true,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			lineage := test.lineage
@@ -147,7 +197,7 @@ func TestDecideCodexPaneRulings(t *testing.T) {
 				retired = nothingRetired
 			}
 			action := onePaneAction(t, decideCodexPanes(
-				[]codexPaneObservation{test.observation}, test.names, lineage, retired,
+				[]codexPaneObservation{test.observation}, test.names, test.titles, lineage, retired,
 			))
 			if action.Bind != test.wantBind {
 				t.Errorf("Bind = %q, want %q", action.Bind, test.wantBind)
@@ -180,6 +230,7 @@ func TestDecideCodexPanesNeverSeedsTwoPanesOntoOneThread(t *testing.T) {
 			{Socket: "cx-second", PaneID: "%0", Name: "ENGINE_BUILDER"},
 		},
 		map[string]string{shared: "ENGINE_BUILDER"},
+		nil,
 		staticLineage(nil), nothingRetired,
 	)
 	if len(actions) != 2 {
@@ -208,6 +259,7 @@ func TestDecideCodexPanesRefusesToSeedOntoAClaimedThread(t *testing.T) {
 			{Socket: "cx-newcomer", PaneID: "%0", Name: "ENGINE_BUILDER"},
 		},
 		map[string]string{shared: "ENGINE_BUILDER"},
+		nil,
 		staticLineage(nil), nothingRetired,
 	)
 	if actions[0].Bind != "" || actions[0].Skip != "" {
@@ -243,7 +295,7 @@ func TestDecideCodexPanesClearTimelineNeverWalksBackwards(t *testing.T) {
 		t.Helper()
 		observed.Socket, observed.PaneID, observed.Bound = socket, pane, binding
 		action := onePaneAction(t, decideCodexPanes(
-			[]codexPaneObservation{observed}, names, staticLineage(nil), nothingRetired,
+			[]codexPaneObservation{observed}, names, nil, staticLineage(nil), nothingRetired,
 		))
 		if action.Bind != "" {
 			binding = action.Bind
@@ -306,6 +358,7 @@ func TestDecideCodexPanesDropsABindingOnAClearRetiredThread(t *testing.T) {
 			{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER", Bound: dead},
 		},
 		map[string]string{dead: "ENGINE_BUILDER"},
+		nil,
 		staticLineage(nil),
 		retiredThreads(dead),
 	))
@@ -328,6 +381,7 @@ func TestDecideCodexPanesNeverSeedsOntoARetiredThread(t *testing.T) {
 	action := onePaneAction(t, decideCodexPanes(
 		[]codexPaneObservation{{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER"}},
 		map[string]string{dead: "ENGINE_BUILDER"},
+		nil,
 		staticLineage(nil),
 		retiredThreads(dead),
 	))
@@ -352,6 +406,7 @@ func TestDecideCodexPanesKeepsBindingsWhenRetirementIsUnknowable(t *testing.T) {
 			{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER", Bound: bound},
 		},
 		map[string]string{bound: "ENGINE_BUILDER"},
+		nil,
 		staticLineage(nil),
 		unknownRetirement,
 	))
@@ -373,6 +428,7 @@ func TestDecideCodexPanesKeepsABindingOnAnExplicitlyKilledChat(t *testing.T) {
 			{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER", Bound: bound},
 		},
 		map[string]string{bound: "ENGINE_BUILDER"},
+		nil,
 		staticLineage(nil),
 		// An explicit kill carries no baseline, so the oracle reports it as
 		// NOT clear-retired.
@@ -380,5 +436,78 @@ func TestDecideCodexPanesKeepsABindingOnAnExplicitlyKilledChat(t *testing.T) {
 	))
 	if action.Forget || action.Bind != "" || action.Skip != "" {
 		t.Fatalf("an explicit kill disturbed a live binding: %+v", action)
+	}
+}
+
+// The forward-name-move law from the collision angle, not the ordering angle:
+// the thread a title would move a binding onto is already claimed by another
+// live pane. That other pane's binding is stale evidence for a THIRD chat,
+// never proof this pane may steal it — the exact refusal codexPaneNameTaken
+// already gives the bare-id seed path. This needs two observations at once
+// (claimedBy is built across the whole pass), so it cannot live as a row in
+// TestDecideCodexPaneRulings, which only ever feeds decideCodexPanes one.
+func TestDecideCodexPanesTitleMoveRefusesAClaimedThread(t *testing.T) {
+	const (
+		codexA = "01a05eef-6a09-7063-a0f8-43fd0315dcc3"
+		codexB = "01a05ef0-adc0-7092-b696-df46f33d5461"
+	)
+	actions := decideCodexPanes(
+		[]codexPaneObservation{
+			// The incumbent: already bound to codexB, confirmed by its own
+			// bare id so nothing about ITS ruling is in question here.
+			{Socket: "cx-incumbent", PaneID: "%0", ThreadID: codexB, Bound: codexB},
+			// The mover: a title that would otherwise advance codexA forward
+			// onto codexB — exactly the shape the first table row proves
+			// moves a binding — except codexB is already spoken for.
+			{Socket: "cx-mover", PaneID: "%0", Name: "Reply with SECOND", Bound: codexA},
+		},
+		nil,
+		map[string][]string{"Reply with SECOND": {codexB}},
+		staticLineage(nil),
+		nothingRetired,
+	)
+	if len(actions) != 2 {
+		t.Fatalf("got %d actions, want 2", len(actions))
+	}
+	incumbent, mover := actions[0], actions[1]
+	if incumbent.Bind != "" || incumbent.Skip != "" {
+		t.Fatalf("incumbent was disturbed: %+v", incumbent)
+	}
+	if mover.Bind != "" {
+		t.Fatalf("mover stole the claimed thread: bind=%q", mover.Bind)
+	}
+	if mover.Skip != codexPaneNameTaken || !mover.Loud {
+		t.Fatalf("mover refusal = (%q, loud=%v), want (%q, loud=true)", mover.Skip, mover.Loud, codexPaneNameTaken)
+	}
+}
+
+// codexThreadNewer is the provable-creation-order compare a name may lean on
+// to move a binding forward: two confirmed UUIDv7 ids compare by their
+// 48-bit millisecond timestamp; anything that cannot be proven a v7 id
+// answers false, never a guess.
+func TestCodexThreadNewer(t *testing.T) {
+	const (
+		codexA    = "01a05eef-6a09-7063-a0f8-43fd0315dcc3"
+		codexB    = "01a05ef0-adc0-7092-b696-df46f33d5461"
+		v4        = "11111111-1111-4111-8111-111111111111"
+		malformed = "not-a-uuid-at-all"
+	)
+	for _, test := range []struct {
+		name string
+		a, b string
+		want bool
+	}{
+		{"the later-born v7 id is newer", codexB, codexA, true},
+		{"the earlier-born v7 id is never newer", codexA, codexB, false},
+		{"a v4 id on the left is never newer", v4, codexA, false},
+		{"a v4 id on the right is never newer", codexB, v4, false},
+		{"a malformed id on the left is never newer", malformed, codexA, false},
+		{"a malformed id on the right is never newer", codexB, malformed, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := codexThreadNewer(test.a, test.b); got != test.want {
+				t.Errorf("codexThreadNewer(%q, %q) = %v, want %v", test.a, test.b, got, test.want)
+			}
+		})
 	}
 }

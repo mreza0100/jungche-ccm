@@ -14,17 +14,31 @@ import "sort"
 // Codex's own index: after a clear pfm re-applies the chat's name to the new
 // thread, and until that rename reaches cx_names the name still resolves to
 // exactly ONE thread — the dead pre-clear one. A pass that let a name move a
-// binding therefore walked the pane BACKWARD onto the thread the clear had
-// just killed, and then clear-killed the live thread that had replaced it.
-// Both panes named ENGINE_BUILDER in a real fleet ended up bound to one
-// already-killed thread that way, and `pfm chat resolve` answered with the
-// corpse.
+// binding onto whatever it resolves to, unconditionally, therefore walked the
+// pane BACKWARD onto the thread the clear had just killed, and then
+// clear-killed the live thread that had replaced it. Both panes named
+// ENGINE_BUILDER in a real fleet ended up bound to one already-killed thread
+// that way, and `pfm chat resolve` answered with the corpse.
+//
+// A human who clears and keeps typing before the reconcile pass catches the
+// bare id is a second gap in the same shape: Codex titles the new thread from
+// the first reply, the status line shows that title before pfm ever sees the
+// id, and a NAME-only rule that never moves a binding leaves that pane stuck
+// on the dead thread forever. Closing it safely means a name may move a
+// binding too — but only in the one direction a lagging index can never fake:
+// FORWARD, onto a thread strictly newer than the one it would replace. The
+// dead pre-clear thread from the paragraph above is never newer than what
+// replaced it, so the backward walk stays impossible.
 //
 // Hence the law this file exists to enforce:
 //
-//	A NAME MAY SEED AN UNBOUND PANE. ONLY AN OBSERVED THREAD ID MAY MOVE ONE.
+//	A NAME MAY SEED AN UNBOUND PANE. A NAME MAY MOVE A BINDING ONLY FORWARD —
+//	ONTO A SINGLE, UNCLAIMED, STRICTLY NEWER, DIFFERENTLY-ROOTED THREAD.
+//	NOTHING EVER MOVES A BINDING BACKWARD.
 //
-// A name can confirm a binding. It can never replace one.
+// A name can confirm a binding, seed one, or advance one forward. It can
+// never walk one backward — that is the ENGINE_BUILDER failure, closed for
+// good.
 //
 // decideCodexPanes is deliberately pure: no tmux, no store, no clock. The
 // reconcile pass and `pfm doctor` both run it over the same observations, so
@@ -40,7 +54,7 @@ const (
 	codexPaneNameUnknown      = "status line name matches no indexed thread"
 	codexPaneNameAmbiguous    = "status line name matches several threads"
 	codexPaneNameTaken        = "status line name matches a thread another pane is already bound to"
-	codexPaneNameCannotMove   = "status line shows a name, and a name never moves a binding"
+	codexPaneNameCannotMove   = "status line shows a name that resolves to no newer, differently-rooted thread; a name never moves a binding backwards"
 	codexPaneLineageUnknown   = "lineage could not be read, so a clear cannot be told from a resume"
 	codexPaneSameLineage      = "the new thread continues the bound thread's lineage; a resume is not a clear"
 	codexPaneBindingContested = "another pane was bound to this pane's own thread; that binding was stale"
@@ -99,22 +113,30 @@ type codexPaneAction struct {
 // every OTHER pane is already bound to, and a per-pane loop cannot know that.
 //
 // cxNames maps thread id to display name (the shape store.CxNames returns).
+// titleThreads maps a Codex thread's own title to the thread ids that carry
+// it exactly (the shape observeCodexPanes builds from the state store); it is
+// merged into the same name index AFTER cxNames, so a title-only match is
+// exactly as good as a cx_names match once merged. A name can now move a
+// binding, not just confirm or seed one — forward only, see decideCodexPane.
 // lineageRoot returns the lineage root of a thread id, or "" when the lineage
 // could not be read at all — "" therefore means "we failed to look" and never
 // "no lineage", so a failed read can never be mistaken for a clear.
 func decideCodexPanes(
 	observations []codexPaneObservation,
 	cxNames map[string]string,
+	titleThreads map[string][]string,
 	lineageRoot func(string) string,
 	retired codexThreadRetired,
 ) []codexPaneAction {
 	// A binding pointing at a thread a /clear already retired is not merely
 	// suspicious, it is IMPOSSIBLE: the clear that retired it is the same
 	// event that moved the pane onto its replacement. A fleet that reached
-	// that state is following the pane into a chat nobody is in — and it can
-	// never recover on its own, because the pane shows a NAME from then on and
-	// a name is not allowed to move a binding. So the impossible binding is
-	// dropped here, which frees the pane to be re-seated from its own screen.
+	// that state is following the pane into a chat nobody is in, and cannot
+	// recover through the forward-name-move law below either — the pane shows
+	// a NAME from then on, and the only thread that name can resolve to here
+	// is the one just retired, which is never newer than what would replace
+	// it. So the impossible binding is dropped here, which frees the pane to
+	// be re-seated from its own screen.
 	dropped := make(map[string]bool, len(observations))
 	for index, observation := range observations {
 		if observation.Failed || observation.Bound == "" {
@@ -131,6 +153,26 @@ func decideCodexPanes(
 			continue
 		}
 		threadsByName[name] = append(threadsByName[name], id)
+	}
+	for title, ids := range titleThreads {
+		if title == "" {
+			continue
+		}
+		for _, id := range ids {
+			if id == "" {
+				continue
+			}
+			duplicate := false
+			for _, existing := range threadsByName[title] {
+				if existing == id {
+					duplicate = true
+					break
+				}
+			}
+			if !duplicate {
+				threadsByName[title] = append(threadsByName[title], id)
+			}
+		}
 	}
 	for name := range threadsByName {
 		sort.Strings(threadsByName[name])
@@ -258,10 +300,43 @@ func decideCodexPane(
 				return action
 			}
 		}
-		// The name resolves elsewhere — or nowhere. Either way the binding
-		// stands: this is the exact input that used to walk a pane backwards
-		// onto a dead thread.
-		action.Skip = codexPaneNameCannotMove
+		// The name resolves elsewhere — or nowhere. It may still move the
+		// binding FORWARD, the one direction a lagging index can never fake:
+		// exactly one candidate, unclaimed, provably born after the current
+		// binding, in a different lineage. Anything less certain leaves the
+		// binding exactly where it was — this is the exact input that used to
+		// walk a pane backwards onto a dead thread.
+		if len(matches) != 1 {
+			action.Skip = codexPaneNameCannotMove
+			return action
+		}
+		target := matches[0]
+		if owner, taken := claimedBy[target]; taken && owner != self {
+			action.Skip, action.Loud = codexPaneNameTaken, true
+			return action
+		}
+		previousRoot, currentRoot := lineageRoot(observation.Bound), lineageRoot(target)
+		if previousRoot == "" || currentRoot == "" {
+			// The name still might be right, but a forward move that kills the
+			// old binding must never run on a guess.
+			action.Skip, action.Loud = codexPaneLineageUnknown, true
+			return action
+		}
+		if previousRoot == currentRoot {
+			// Same lineage: a resume or fork, not a clear. The name did not
+			// witness a new chat, so it must not act like one.
+			action.Skip = codexPaneSameLineage
+			return action
+		}
+		if !codexThreadNewer(target, observation.Bound) {
+			// The exact input that once walked a pane backwards onto a dead
+			// thread: the name resolves to a real, differently-rooted thread,
+			// but not one born after the binding it would replace.
+			action.Skip = codexPaneNameCannotMove
+			return action
+		}
+		action.Bind = target
+		action.ClearKill = observation.Bound
 		return action
 	}
 
@@ -308,4 +383,21 @@ func decideCodexPane(
 		action.Skip = codexPaneNameAmbiguous
 	}
 	return action
+}
+
+// codexThreadNewer reports whether a was born strictly after b, provably —
+// never a guess. Codex thread ids are UUIDv7: the version nibble at index 14
+// is '7', and the first 48 bits (the first 13 characters, "xxxxxxxx-xxxx")
+// are a millisecond creation timestamp, so once both ids are confirmed v7 a
+// lexical compare of those 13 characters is a creation-order compare. Either
+// id failing chatUUIDPattern, or failing the version check, answers false: a
+// name that cannot prove it is newer is never allowed to move a binding.
+func codexThreadNewer(a, b string) bool {
+	if !chatUUIDPattern.MatchString(a) || !chatUUIDPattern.MatchString(b) {
+		return false
+	}
+	if a[14] != '7' || b[14] != '7' {
+		return false
+	}
+	return a[:13] > b[:13]
 }

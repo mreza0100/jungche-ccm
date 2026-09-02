@@ -282,6 +282,54 @@ CREATE TABLE threads (id TEXT PRIMARY KEY, cwd TEXT, created_at INTEGER)`); err 
 	}
 }
 
+// T1 — the store exposes threads.title, trimmed and untouched otherwise: it
+// is a separate channel from Name (an entirely separate rename mechanism)
+// and from FirstPrompt, which is what a name-only status line resolves
+// against once a status-line title move (T2/T3) can act on it at all.
+func TestReadCodexThreadsExposesTitleTrimmed(t *testing.T) {
+	root := t.TempDir()
+	buildCodexState(t, filepath.Join(root, "state_1.sqlite"),
+		codexStateThread{
+			ID:               "titled",
+			RolloutPath:      "/codex/sessions/rollout-titled.jsonl",
+			CWD:              "/work/titled",
+			Title:            "  Reply with SECOND  ",
+			FirstUserMessage: "first",
+			ThreadSource:     "user",
+			CreatedAt:        10,
+			UpdatedAt:        10,
+		},
+		codexStateThread{
+			ID:               "untitled",
+			RolloutPath:      "/codex/sessions/rollout-untitled.jsonl",
+			CWD:              "/work/untitled",
+			FirstUserMessage: "first",
+			ThreadSource:     "user",
+			CreatedAt:        20,
+			UpdatedAt:        20,
+		},
+	)
+
+	files, err := CodexStateFiles(root)
+	if err != nil {
+		t.Fatalf("CodexStateFiles() error = %v", err)
+	}
+	threads, err := ReadCodexThreads(context.Background(), files)
+	if err != nil {
+		t.Fatalf("ReadCodexThreads() error = %v", err)
+	}
+	byID := make(map[string]CodexThread, len(threads))
+	for _, thread := range threads {
+		byID[thread.ID] = thread
+	}
+	if titled := byID["titled"]; titled.Title != "Reply with SECOND" {
+		t.Fatalf("titled thread Title = %q, want the trimmed %q", titled.Title, "Reply with SECOND")
+	}
+	if untitled := byID["untitled"]; untitled.Title != "" {
+		t.Fatalf("untitled thread Title = %q, want empty", untitled.Title)
+	}
+}
+
 // A store-only conversation is killed by its lineage root like any other, and
 // the kill is permanent: new prompts and a rollout file that finally appears
 // never lift it, and nothing writes a baseline to lift it with.

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -260,6 +261,26 @@ func scanFleet(
 		Paths:  environment.paths,
 	}, printWarn(stderr)) {
 		data, err = loadFleetData(ctx, database)
+		if err != nil {
+			return scanResult{}, err
+		}
+		// A pass that moved a binding changed what the resolver answers for
+		// the pane's own process: `live` above was gathered BEFORE the move,
+		// so its LiveCodex.RolloutPath still names the thread the pane just
+		// left. Composing from that snapshot renders the successor `↻`
+		// (resumable) for this whole call instead of `●` (live) — gather
+		// again against the reconciled data before this call hands anybody
+		// a row.
+		live, err = gatherFleet(
+			ctx,
+			database,
+			environment.paths,
+			environment.config,
+			data,
+			request.ReadOnly,
+			printWarn(stderr),
+			stderr,
+		)
 		if err != nil {
 			return scanResult{}, err
 		}
@@ -735,8 +756,9 @@ func streamFleetRefreshesWith(
 	if !sendRefresh(ctx, environment, request, data, live, true, updates) {
 		return
 	}
+	movedBinding := false
 	if !request.ReadOnly {
-		reconcileCodexPanes(ctx, database, live, commandRuntime{
+		movedBinding = reconcileCodexPanes(ctx, database, live, commandRuntime{
 			Config: environment.config,
 			Paths:  environment.paths,
 		}, warn)
@@ -764,6 +786,34 @@ func streamFleetRefreshesWith(
 	if err != nil {
 		writeRefreshError(ctx, stderr, "", err)
 		return
+	}
+	if movedBinding {
+		// The `live` this pass has been carrying since the gather above was
+		// taken BEFORE reconcileCodexPanes moved a binding — its
+		// LiveCodex.RolloutPath still names the thread the pane just left,
+		// so the final snapshot below would show the successor `↻`
+		// (resumable) rather than `●` (live) for this whole pass. Gather and
+		// re-enrich again, the same way the pass started, now that the
+		// reconciled data is what the resolver sees.
+		live, err = gatherFleet(
+			ctx,
+			database,
+			environment.paths,
+			environment.config,
+			data,
+			request.ReadOnly,
+			warn,
+			stderr,
+		)
+		if err != nil {
+			writeRefreshError(ctx, stderr, " gather", err)
+			return
+		}
+		data, err = enrichLiveFleetData(ctx, database, data, live)
+		if err != nil {
+			writeRefreshError(ctx, stderr, " live cache", err)
+			return
+		}
 	}
 	result := composeFleet(ctx, environment, request, data, live)
 	result.Snapshot.Refreshing = false
@@ -827,8 +877,9 @@ func streamFleetRefreshesWith(
 			}
 			continue
 		}
+		movedBinding := false
 		if !request.ReadOnly {
-			reconcileCodexPanes(ctx, database, live, commandRuntime{
+			movedBinding = reconcileCodexPanes(ctx, database, live, commandRuntime{
 				Config: environment.config,
 				Paths:  environment.paths,
 			}, warn)
@@ -851,6 +902,30 @@ func streamFleetRefreshesWith(
 				return
 			}
 			continue
+		}
+		if movedBinding {
+			// Same stale-snapshot trap as the first pass above: `live` was
+			// gathered before reconcileCodexPanes moved a binding, so the
+			// resolver's answer for that pane's process still names the thread
+			// it just left. Gather and re-enrich before the final snapshot,
+			// or the successor renders `↻` until the next tick.
+			live, err = gatherFleet(
+				ctx, database, environment.paths, environment.config,
+				data, request.ReadOnly, warn, stderr,
+			)
+			if err != nil {
+				if !writeRefreshError(ctx, stderr, " gather", err) {
+					return
+				}
+				continue
+			}
+			data, err = enrichLiveFleetData(ctx, database, data, live)
+			if err != nil {
+				if !writeRefreshError(ctx, stderr, " live cache", err) {
+					return
+				}
+				continue
+			}
 		}
 		if !sendRefresh(ctx, environment, request, data, live, false, updates) {
 			return
@@ -908,7 +983,7 @@ func reconcileCodexPanes(
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
 	renamer := codexRenamerFor(runtime)
 
-	_, actions := observeCodexPanes(ctx, database, manager, capturer, live, cxNames, warn)
+	_, actions := observeCodexPanes(ctx, database, manager, capturer, live, runtime, cxNames, warn)
 	for _, action := range actions {
 		if action.Skip != "" && action.Bind == "" {
 			switch {
@@ -1026,6 +1101,7 @@ func observeCodexPanes(
 	manager *kill.Manager,
 	capturer gather.PaneCapturer,
 	live gather.Snapshot,
+	runtime commandRuntime,
 	cxNames map[string]string,
 	warn gatherWarn,
 ) ([]codexPaneObservation, []codexPaneAction) {
@@ -1101,9 +1177,53 @@ func observeCodexPanes(
 		observations = append(observations, observation)
 	}
 	return observations, decideCodexPanes(
-		observations, cxNames,
+		observations, cxNames, codexTitleThreads(ctx, runtime, warn),
 		codexLineageRoots(ctx, database), codexRetiredThreads(ctx, database),
 	)
+}
+
+// codexTitleThreads builds the title index a Codex status-line NAME can move
+// a binding through: exact thread title (threads.title, trimmed) to thread
+// ids, sorted. It reads the same state-store lister
+// store.NewCodexThreadResolverRoots already reads — store.CodexStateFiles then
+// store.ReadCodexThreads, over the runtime's own Codex roots — never a second
+// walker over the same stores. A lister failure is WARNed by name and leaves
+// the index empty for this pass: an empty title index only means "no title
+// can move anything this pass", and it never blocks the bare-id path this
+// file's own header describes.
+func codexTitleThreads(
+	ctx context.Context,
+	runtime commandRuntime,
+	warn gatherWarn,
+) map[string][]string {
+	titleThreads := make(map[string][]string)
+	codexRoots := runtime.Paths.Roots[pfmengine.Codex]
+	files := make([]string, 0, len(codexRoots))
+	for _, codexRoot := range codexRoots {
+		rootFiles, err := store.CodexStateFiles(codexRoot)
+		if err != nil {
+			warn(fmt.Sprintf(
+				"codex pane reconcile: list Codex state store %q: %v", codexRoot, err,
+			))
+			continue
+		}
+		files = append(files, rootFiles...)
+	}
+	threads, err := store.ReadCodexThreads(ctx, files)
+	if err != nil {
+		warn(fmt.Sprintf("codex pane reconcile: read Codex state stores: %v", err))
+		return titleThreads
+	}
+	for _, thread := range threads {
+		if thread.Title == "" {
+			continue
+		}
+		titleThreads[thread.Title] = append(titleThreads[thread.Title], thread.ID)
+	}
+	for title := range titleThreads {
+		sort.Strings(titleThreads[title])
+	}
+	return titleThreads
 }
 
 // codexRetiredThreads answers whether a thread was retired by a /clear,

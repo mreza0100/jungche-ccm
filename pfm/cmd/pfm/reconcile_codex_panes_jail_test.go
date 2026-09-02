@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -893,6 +894,120 @@ func TestReconcileCodexPanesFollowsAClearWhenTheProcessHoldsNoRollout(t *testing
 	}
 }
 
+// codexJailStateTitle writes a scratch Codex state store directly under
+// codexRoot as state_1.sqlite — the shape store.CodexStateFiles walks — with
+// one thread row carrying id and a title. Only the columns
+// store.readCodexState requires (id, cwd, created_at, thread_source) or
+// reads (title) are present: the full production schema fixture is
+// internal/store/codexstate_test.go's buildCodexState, unexported and in a
+// different package, so this is the cmd/pfm-side counterpart.
+func codexJailStateTitle(t *testing.T, codexRoot, id, title, cwd string) {
+	t.Helper()
+	if err := os.MkdirAll(codexRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	state, err := sql.Open("sqlite", "file:"+filepath.Join(codexRoot, "state_1.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	if _, err := state.Exec(`CREATE TABLE threads (
+		id TEXT PRIMARY KEY,
+		cwd TEXT,
+		created_at INTEGER,
+		thread_source TEXT,
+		title TEXT
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Exec(
+		"INSERT INTO threads (id, cwd, created_at, thread_source, title) VALUES (?, ?, 0, 'user', ?)",
+		id, cwd, title,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The probe scenario end to end (spec-codex-clear-title.md § Why): a pane
+// bound to A clears and keeps typing before pfm's own reconcile pass ever
+// sees the bare successor id — Codex titles the new thread from the first
+// reply, so the pane's status line shows that TITLE, not a bare id, by the
+// time this pass runs. B's rollout is already on disk (pfm's own store, via
+// codexJailRollout) and Codex's OWN state store already carries B's title —
+// the index T2 (codexTitleThreads) reads. B is a real, strictly newer UUIDv7
+// than A, so T3's forward-move law lets the title advance the binding.
+// Watched RED with T3 neutralized (name branch returning CannotMove
+// unconditionally): see TestDecideCodexPaneRulings.
+func TestReconcileCodexPanesMovesABindingForwardOnATitleOnlyName(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	const socket = "cx-1800000020-1-1"
+	const title = "Reply with SECOND"
+	// Real Codex UUIDv7 ids from the live probe: idB's first 13 characters
+	// ("01a05ef0-adc0") sort after idA's ("01a05eef-6a09"), so idB is newer.
+	const idA = "01a05eef-6a09-7063-a0f8-43fd0315dcc3"
+	const idB = "01a05ef0-adc0-7092-b696-df46f33d5461"
+	startCodexStatusPane(t, tmuxTmpDir, socket, "  "+title+` · /tmp/x · Full Access\n`)
+
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	aRollout := codexJailRollout(t, database, root, idA, 1)
+	codexJailRollout(t, database, root, idB, 1)
+	// Codex's own state store, not pfm's: the title index T2 builds.
+	codexJailStateTitle(t, resolved.Roots[pfmengine.Codex][0], idB, title, "/tmp/x")
+
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, "%0", idA); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	reconcileCodexPanes(
+		context.Background(),
+		database,
+		gather.Snapshot{
+			Panes: []gather.Pane{codexPane(socket, "%0")},
+			// A live process that holds no rollout file descriptor — the
+			// shared app-server shape — whose only guess (A, the stale
+			// binding) must never overrule the screen's own title.
+			Codex: []gather.LiveCodex{{
+				Socket: socket, PaneID: "%0",
+				RolloutPath: aRollout,
+				ThreadID:    idA,
+				RolloutHeld: false,
+			}},
+		},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+
+	bound, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
+	if err != nil || !found || bound != idB {
+		t.Fatalf(
+			"binding = (%q, %v, %v), want the title's newer thread %q: stderr=%q",
+			bound, found, err, idB, stderr.String(),
+		)
+	}
+	killed, found, err := database.Killed(context.Background(), idA)
+	if err != nil || !found || killed.Engine != pfmengine.Codex ||
+		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 1 {
+		t.Fatalf("previous thread killed = %#v found=%v error=%v: stderr=%q", killed, found, err, stderr.String())
+	}
+}
+
 // The stuck state, replayed against a real tmux server: a pane bound to a
 // thread a /clear already retired, showing a NAME that resolves only to that
 // same dead thread.
@@ -1090,6 +1205,7 @@ func TestAReAppliedNameReSeatsAnUnboundPane(t *testing.T) {
 	stuck := decideCodexPanes(
 		observations,
 		map[string]string{retiredID: chatName},
+		nil,
 		func(string) string { return "" },
 		retired,
 	)
@@ -1100,6 +1216,7 @@ func TestAReAppliedNameReSeatsAnUnboundPane(t *testing.T) {
 	healed := decideCodexPanes(
 		[]codexPaneObservation{{Socket: "cx-1", PaneID: "%0", Name: chatName}},
 		map[string]string{retiredID: chatName, liveID: chatName},
+		nil,
 		func(string) string { return "" },
 		retired,
 	)

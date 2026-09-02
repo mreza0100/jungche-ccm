@@ -478,7 +478,7 @@ func printCodexPaneFollowDoctor(
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
 	silent := func(string) {}
 	_, actions := observeCodexPanes(
-		ctx, database, manager, capturer, gather.Snapshot{Panes: panes}, cxNames, silent,
+		ctx, database, manager, capturer, gather.Snapshot{Panes: panes}, runtime, cxNames, silent,
 	)
 
 	unfollowable := 0

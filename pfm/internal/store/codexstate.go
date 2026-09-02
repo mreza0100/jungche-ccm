@@ -25,6 +25,13 @@ type CodexThread struct {
 	ID          string
 	Name        string
 	FirstPrompt string
+	// Title is the threads.title column, trimmed. It is the text Codex's own
+	// TUI renders as the pane's status-line name once a thread is named — the
+	// same title a bare thread id yields to the moment a rename lands — so it
+	// is the index a status-line NAME can be matched against, distinct from
+	// Name (an entirely separate rename channel) and from FirstPrompt (which
+	// never changes once Codex records it).
+	Title       string
 	CWD         string
 	RolloutPath string
 	// CreatedAt and ActivityAt are epoch seconds, the unit Codex stores.
@@ -319,6 +326,7 @@ func readCodexState(ctx context.Context, file string) ([]CodexThread, error) {
 		// is the owner's own rename. An empty title is Codex's own blank, not
 		// a name.
 		thread.Renamed = title != "" && title != firstUserMessage
+		thread.Title = strings.TrimSpace(title)
 		thread.FirstPrompt = firstNonEmptyText(firstUserMessage, title, preview)
 		thread.Prompted = thread.FirstPrompt != "" || tokensUsed > 0
 		thread.ActivityAt = max(thread.CreatedAt, max(updatedAt, recencyAt))
