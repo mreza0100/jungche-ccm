@@ -553,7 +553,7 @@ func TestChatSelfCompactRequiresSteerAndTargetsRequestingSeat(t *testing.T) {
 		t, client.clientSession, "chat_self_compact", meta,
 		SelfCompactInput{
 			Focus: "preserve the active MCP investigation",
-			Then:  []string{"/compact again"},
+			Then:  "/compact again",
 		},
 	)
 	if recursive.Code != inject.CodeUndelivered || recursive.Typed ||
@@ -565,7 +565,7 @@ func TestChatSelfCompactRequiresSteerAndTargetsRequestingSeat(t *testing.T) {
 		t, client.clientSession, "chat_self_compact", meta,
 		SelfCompactInput{
 			Focus: "preserve the active MCP investigation; drop resolved setup noise",
-			Then:  []string{"resume the MCP stress test"},
+			Then:  "resume the MCP stress test",
 		},
 	)
 	if scheduled.Code != 0 || scheduled.Status != "scheduled" || scheduled.Typed ||
@@ -595,7 +595,7 @@ func TestChatSelfCompactComposesFocusIntoScheduledCommand(t *testing.T) {
 		nil,
 		SelfCompactInput{
 			Focus: "preserve the signed MCP acceptance verdict",
-			Then:  []string{"resume the acceptance test"},
+			Then:  "resume the acceptance test",
 		},
 	)
 	if err != nil {
@@ -638,7 +638,7 @@ func TestChatSelfCompactValidationRefusesBadFocus(t *testing.T) {
 				nil,
 				SelfCompactInput{
 					Focus: test.focus,
-					Then:  []string{"resume the acceptance test"},
+					Then:  "resume the acceptance test",
 				},
 			)
 			if err == nil || !strings.Contains(err.Error(), "focus must be one non-empty line") {

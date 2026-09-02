@@ -1,9 +1,14 @@
 ---
 name: handoff
-description: 'Hand this chat''s whole working context to a FRESH chat in the same pane and hide this one: write a handoff file, then run `pfm chat reload --fresh --hide --then "Read <file> in FULL, then continue: …"`. Use when context is nearly full, before a long task''s next phase, or when the user says /handoff [message].'
+description: 'USER-FIRED ONLY — run this when the user''s own message is /handoff [message]; never on your own initiative. "Compact yourself", a milestone, or a nearly-full context means chat_self_compact (which keeps the session), NOT this. Hands this chat''s whole working context to a FRESH chat in the same pane and hides this one: write a handoff file, then run `pfm chat reload --fresh --hide --then "Read <file> in FULL, then continue: …"`.'
 ---
 
 # `/handoff` — hand this chat's context to a fresh chat in the same pane, then hide this one
+
+**The user fires this; you never do.** If the user did not type `/handoff` themselves in this
+turn, stop here and say so — "compact yourself" is `chat_self_compact` (one focus line, ONE steer),
+which keeps this session alive; a handoff reboots the pane, kills every session-scoped cron and
+sub-agent, and hides this conversation — none of which was asked for.
 
 Run these THREE steps, in order, as your LAST action — the chat is about to exit and, once the
 fresh one owns the pane, this conversation is hidden from the picker (`pfm chat unkill <id>`

@@ -38,3 +38,23 @@ func TestSelfCompactToolDescriptionTellsTheCallerToStop(t *testing.T) {
 		}
 	}
 }
+
+// "Compact yourself" was once answered with a /handoff — a fresh reboot that
+// kills the session's crons and sub-agents and hides the conversation — and
+// with three steers where the operator wants one. The description is the only
+// thing the model reads before choosing, so it pins both the exclusivity and
+// the single-steer contract in the words the model will match.
+func TestSelfCompactToolDescriptionIsExclusiveAndSingleSteer(t *testing.T) {
+	description := selfCompactDescription
+
+	for _, want := range []string{
+		"never /handoff",
+		"never /reload",
+		"exactly ONE post-compact steer",
+		"KEEPS the session",
+	} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("chat_self_compact description is missing %q\ngot: %s", want, description)
+		}
+	}
+}

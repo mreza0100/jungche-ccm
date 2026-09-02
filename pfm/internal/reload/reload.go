@@ -99,6 +99,7 @@ type Options struct {
 	Delay       time.Duration
 	Poll        time.Duration
 	ExitTries   int
+	IdleTries   int
 	ThenTries   int
 }
 
@@ -121,6 +122,9 @@ func (o *Options) defaults() {
 	}
 	if o.ExitTries == 0 {
 		o.ExitTries = 20
+	}
+	if o.IdleTries == 0 {
+		o.IdleTries = 120
 	}
 	if o.ThenTries == 0 {
 		o.ThenTries = 900
@@ -208,9 +212,9 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 			return Result{}, fmt.Errorf("cancel pane mode: %w", err)
 		}
 	}
-	cap, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
+	cap, err := waitCallerIdle(ctx, request, options, tmux, stderr)
 	if err != nil {
-		return Result{}, fmt.Errorf("capture pane before /exit: %w", err)
+		return Result{}, err
 	}
 	if selectorOpen(cap) {
 		cause := errors.New("open selector menu on the pane — refusing to /exit")
@@ -234,6 +238,7 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 
 	dead := false
 	empties := 0
+	dialogSeen := false
 	for i := 0; i < options.ExitTries; i++ {
 		panes, listErr := tmux.ListPanes(ctx, request.SocketPath)
 		if listErr != nil {
@@ -258,7 +263,21 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 		capture, captureErr := tmux.Capture(ctx, request.SocketPath, request.Pane)
 		if captureErr != nil {
 			fmt.Fprintf(stderr, "pfm chat reload: confirm /exit submission (try %d): %v\n", i+1, captureErr)
-		} else if strings.Contains(strings.Join(strings.Fields(lastComposerLine(capture)), " "), "/exit") {
+		} else if exitDialogOpen(capture) {
+			// Claude Code answers /exit with a confirmation whenever the chat
+			// has background work — a scheduled task, a background shell, a
+			// sub-agent — with "Exit and stop tasks" preselected. Nothing the
+			// composer shows says /exit any more, so this dialog, not the
+			// composer, is what the retry has to press Enter on. The reboot
+			// IS the answer: everything in-flight dies with the pane anyway.
+			if !dialogSeen {
+				dialogSeen = true
+				fmt.Fprintln(stderr, "pfm chat reload: confirming the exit dialog — background work stops with the chat")
+			}
+			if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
+				return Result{}, fmt.Errorf("confirm exit dialog: %w", err)
+			}
+		} else if composerShowsExit(capture) {
 			if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
 				return Result{}, fmt.Errorf("retry /exit submission: %w", err)
 			}
@@ -272,7 +291,7 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 		}
 	}
 	if !dead {
-		return Result{}, errors.New("/exit did not complete; chat left running")
+		return Result{}, exitIncomplete(ctx, request, options, tmux)
 	}
 	if err := tmux.Respawn(ctx, request.SocketPath, request.Pane, request.CWD, run); err != nil {
 		return Result{}, fmt.Errorf("respawn pane: %w", err)
@@ -308,7 +327,7 @@ func waitExitRendered(ctx context.Context, request Request, tmux Tmux, stderr io
 		capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm chat reload: confirm typed /exit (try %d): %v\n", attempt+1, err)
-		} else if strings.Contains(strings.Join(strings.Fields(lastComposerLine(capture)), " "), "/exit") {
+		} else if composerShowsExit(capture) {
 			return nil
 		}
 		timer := time.NewTimer(50 * time.Millisecond)
@@ -320,6 +339,102 @@ func waitExitRendered(ctx context.Context, request Request, tmux Tmux, stderr io
 		}
 	}
 	return errors.New("typed /exit never rendered — refusing blind Enter")
+}
+
+// waitCallerIdle holds the /exit until the pane's current turn has ended.
+// The worker is spawned from INSIDE the chat's own turn — the Bash call that
+// scheduled it — so the first thing it sees is that turn still rendering. A
+// /exit typed into a running turn cuts the chat's last words off mid-render
+// and kills whatever tool that turn still has in flight; the contract every
+// caller was given is "one short line, then end the turn", and this is the
+// worker keeping its half of it. Two quiet captures in a row are the idle
+// proof; a chat still busy at the bound is left untouched and told so.
+func waitCallerIdle(ctx context.Context, request Request, options Options, tmux Tmux, stderr io.Writer) (string, error) {
+	stable := 0
+	announced := false
+	for attempt := 0; attempt < options.IdleTries; attempt++ {
+		capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
+		if err != nil {
+			return "", fmt.Errorf("capture pane before /exit: %w", err)
+		}
+		if inject.IsBusy(capture) {
+			stable = 0
+			if !announced {
+				announced = true
+				fmt.Fprintln(stderr, "pfm chat reload: the chat's turn is still running — holding /exit until it ends")
+			}
+		} else if stable++; stable >= 2 {
+			return capture, nil
+		}
+		if err := sleepPoll(ctx, options.Poll); err != nil {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("chat still busy after %d polls — /exit was not typed, nothing changed", options.IdleTries)
+}
+
+// exitIncomplete names the state a refused /exit leaves behind, because
+// "chat left running" on its own hid the one that mattered: an exit dialog
+// nobody confirmed, or a typed /exit nobody submitted, sits in front of the
+// composer and the harness holds every queued prompt — cron heartbeats,
+// injected steers — behind it until a human clears it. Whatever this worker
+// put on the screen, it takes back off, and the error says whether that was
+// seen to succeed.
+func exitIncomplete(ctx context.Context, request Request, options Options, tmux Tmux) error {
+	cause := fmt.Errorf("/exit did not complete after %d tries; chat left running", options.ExitTries)
+	capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
+	if err != nil {
+		return errors.Join(cause, fmt.Errorf("could not read what the pane shows now — an exit dialog or the typed /exit may still be there, clear it by hand: %w", err))
+	}
+	switch {
+	case exitDialogOpen(capture):
+		if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Escape"); err != nil {
+			return errors.Join(cause, fmt.Errorf("the exit dialog would not confirm and could NOT be dismissed — press Esc in the pane by hand: %w", err))
+		}
+		if capture, err = tmux.Capture(ctx, request.SocketPath, request.Pane); err != nil {
+			return errors.Join(cause, fmt.Errorf("sent Esc to the exit dialog but could not confirm it closed: %w", err))
+		} else if exitDialogOpen(capture) {
+			return errors.Join(cause, errors.New("the exit dialog would not confirm and did not close on Esc — press Esc in the pane by hand"))
+		}
+		return errors.Join(cause, errors.New("the exit dialog would not confirm; dismissed it (Esc)"))
+	case composerShowsExit(capture):
+		for range len("/exit") {
+			if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "BSpace"); err != nil {
+				return errors.Join(cause, fmt.Errorf("the typed /exit could NOT be cleared from the composer — clear it by hand: %w", err))
+			}
+		}
+		if capture, err = tmux.Capture(ctx, request.SocketPath, request.Pane); err != nil {
+			return errors.Join(cause, fmt.Errorf("sent backspaces over the typed /exit but could not confirm the composer is clear: %w", err))
+		} else if composerShowsExit(capture) {
+			return errors.Join(cause, errors.New("the typed /exit could NOT be cleared from the composer — clear it by hand"))
+		}
+		return errors.Join(cause, errors.New("cleared the typed /exit from the composer"))
+	}
+	return errors.Join(cause, errors.New("the pane shows neither the typed /exit nor an exit dialog"))
+}
+
+func sleepPoll(ctx context.Context, poll time.Duration) error {
+	timer := time.NewTimer(poll)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func composerShowsExit(capture string) bool {
+	return strings.Contains(strings.Join(strings.Fields(lastComposerLine(capture)), " "), "/exit")
+}
+
+// exitDialogPattern is the selected row of Claude Code's background-work
+// exit confirmation ("❯ 1. Exit and stop tasks"). The marker has to sit on
+// the Exit row: a human who moved it to "Stay" gets that choice respected.
+var exitDialogPattern = regexp.MustCompile(`❯[[:space:]]*[0-9]+\.[[:space:]]*Exit`)
+
+func exitDialogOpen(capture string) bool {
+	return exitDialogPattern.MatchString(capture)
 }
 
 func rosterContains(accounts []int, wanted int) bool {

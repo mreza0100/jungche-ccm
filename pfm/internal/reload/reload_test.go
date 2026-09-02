@@ -730,3 +730,215 @@ func TestComposerTextReadsAWrappedDraftAndStopsAtTheBoxRule(t *testing.T) {
 		t.Fatalf("composerText read past the box rule into the status rows: %q", got)
 	}
 }
+
+// busyThenIdleTmux shows the caller's own turn still running for the first
+// busyCaptures captures — the state the worker actually wakes up in, since the
+// Bash call that scheduled it is part of that turn — and idle afterwards. It
+// records how many captures had happened when /exit was typed.
+type busyThenIdleTmux struct {
+	fakeReloadTmux
+	busyCaptures int
+	captures     int
+	typedAfter   int
+}
+
+func (tmux *busyThenIdleTmux) Capture(context.Context, string, string) (string, error) {
+	tmux.captures++
+	if tmux.captures <= tmux.busyCaptures {
+		return "Claude\n✻ Thinking… (12s · ↓ 1.2k tokens · esc to interrupt)\n❯ ", nil
+	}
+	return tmux.fakeReloadTmux.Capture(context.Background(), "", "")
+}
+
+func (tmux *busyThenIdleTmux) SendLiteral(ctx context.Context, socket, pane, value string) error {
+	if value == "/exit" {
+		tmux.typedAfter = tmux.captures
+	}
+	return tmux.fakeReloadTmux.SendLiteral(ctx, socket, pane, value)
+}
+
+// stuckExitTmux renders the typed /exit in the composer and never dies on
+// Enter — the incident shape: a chat that did not take the /exit and sat with
+// it in the input box. Backspaces erase the typed text one rune at a time.
+type stuckExitTmux struct {
+	fakeReloadTmux
+	keys []string
+}
+
+func (tmux *stuckExitTmux) Capture(context.Context, string, string) (string, error) {
+	return "Claude\n❯ " + tmux.literal, nil
+}
+
+func (tmux *stuckExitTmux) SendKey(_ context.Context, _, _, key string) error {
+	tmux.keys = append(tmux.keys, key)
+	if key == "BSpace" && tmux.literal != "" {
+		tmux.literal = tmux.literal[:len(tmux.literal)-1]
+	}
+	return nil
+}
+
+func reloadIdleWaitRequest(socket string) Request {
+	return Request{
+		Engine: pfmengine.Claude, SocketPath: socket, Pane: "%7", PanePID: 700,
+		SessionID: "11111111-1111-4111-8111-111111111111", CWD: "/jail/project",
+		Account: 2, AccountIDs: []int{2}, Machine: reloadTestMachine("", "/jail/home"),
+	}
+}
+
+// The worker is spawned from inside the chat's own turn. A /exit typed while
+// that turn is still rendering lands in the composer as a draft the harness
+// never submits, and the pane then holds every queued prompt behind it — the
+// six-hour stall. So /exit is typed only once the pane has been idle twice.
+func TestRunWaitsForTheCallerTurnToEndBeforeTypingExit(t *testing.T) {
+	tmux := &busyThenIdleTmux{busyCaptures: 3, typedAfter: -1}
+	_, err := Run(
+		context.Background(),
+		reloadIdleWaitRequest("/tmp/tmux-1000/probe-reload-idle"),
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2, IdleTries: 10},
+		tmux,
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmux.typedAfter <= tmux.busyCaptures || tmux.respawn == "" {
+		t.Fatalf(
+			"/exit typed after %d captures with the first %d busy (want typed only once idle); respawn=%q",
+			tmux.typedAfter, tmux.busyCaptures, tmux.respawn,
+		)
+	}
+}
+
+func TestRunRefusesToTypeExitIntoAChatThatStaysBusy(t *testing.T) {
+	tmux := &busyThenIdleTmux{busyCaptures: 1 << 30, typedAfter: -1}
+	_, err := Run(
+		context.Background(),
+		reloadIdleWaitRequest("/tmp/tmux-1000/probe-reload-busy"),
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2, IdleTries: 3},
+		tmux,
+		nil,
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "still busy") {
+		t.Fatalf("always-busy chat error=%v, want a 'still busy' refusal", err)
+	}
+	if tmux.literal != "" || tmux.typedAfter != -1 || tmux.respawn != "" {
+		t.Fatalf("a busy chat was touched: literal=%q typedAfter=%d respawn=%q", tmux.literal, tmux.typedAfter, tmux.respawn)
+	}
+}
+
+// A refused /exit must not leave its own text behind: the composer is
+// cleared with exactly the backspaces the typed text needs, and the error
+// says so — "chat left running" alone would hide a poisoned input box.
+func TestRunClearsTheTypedExitWhenTheChatDoesNotDie(t *testing.T) {
+	tmux := &stuckExitTmux{}
+	_, err := Run(
+		context.Background(),
+		reloadIdleWaitRequest("/tmp/tmux-1000/probe-reload-stuck"),
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2},
+		tmux,
+		nil,
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "did not complete") ||
+		!strings.Contains(err.Error(), "cleared the typed /exit") {
+		t.Fatalf("stuck /exit error=%v, want 'did not complete' plus 'cleared the typed /exit'", err)
+	}
+	backspaces := 0
+	for _, key := range tmux.keys {
+		if key == "BSpace" {
+			backspaces++
+		}
+	}
+	if backspaces != len("/exit") || tmux.literal != "" || tmux.respawn != "" {
+		t.Fatalf("composer cleanup: backspaces=%d residue=%q respawn=%q", backspaces, tmux.literal, tmux.respawn)
+	}
+}
+
+const exitDialog = "   Background work is running\n" +
+	"   The following will stop when you exit:\n" +
+	"   shell · sleep 25 && echo done\n" +
+	"   ❯ 1. Exit and stop tasks\n" +
+	"     2. Stay\n" +
+	"   Enter to confirm · Esc to cancel\n"
+
+// exitDialogTmux is the incident pane: Enter on the typed /exit does not exit,
+// it opens Claude Code's background-work confirmation with "Exit and stop
+// tasks" preselected, and only a second Enter — on the dialog — kills the
+// chat. With confirms=false the dialog swallows every Enter, the way it does
+// once Escape is the only key it still takes.
+type exitDialogTmux struct {
+	fakeReloadTmux
+	confirms bool
+	dialog   bool
+	keys     []string
+}
+
+func (tmux *exitDialogTmux) Capture(context.Context, string, string) (string, error) {
+	if tmux.dialog {
+		return "Claude\n" + exitDialog, nil
+	}
+	return "Claude\n❯ " + tmux.literal, nil
+}
+
+func (tmux *exitDialogTmux) SendKey(_ context.Context, _, _, key string) error {
+	tmux.keys = append(tmux.keys, key)
+	switch {
+	case key == "Enter" && tmux.dialog && tmux.confirms:
+		tmux.dead = true
+	case key == "Enter" && tmux.literal == "/exit" && !tmux.dialog:
+		tmux.dialog = true
+		tmux.literal = ""
+	case key == "Escape" && tmux.dialog:
+		tmux.dialog = false
+	}
+	return nil
+}
+
+func countKey(keys []string, want string) int {
+	count := 0
+	for _, key := range keys {
+		if key == want {
+			count++
+		}
+	}
+	return count
+}
+
+func TestRunConfirmsTheBackgroundWorkExitDialog(t *testing.T) {
+	tmux := &exitDialogTmux{confirms: true}
+	_, err := Run(
+		context.Background(),
+		reloadIdleWaitRequest("/tmp/tmux-1000/probe-reload-dialog"),
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 3},
+		tmux,
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("exit dialog was not confirmed: %v (keys %v)", err, tmux.keys)
+	}
+	if countKey(tmux.keys, "Enter") != 2 || tmux.respawn == "" {
+		t.Fatalf("want exactly one submit Enter plus one confirm Enter, got keys %v respawn=%q", tmux.keys, tmux.respawn)
+	}
+}
+
+func TestRunDismissesAnExitDialogThatWillNotConfirm(t *testing.T) {
+	tmux := &exitDialogTmux{confirms: false}
+	_, err := Run(
+		context.Background(),
+		reloadIdleWaitRequest("/tmp/tmux-1000/probe-reload-dialog-stuck"),
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2},
+		tmux,
+		nil,
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "did not complete") ||
+		!strings.Contains(err.Error(), "dismissed it") {
+		t.Fatalf("stuck dialog error=%v, want 'did not complete' plus 'dismissed it'", err)
+	}
+	if countKey(tmux.keys, "Escape") != 1 || tmux.dialog || tmux.respawn != "" {
+		t.Fatalf("dialog cleanup: keys=%v dialogStillOpen=%t respawn=%q", tmux.keys, tmux.dialog, tmux.respawn)
+	}
+}

@@ -78,8 +78,8 @@ type InjectOutput struct {
 	LiteralChunks int    `json:"literal_chunks,omitempty"`
 }
 
-// SelfCompactInput safely compacts the requesting chat and carries the turns
-// that must resume work after compaction. Focus is retained in the tool-call
+// SelfCompactInput safely compacts the requesting chat and carries the ONE
+// turn that resumes work after compaction. Focus is retained in the tool-call
 // history for the compactor AND composed onto the delivered command
 // ("/compact " + focus) — the single-line, control-character-free
 // validation is exactly what makes that concatenation safe. A target known
@@ -89,11 +89,15 @@ type InjectOutput struct {
 // See chatSelfCompact for the full reasoning and what would retire it.
 //
 // Focus and Then are the ONLY things that survive. A caller holding durable
-// state of its own — a ledger, a handoff file, a chat-specific memory — writes
+// state of its own — a ledger, a state file, a chat-specific memory — writes
 // to it before calling, because nothing here can carry that state across.
+//
+// Then is a single string by the operator's rule — one steer, never a list.
+// The engine still takes a slice (chat_inject legitimately chains several);
+// this tool is the one caller that must not.
 type SelfCompactInput struct {
-	Focus string   `json:"focus" jsonschema:"single-line compact focus authored after inspecting the requesting chat's current context and in-flight work"`
-	Then  []string `json:"then" jsonschema:"mandatory post-compact steers, delivered in order one settled turn apart; no steer may start with /compact"`
+	Focus string `json:"focus" jsonschema:"single-line compact focus authored after inspecting the requesting chat's current context and in-flight work"`
+	Then  string `json:"then" jsonschema:"the ONE mandatory post-compact steer, typed into the reborn chat once the compaction settles — a single string, never a list; must not start with /compact"`
 }
 
 // KeysInput requests tmux keypresses for one resolved live chat. Keys are

@@ -41,6 +41,7 @@ Precise AND warm: bad news arrives with a hand on the shoulder, not a slap ("Wel
 - The **Explore** agent is disabled on this fleet — route broad searches to the **tracer** agent.
 - NEVER change the active account — Claude seat, git identity, cloud login, any credential — without the user's explicit permission in the current turn.
 - Use pfm MCP over CLI
+- Milestone = compact point: at every milestone write what must survive into its durable file, then `chat_self_compact` with a one-line focus and exactly ONE steer, and end the turn. `/handoff` and `/reload` are the user's commands — never fire them yourself; "compact yourself" is never a handoff.
 
 # Model Selection
 

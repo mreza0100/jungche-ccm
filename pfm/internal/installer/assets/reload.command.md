@@ -34,15 +34,20 @@ to reboot a DIFFERENT chat from outside it, which is not what this command is fo
 
 **Typed by the human, `/reload …` never reaches the model** — the `pfm internal reload-intercept`
 UserPromptSubmit hook executes it and blocks the prompt (Claude seats only; a Codex seat still
-routes through this body). This body is for the model's OWN calls: limit rescue, `/handoff`, a
-config change that needs a fresh session.
+routes through this body). This body is for the model's OWN calls — limit rescue, a config change
+that needs a fresh session — and for the body of a user-fired `/handoff`. Neither is ever the
+answer to "compact yourself": that is `chat_self_compact`, which keeps the session.
 
 With no flags, the current engine account is preserved. The chat auto-exits and reboots in the
 same window and pane; split siblings are untouched. With `--then`, the script waits for the reborn
 chat's input box, then types and submits the prompt.
 
-After running it, reply with ONE short line and END YOUR TURN immediately — a turn still running
-when the `/exit` lands is force-killed after 20s, and in-flight sub-agents die with it.
+After running it, reply with ONE short line and END YOUR TURN immediately. The worker types `/exit`
+only once your turn has ended (it holds up to two minutes for the pane to go idle, then refuses
+without typing), confirms Claude Code's "background work is running" exit dialog itself, and if
+the chat still has not exited after 20s it takes back whatever it put on the screen — the dialog
+or the typed `/exit` — leaves the chat running, and says so in `reload-<socket>.log`. In-flight
+sub-agents, background shells, and session crons die with the reboot.
 
 ## Cache-only reboot — `/reload --1h on|off`
 

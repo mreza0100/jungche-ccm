@@ -16,7 +16,7 @@ func TestSelfCompactAmbientRefusalNamesAWorkingRemedy(t *testing.T) {
 	protocol := connectInMemory(t, service.Server())
 	refused := callToolWithMeta[InjectOutput](
 		t, protocol.clientSession, "chat_self_compact", nil,
-		map[string]any{"focus": "hold the goal", "then": []string{"resume the wave"}},
+		map[string]any{"focus": "hold the goal", "then": "resume the wave"},
 	)
 	if refused.Status != "not_found" || refused.Code != inject.CodeUnknown {
 		t.Fatalf("metadata-free chat_self_compact = %+v", refused)

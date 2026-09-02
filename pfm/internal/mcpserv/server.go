@@ -29,7 +29,7 @@ const (
 // that pins it read the same string. The STOP clause is not decoration: the
 // --then waiter recognises the compaction turn by watching this pane yield and
 // then go busy again, and a caller that keeps working erases that boundary.
-const selfCompactDescription = "The \"give yourself a compact\" verb — when the operator says to compact yourself, take a compact at a milestone, or self-compact, this is the tool. Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state or handoff file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the steers are the only things that cross the boundary. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended. END THE TURN IMMEDIATELY after this call returns: run no further tool, start no further work, just report that compaction is queued. The steers are delivered by a waiter that identifies the compaction turn by watching this pane, so a caller that keeps working after calling this makes its own turn indistinguishable from the compaction and the steer lands beside the compaction instead of after it."
+const selfCompactDescription = "The ONLY answer to \"compact yourself\", \"give yourself a compact\", \"self-compact\", or \"compact at this milestone\" — never /handoff, never /reload, never typing /compact by hand: those reboot or replace the pane; this compacts the requesting chat in place after its active turn settles and KEEPS the session (crons, sub-agents, and the pane all survive). Inspect your current screen, author a single-line focus, and give exactly ONE post-compact steer in `then` — one string, never a list — that must not start with /compact; the waiter types it into the reborn chat so it resumes unattended. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the one steer are the only things that cross the boundary. END THE TURN IMMEDIATELY after this call returns: run no further tool, start no further work, just report that compaction is queued. The steer is delivered by a waiter that identifies the compaction turn by watching this pane, so a caller that keeps working after calling this makes its own turn indistinguishable from the compaction and the steer lands beside the compaction instead of after it."
 
 var chatToolNames = []string{
 	"chat_branch", "chat_capture", "chat_find", "chat_goal", "chat_inject",
@@ -100,7 +100,7 @@ func newService(version string, backend *backend) *Service {
 		Name:    "pfm",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "The local pfm chat fleet: inspect, resolve, capture, search, read/load complete file sets, branch, compile/fire goals, name, kill, reload, save, and safely inject. Routing for common asks — any phrasing of delivering text to another chat (\"send\", \"tell\", \"message\", \"reply to\", \"inject into\" chat X) is chat_inject; \"give yourself a compact\" / \"self-compact at this milestone\" is chat_self_compact (single-line focus plus mandatory continuation steers); \"who are you / what is your address\" is chat_whoami; \"what chats are running\" is chat_ls; \"spawn/start a new chat\" is chat_new. Excluded interactive/plumbing verbs: end, modal, watch, stream, recover, and history.",
+		Instructions: "The local pfm chat fleet: inspect, resolve, capture, search, read/load complete file sets, branch, compile/fire goals, name, kill, reload, save, and safely inject. Routing for common asks — any phrasing of delivering text to another chat (\"send\", \"tell\", \"message\", \"reply to\", \"inject into\" chat X) is chat_inject; \"give yourself a compact\" / \"self-compact at this milestone\" is chat_self_compact (single-line focus plus exactly ONE continuation steer — never a handoff or reload); \"who are you / what is your address\" is chat_whoami; \"what chats are running\" is chat_ls; \"spawn/start a new chat\" is chat_new. Excluded interactive/plumbing verbs: end, modal, watch, stream, recover, and history.",
 	})
 	service := &Service{server: server, backend: backend}
 	service.register()
@@ -515,10 +515,17 @@ func (service *Service) chatSelfCompact(
 	if caller.valid && caller.row.Engine == pfmengine.Codex {
 		message = "/compact"
 	}
+	// One steer, by the operator's rule. The engine's own guards still run on
+	// it — a steer is required, and it must not start with /compact — and a
+	// blank string reaches them as no steer at all rather than as an empty one.
+	var then []string
+	if steer := strings.TrimSpace(input.Then); steer != "" {
+		then = []string{steer}
+	}
 	result, err := injector.ScheduleAfterCurrentTurn(ctx, inject.Request{
 		Target:  "self",
 		Message: message,
-		Then:    input.Then,
+		Then:    then,
 	})
 	// The stop notice is appended by the engine itself
 	// (inject.SelfCompactStopNotice), which is the single writer for every
