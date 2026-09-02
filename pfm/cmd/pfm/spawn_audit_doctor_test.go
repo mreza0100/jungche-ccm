@@ -194,7 +194,7 @@ func TestResolveClaudeProcessMatchesVersionNamedBinary(t *testing.T) {
 	proc := fakeProcFS{
 		cmdlines: map[int][]string{
 			100: {"zsh"},
-			101: {"/home/user/.local/share/claude/versions/2.1.250", "--system-prompt-file", "/p.md"},
+			101: {"/srv/seat/.local/share/claude/versions/2.1.250", "--system-prompt-file", "/p.md"},
 		},
 		parents: map[int]int{101: 100},
 	}
@@ -208,7 +208,7 @@ func TestResolveClaudeProcessMatchesVersionNamedBinary(t *testing.T) {
 	if pid != 101 {
 		t.Fatalf("resolved pid = %d, want 101", pid)
 	}
-	if len(argv) == 0 || argv[0] != "/home/user/.local/share/claude/versions/2.1.250" {
+	if len(argv) == 0 || argv[0] != "/srv/seat/.local/share/claude/versions/2.1.250" {
 		t.Fatalf("resolved argv = %q", argv)
 	}
 }

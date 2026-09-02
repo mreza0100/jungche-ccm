@@ -1,8 +1,8 @@
 # Scaffold-and-own: `pfm init` deploys project templates ONCE and pins per-file baselines; local files own truth; `pfm update` reports upstream template diffs for reviewed, hand-applied adoption
 
-Status: REFINED · Ruled: 2026-09-01 by Reza · Project: pfm + templates + docs · One worktree, NO train · Written by the Intuita main session on Reza's order; P:BUILDER executes.
+Status: REFINED · Ruled: 2026-09-01 by the owner · Project: pfm + templates + docs · One worktree, NO train · Written by the first adopter's main session on the owner's order; P:BUILDER executes.
 
-**SUPERSEDES** the regeneration/override architecture of `2026-08-23-blueprint-compiler.md` (its rulings 1–2 are re-ruled by Reza 2026-09-01). What DIES from that spec: the `pfm professor build` pipeline (M1), the override-engine v2 middleware, `.professor/overrides/**`, `placeholders.json`/`templates.json`/directive machinery, project re-materialization on update (M2's build half), repo inversion (M3), and M4's demotion/`global-build.json` remainder. What STANDS, untouched: the engine registry (`pfm/internal/engine/`), machine-global symlink registration (`codexgen/globallink.go`, landed @ `5b87cf3`), the two-scope store layout (`templates/{global,project}` — landed), `pfm codex build|check` as the engine-mirror compiler reading LOCAL files as source, the `/pfm:install` interview concept (implemented as the blueprint `docs/SETUP.md` § Install interview — no slash command ships; ruled by W:CCC 2026-09-01), and `pfm update`'s existing machine half (source-clone semver update → binary rebuild → `install --yes` → doctor).
+**SUPERSEDES** the regeneration/override architecture of `2026-08-23-blueprint-compiler.md` (its rulings 1–2 are re-ruled by the owner 2026-09-01). What DIES from that spec: the `pfm professor build` pipeline (M1), the override-engine v2 middleware, `.professor/overrides/**`, `placeholders.json`/`templates.json`/directive machinery, project re-materialization on update (M2's build half), repo inversion (M3), and M4's demotion/`global-build.json` remainder. What STANDS, untouched: the engine registry (`pfm/internal/engine/`), machine-global symlink registration (`codexgen/globallink.go`, landed @ `5b87cf3`), the two-scope store layout (`templates/{global,project}` — landed), `pfm codex build|check` as the engine-mirror compiler reading LOCAL files as source, the `/pfm:install` interview concept (implemented as the blueprint `docs/SETUP.md` § Install interview — no slash command ships; ruled by W:CCC 2026-09-01), and `pfm update`'s existing machine half (source-clone semver update → binary rebuild → `install --yes` → doctor).
 
 ## The ruling (2026-09-01, verbatim intent)
 
@@ -116,7 +116,7 @@ professor: /path/to/project  blueprint ff7460e → 1a2b3c4
 
 ## Out of scope (named so nobody "helpfully" does it)
 
-- Intuita's own `.professor/manifest.json` `files`/`_note` cleanup and its baseline seeding — the Intuita session does that at its next `/pfm` pass, not this build.
+- The first adopter's own `.professor/manifest.json` `files`/`_note` cleanup and its baseline seeding — the adopter's session does that at its next `/pfm` pass, not this build.
 - `templates/refresh-map.json` / `scripts/refresh-scope.sh` — the blueprint's own release-time live↔template equalizer; untouched here.
 - Global `.toml` twins, opencode, themes, skills `sources.json` law — unchanged.
 - Any UI/interactive merge tool — the report is the UI.

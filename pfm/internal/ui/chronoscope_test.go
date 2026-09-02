@@ -325,7 +325,7 @@ func TestNavigatorSelectionCyclesAndReconciles(t *testing.T) {
 	hud := down2.cosmosSelectionHUD()
 	if !strings.Contains(hud, "RR") || !strings.Contains(hud, "codex") || !strings.Contains(hud, "alpha") ||
 		!strings.Contains(hud, "in 1") || !strings.Contains(hud, "out 0") {
-		t.Fatalf("cosmosSelectionHUD() = %q, missing label/engine/home/in/out", hud)
+		t.Fatalf("cosmosSelectionHUD() = %q, missing one of label, engine, home, in, out", hud)
 	}
 
 	newSnapshot := fixtureSnapshot(120)
