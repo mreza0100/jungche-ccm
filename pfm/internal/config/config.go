@@ -72,6 +72,66 @@ type ClaudePrefs struct {
 	// ~32%-cheaper 1-hour TTL (ENABLE_PROMPT_CACHING_1H), false the 5-minute
 	// TTL. Defaults true — see decodeClaudePrefs and defaultsWithMCPServers.
 	Cache1H bool
+	// CompactNudge governs the UserPromptSubmit reminder that a self-compact
+	// is due at a context milestone — see decodeClaudePrefs for the defaults.
+	CompactNudge CompactNudge
+}
+
+// CompactNudge is the milestone reminder's policy: whether the hook speaks at
+// all, the context percentage it first speaks at, and how many points of
+// context pass between reminders. A reminder, never an order — the hook only
+// says the milestone is here.
+type CompactNudge struct {
+	Enabled bool
+	Start   int
+	Step    int
+}
+
+// DefaultCompactNudge is the fleet's milestone policy when the file says
+// nothing: on, first at 35% of context, then every 10 points.
+func DefaultCompactNudge() CompactNudge {
+	return CompactNudge{Enabled: true, Start: 35, Step: 10}
+}
+
+// applyCompactNudge overlays the fields a file actually set onto base — the
+// resolved top-level policy for an account, the default for the top level —
+// so an account that touched only step keeps the file's enabled and start.
+func applyCompactNudge(base CompactNudge, raw *rawCompactNudge, path, scope string, index int) (CompactNudge, error) {
+	if raw == nil {
+		return base, nil
+	}
+	result := base
+	if raw.Enabled != nil {
+		result.Enabled = *raw.Enabled
+	}
+	if raw.Start != nil {
+		if *raw.Start < 1 || *raw.Start > 100 {
+			return CompactNudge{}, fmt.Errorf("config %s: %s.compactNudge.start must be 1..100 (a context percentage), got %d", path, configScope(scope, index), *raw.Start)
+		}
+		result.Start = *raw.Start
+	}
+	if raw.Step != nil {
+		if *raw.Step < 1 || *raw.Step > 100 {
+			return CompactNudge{}, fmt.Errorf("config %s: %s.compactNudge.step must be 1..100 (context points between reminders), got %d", path, configScope(scope, index), *raw.Step)
+		}
+		result.Step = *raw.Step
+	}
+	return result, nil
+}
+
+func recordCompactNudgeSources(sources map[string]Source, prefix string, raw *rawCompactNudge) {
+	if raw == nil {
+		return
+	}
+	if raw.Enabled != nil {
+		sources[prefix+".compactNudge.enabled"] = SourceFile
+	}
+	if raw.Start != nil {
+		sources[prefix+".compactNudge.start"] = SourceFile
+	}
+	if raw.Step != nil {
+		sources[prefix+".compactNudge.step"] = SourceFile
+	}
 }
 
 // Claude is retained as an alias for callers that used the v1 public shape.
@@ -190,10 +250,17 @@ type rawAccount struct {
 }
 
 type rawClaude struct {
-	PermissionMode *string `json:"permissionMode,omitempty"`
-	Binary         *string `json:"binary,omitempty"`
-	Cache1H        *bool   `json:"cache1h,omitempty"`
-	SystemPrompt   *string `json:"systemPrompt,omitempty"`
+	PermissionMode *string          `json:"permissionMode,omitempty"`
+	Binary         *string          `json:"binary,omitempty"`
+	Cache1H        *bool            `json:"cache1h,omitempty"`
+	SystemPrompt   *string          `json:"systemPrompt,omitempty"`
+	CompactNudge   *rawCompactNudge `json:"compactNudge,omitempty"`
+}
+
+type rawCompactNudge struct {
+	Enabled *bool `json:"enabled,omitempty"`
+	Start   *int  `json:"start,omitempty"`
+	Step    *int  `json:"step,omitempty"`
 }
 
 type rawOpenCode struct {
@@ -361,7 +428,7 @@ func defaultsWithMCPServers(
 		AccountSkips:     accountSkips,
 		CodexAccounts:    codexAccounts,
 		OpencodeAccounts: opencodeAccounts,
-		Claude:           Claude{PermissionMode: PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary, Cache1H: true},
+		Claude:           Claude{PermissionMode: PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary, Cache1H: true, CompactNudge: DefaultCompactNudge()},
 		Codex:            Codex{Yolo: true, Binary: pfmengine.MustLookup(pfmengine.Codex).Binary},
 		OpenCode:         OpenCode{Binary: pfmengine.MustLookup(pfmengine.Opencode).Binary},
 		MCPServers:       servers,
@@ -607,6 +674,12 @@ func loadWithMCPServers(
 			result.Claude.SystemPrompt = prefs.SystemPrompt
 			result.Sources[engineConfigKey(pfmengine.Claude, "systemPrompt")] = SourceFile
 		}
+		applied, err := applyCompactNudge(result.Claude.CompactNudge, raw.Claude.CompactNudge, result.Path, pfmengine.MustLookup(pfmengine.Claude).LongName, -1)
+		if err != nil {
+			return Config{}, err
+		}
+		result.Claude.CompactNudge = applied
+		recordCompactNudgeSources(result.Sources, pfmengine.MustLookup(pfmengine.Claude).LongName, raw.Claude.CompactNudge)
 	}
 	if raw.Accounts != nil {
 		accounts, err := validateAccounts(*raw.Accounts, home)
@@ -640,6 +713,14 @@ func loadWithMCPServers(
 				} else {
 					result.Sources[fmt.Sprintf("accounts[%d].claude.cache1h", index)] = SourceFile
 				}
+				// Same inheritance for the nudge policy: seeded from the
+				// resolved top level, then only the fields this account set.
+				applied, err := applyCompactNudge(result.Claude.CompactNudge, value.Claude.CompactNudge, result.Path, "accounts", index)
+				if err != nil {
+					return Config{}, err
+				}
+				prefs.CompactNudge = applied
+				recordCompactNudgeSources(result.Sources, fmt.Sprintf("accounts[%d].claude", index), value.Claude.CompactNudge)
 				result.Accounts[index].Claude = &prefs
 			}
 			if value.Codex != nil {
@@ -1002,6 +1083,7 @@ func (config Config) EffectiveClaude(id int) ClaudePrefs {
 		// unset account-level Cache1H with the resolved top-level value, so
 		// there is no false-zero ambiguity left to guard against here.
 		result.Cache1H = account.Claude.Cache1H
+		result.CompactNudge = account.Claude.CompactNudge
 		if account.Claude.SystemPrompt != "" {
 			result.SystemPrompt = account.Claude.SystemPrompt
 		}
@@ -1379,6 +1461,11 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 			"permissionMode": config.Claude.PermissionMode,
 			"binary":         config.Claude.Binary,
 			"cache1h":        config.Claude.Cache1H,
+			"compactNudge": map[string]any{
+				"enabled": config.Claude.CompactNudge.Enabled,
+				"start":   config.Claude.CompactNudge.Start,
+				"step":    config.Claude.CompactNudge.Step,
+			},
 		},
 		codexName: codexValue,
 		"mcp": map[string]any{

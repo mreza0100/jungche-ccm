@@ -153,8 +153,8 @@ tab is not gone — it is a resumable transcript nobody can find.
   answer, with named exit codes: `0 done · 2 usage · 3 chat dead · 4 no such chat · 5 answer
 timed out · 6 message not delivered`.
 - **Reload without losing the conversation.** `pfm chat reload` reboots a running chat in place
-  onto another account — same pane, same history, new billing identity. With `--then`, a chat
-  running low on budget swaps itself and hands itself the baton unattended. Typed by a human,
+  onto another account — same pane, same history, new billing identity. With `--then`, a chat the
+  user sends to another account hands itself the baton unattended. Typed by a human,
   `/reload …` runs through a hook without spending a model turn; `--fresh` starts a new
   conversation in the same pane, `--fresh --hide` also hides the one left behind, and the
   `/handoff` skill uses that pair to carry a full context across and retire the chat it came from.

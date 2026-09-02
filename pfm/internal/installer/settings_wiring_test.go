@@ -86,6 +86,7 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 		{"PreToolUse", "Agent|Task", prefix + " internal explore-deny"},
 		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
 		{"UserPromptSubmit", "", prefix + " internal reload-intercept"},
+		{"UserPromptSubmit", "", prefix + " internal compact-nudge"},
 		{"UserPromptSubmit", "", prefix + " usage-hook"},
 		{"SessionStart", "", prefix + " internal launcher-repair"},
 		{"SessionEnd", "", prefix + " internal clear-kill"},
@@ -97,8 +98,8 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 			t.Fatalf("%s %s matcher count=%d, want 1\n%s", hook.event, hook.command, got, updated)
 		}
 	}
-	if len(owned) != 6 {
-		t.Fatalf("owned hooks=%d, want 6: %#v", len(owned), owned)
+	if len(owned) != 7 {
+		t.Fatalf("owned hooks=%d, want 7: %#v", len(owned), owned)
 	}
 
 	withManual := append([]byte(`{"hooks":{"PreToolUse":[{"matcher":"Agent|Task","hooks":[{"type":"command","command":"operator-keep"}]}]}}`), '\n')
@@ -352,8 +353,8 @@ func TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings(t *testing.T)
 	if changed {
 		t.Fatalf("an already fully-wired settings.json was unexpectedly rewritten")
 	}
-	if len(owned) != 6 {
-		t.Fatalf("owned hooks=%d, want 6 — every already-present expected hook must be claimed: %#v", len(owned), owned)
+	if len(owned) != 7 {
+		t.Fatalf("owned hooks=%d, want 7 — every already-present expected hook must be claimed: %#v", len(owned), owned)
 	}
 	for key, count := range owned {
 		if count != 1 {
@@ -433,6 +434,7 @@ func TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent(t *testing.
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: prefix + " internal explore-deny"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal epic-inject"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal reload-intercept"},
+		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal compact-nudge"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " usage-hook"},
 		{Event: "SessionStart", Matcher: "", Command: prefix + " internal launcher-repair"},
 		{Event: "SessionEnd", Matcher: "", Command: prefix + " internal clear-kill"},
@@ -702,6 +704,7 @@ func TestDreamHookPauseRetiresEveryCopyAndPreservesNeighbors(t *testing.T) {
 	for _, command := range []string{
 		pfm + " internal explore-deny",
 		pfm + " internal epic-inject",
+		pfm + " internal compact-nudge",
 		pfm + " internal launcher-repair",
 	} {
 		if got := hookCommandCount(t, secondary, "", command); got != 1 {
@@ -746,6 +749,7 @@ func TestDreamHookPauseRetiresEveryCopyAndPreservesNeighbors(t *testing.T) {
 		pfm + " dream hook nudge",
 		pfm + " internal explore-deny",
 		pfm + " internal epic-inject",
+		pfm + " internal compact-nudge",
 		pfm + " internal launcher-repair",
 	} {
 		if got := hookCommandCount(t, secondary, "", command); got != 0 {

@@ -302,10 +302,10 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("install changed operator bb.md: %q", content)
 	}
 	assertLink(t, filepath.Join(config, "commands", "reload.md"), filepath.Join(managed, "reload.command.md"))
-	// T3: the staged /reload command's frontmatter description is
-	// reload.Usage itself, folded to one line — never the unrendered
-	// {{RELOAD_USAGE}} token — so the picker shows the human exactly the
-	// flags reload.Run accepts.
+	// T3: the staged /reload command's frontmatter description opens with
+	// the USER-ONLY law and then carries reload.Usage itself, folded to one
+	// line — never the unrendered {{RELOAD_USAGE}} token — so the picker
+	// shows the human exactly the flags reload.Run accepts.
 	reloadMD := readFixture(t, filepath.Join(config, "commands", "reload.md"))
 	if strings.Contains(reloadMD, "{{RELOAD_USAGE}}") {
 		t.Fatalf("reload command asset kept its unrendered token:\n%s", reloadMD)
@@ -324,8 +324,10 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		strings.TrimSuffix(strings.TrimPrefix(descriptionLine, "description: '"), "'"),
 		"''", "'",
 	)
-	if wantDescription := foldReloadUsage(reload.Usage); gotDescription != wantDescription {
-		t.Fatalf("reload description = %q, want the folded usage line %q", gotDescription, wantDescription)
+	wantDescription := "USER-ONLY — the user types /reload; never run this without the user's permission. " +
+		foldReloadUsage(reload.Usage)
+	if gotDescription != wantDescription {
+		t.Fatalf("reload description = %q, want the USER-ONLY law plus the folded usage line %q", gotDescription, wantDescription)
 	}
 	// T4: /handoff is a global skill, linked the same way /reload is a
 	// global command.

@@ -357,6 +357,9 @@ func runInternal(
 	if len(args) != 0 && args[0] == "reload-intercept" {
 		return runReloadIntercept(os.Stdin, stderr, runtime)
 	}
+	if len(args) != 0 && args[0] == "compact-nudge" {
+		return runCompactNudge(os.Stdin, stdout, stderr, runtime)
+	}
 	if len(args) != 0 && args[0] == "reload-run" {
 		return runChatReloadWorkerWithRuntime(args[1:], os.Stdout, stderr, runtime)
 	}

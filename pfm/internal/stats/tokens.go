@@ -32,7 +32,17 @@ type tokenCacheEntry struct {
 	generation   uint64
 	fileInfo     os.FileInfo
 	rewriteGuard []byte
+	// countedMessages remembers the ids of the assistant messages already
+	// added to claudeTokens. Claude writes one record per content block of a
+	// message and every record repeats the same usage block, so the id — not
+	// the record — is the unit of counting. A short ring is enough: a
+	// message's records are written together.
+	countedMessages []string
 }
+
+// countedMessageRing bounds countedMessages; a message never spans more
+// records than this between its first and last block.
+const countedMessageRing = 16
 
 type tokenMeasure struct {
 	total      int64
@@ -63,7 +73,9 @@ type tokenHistoryState struct {
 type tokenRecord struct {
 	Timestamp string `json:"timestamp"`
 	Type      string `json:"type"`
+	RequestID string `json:"requestId"`
 	Message   struct {
+		ID    string `json:"id"`
 		Usage struct {
 			InputTokens         int64 `json:"input_tokens"`
 			OutputTokens        int64 `json:"output_tokens"`
@@ -400,7 +412,7 @@ func applyTokenRecord(entry *tokenCacheEntry, line []byte) error {
 		}
 		total := usage.InputTokens + usage.OutputTokens +
 			usage.CacheReadTokens + usage.CacheCreationTokens
-		if total > 0 {
+		if total > 0 && !entry.messageCounted(record.Message.ID, record.RequestID) {
 			entry.claudeTokens += total
 			entry.known = true
 		}
@@ -416,4 +428,27 @@ func applyTokenRecord(entry *tokenCacheEntry, line []byte) error {
 		}
 	}
 	return nil
+}
+
+// messageCounted reports whether this assistant record's message was already
+// added, and records it when not. A record naming neither a message id nor a
+// request id is counted on its own — the shape every pre-id fixture has.
+func (entry *tokenCacheEntry) messageCounted(messageID, requestID string) bool {
+	key := messageID
+	if key == "" {
+		key = requestID
+	}
+	if key == "" {
+		return false
+	}
+	for _, seen := range entry.countedMessages {
+		if seen == key {
+			return true
+		}
+	}
+	entry.countedMessages = append(entry.countedMessages, key)
+	if len(entry.countedMessages) > countedMessageRing {
+		entry.countedMessages = entry.countedMessages[len(entry.countedMessages)-countedMessageRing:]
+	}
+	return false
 }

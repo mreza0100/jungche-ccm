@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/nudge"
 	"hostops/pfm/internal/statusline"
 	"hostops/pfm/internal/usagehook"
 )
@@ -64,6 +67,7 @@ func runStatuslineWithRuntime(
 		fmt.Fprintf(stderr, "pfm statusline: read input (fail-open): %v\n", err)
 		return 0
 	}
+	recordContextSample(raw, machine.Paths.SIDDir, stderr)
 	id, engineErr := statusline.EngineFromEnvironment(os.Getenv)
 	if errors.Is(engineErr, statusline.ErrNoEngineInEnvironment) {
 		id = statuslineHostEngine
@@ -101,6 +105,34 @@ func runStatuslineWithRuntime(
 		fmt.Fprintf(stderr, "pfm statusline: write output (fail-open): %v\n", err)
 	}
 	return 0
+}
+
+// recordContextSample persists the used-percentage Claude Code handed this
+// render, so the compact-nudge hook reads Claude Code's own number instead of
+// re-deriving a context window it cannot know (the transcript names the model,
+// never the window). Fail-open like the rest of the statusline: a sample that
+// cannot be written costs one reminder, never the status line.
+func recordContextSample(raw []byte, sidDir string, stderr io.Writer) {
+	var sample struct {
+		SessionID      string `json:"session_id"`
+		TranscriptPath string `json:"transcript_path"`
+		ContextWindow  struct {
+			UsedPercentage float64 `json:"used_percentage"`
+		} `json:"context_window"`
+	}
+	if err := json.Unmarshal(raw, &sample); err != nil {
+		return // Render reports malformed input itself
+	}
+	sessionID := strings.TrimSpace(sample.SessionID)
+	if sessionID == "" && sample.TranscriptPath != "" {
+		sessionID = strings.TrimSuffix(filepath.Base(sample.TranscriptPath), filepath.Ext(sample.TranscriptPath))
+	}
+	if sessionID == "" {
+		return
+	}
+	if err := nudge.RecordContext(sidDir, sessionID, int(sample.ContextWindow.UsedPercentage)); err != nil {
+		fmt.Fprintf(stderr, "pfm statusline: record context sample (fail-open): %v\n", err)
+	}
 }
 
 func canonicalAccountPath(path string) string {

@@ -268,3 +268,18 @@ func assertHookState(t *testing.T, results []HookProbeResult, hook ExpectedHook,
 	}
 	t.Fatalf("hook %s/%s has no %s result: %#v", hook.Target, hook.Name, state, results)
 }
+
+// The milestone reminder rides the same event and shape as epic-inject: one
+// UserPromptSubmit hook, empty matcher, the binary's own subcommand.
+func TestClaudeHookTemplatesIncludesCompactNudge(t *testing.T) {
+	home := filepath.Join("neutral", "home")
+	templates := claudeHookTemplates(home)
+	if got := commandByName(templates, "compact-nudge"); got != home+"/.local/bin/pfm internal compact-nudge" {
+		t.Fatalf("compact-nudge command=%q", got)
+	}
+	for _, template := range templates {
+		if template.Name == "compact-nudge" && (template.Event != "UserPromptSubmit" || template.Matcher != "") {
+			t.Fatalf("compact-nudge template=%#v, want UserPromptSubmit with an empty matcher", template)
+		}
+	}
+}

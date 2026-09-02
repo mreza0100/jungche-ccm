@@ -25,6 +25,7 @@ func updateSettings(
 	exploreDenyCommand := commandByName(expected, "explore-deny")
 	epicInjectCommand := commandByName(expected, "epic-inject")
 	reloadInterceptCommand := commandByName(expected, "reload-intercept")
+	compactNudgeCommand := commandByName(expected, "compact-nudge")
 	launcherRepairCommand := commandByName(expected, "launcher-repair")
 
 	changed := false
@@ -174,6 +175,10 @@ func updateSettings(
 		}
 		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), reloadInterceptCommand, "") {
 			appendHookWithMatcher(document, "UserPromptSubmit", "", reloadInterceptCommand)
+			changed = true
+		}
+		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), compactNudgeCommand, "") {
+			appendHookWithMatcher(document, "UserPromptSubmit", "", compactNudgeCommand)
 			changed = true
 		}
 		if normalizeExpectedHookTypes(document, expected) {

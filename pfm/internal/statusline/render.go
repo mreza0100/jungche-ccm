@@ -666,7 +666,7 @@ func cacheWindowSegment(runtime Runtime, now time.Time, transcriptPath string) s
 	key := fmt.Sprintf("%d:%d", info.ModTime().Unix(), info.Size())
 	cachedKey, anchor := readAnchorCache(cachePath)
 	if cachedKey != key {
-		anchor = newestUserTimestamp(transcriptPath)
+		anchor = cacheAnchor(transcriptPath)
 		encoded := "-"
 		if !anchor.IsZero() {
 			encoded = strconv.FormatInt(anchor.Unix(), 10)
@@ -702,7 +702,14 @@ func readAnchorCache(path string) (string, time.Time) {
 	return fields[0], time.Unix(epoch, 0)
 }
 
-func newestUserTimestamp(path string) time.Time {
+// cacheAnchor is the moment the prompt cache was last written or refreshed:
+// the newest main-chain record that WAS an API request or its reply — an
+// assistant record, or a user record other than a local slash command's
+// transcript echo. Local commands (/rc, /cost, the /compact receipt …) write
+// user-typed records without making a request, and anchoring on them showed a
+// cache twelve hours cold as "expired 9m ago". Sidechains refresh their own
+// cache, never the main chat's.
+func cacheAnchor(path string) time.Time {
 	for _, size := range []int64{65_536, 1_048_576} {
 		body, err := readTail(path, size)
 		if err != nil {
@@ -716,9 +723,20 @@ func newestUserTimestamp(path string) time.Time {
 				Type      string `json:"type"`
 				Sidechain bool   `json:"isSidechain"`
 				Timestamp string `json:"timestamp"`
+				Message   struct {
+					Content json.RawMessage `json:"content"`
+				} `json:"message"`
 			}
-			if json.Unmarshal(scanner.Bytes(), &record) != nil ||
-				record.Type != "user" || record.Sidechain || record.Timestamp == "" {
+			if json.Unmarshal(scanner.Bytes(), &record) != nil || record.Sidechain || record.Timestamp == "" {
+				continue
+			}
+			switch record.Type {
+			case "assistant":
+			case "user":
+				if localCommandRecord(record.Message.Content) {
+					continue
+				}
+			default:
 				continue
 			}
 			parsed, parseErr := time.Parse(time.RFC3339Nano, record.Timestamp)
@@ -731,6 +749,18 @@ func newestUserTimestamp(path string) time.Time {
 		}
 	}
 	return time.Time{}
+}
+
+// localCommandRecord recognises the transcript echo of a local slash command:
+// string content opening with one of Claude Code's local-command tags. Array
+// content is a real turn (tool results, content blocks) and always counts.
+func localCommandRecord(content json.RawMessage) bool {
+	var text string
+	if json.Unmarshal(content, &text) != nil {
+		return false
+	}
+	trimmed := strings.TrimSpace(text)
+	return strings.HasPrefix(trimmed, "<local-command-") || strings.HasPrefix(trimmed, "<command-name>")
 }
 
 func readTail(path string, size int64) ([]byte, error) {

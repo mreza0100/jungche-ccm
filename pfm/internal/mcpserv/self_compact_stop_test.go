@@ -48,13 +48,19 @@ func TestSelfCompactToolDescriptionIsExclusiveAndSingleSteer(t *testing.T) {
 	description := selfCompactDescription
 
 	for _, want := range []string{
-		"never /handoff",
-		"never /reload",
+		"nothing else",
 		"exactly ONE post-compact steer",
 		"KEEPS the session",
 	} {
 		if !strings.Contains(description, want) {
 			t.Fatalf("chat_self_compact description is missing %q\ngot: %s", want, description)
+		}
+	}
+	// The MCP surface describes itself only: which slash commands exist, and
+	// who may fire them, is those commands' own business.
+	for _, forbidden := range []string{"/handoff", "/reload"} {
+		if strings.Contains(description, forbidden) {
+			t.Fatalf("chat_self_compact description must not name %q\ngot: %s", forbidden, description)
 		}
 	}
 }

@@ -126,6 +126,7 @@ func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T)
 		for _, command := range []string{
 			home + "/.local/bin/pfm internal explore-deny",
 			home + "/.local/bin/pfm internal epic-inject",
+			home + "/.local/bin/pfm internal compact-nudge",
 		} {
 			if !strings.Contains(raw, command) {
 				t.Fatalf("%s missing installer hook %q", path, command)

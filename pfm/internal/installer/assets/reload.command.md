@@ -1,6 +1,6 @@
 ---
 name: reload
-description: '{{RELOAD_USAGE}}'
+description: 'USER-ONLY — the user types /reload; never run this without the user''s permission. {{RELOAD_USAGE}}'
 ---
 
 # `/reload [--account N] [--1h on|off] [--fresh [--hide]] [--then "<prompt>"]` — reboot this chat in place
@@ -21,7 +21,7 @@ used, map them to a flag first:
 | "account 2", "switch seats", "other account" | `--account 2` |
 | "then continue with X" | `--then "X"` |
 | "fresh", "new conversation", "start over here" | `--fresh` |
-| "fresh and hide the old one", "replace this chat", `/handoff` | `--fresh --hide` |
+| "fresh and hide the old one", "replace this chat" | `--fresh --hide` |
 | nothing in particular | no flags at all |
 
 `pfm chat reload cache off` is not a call — `cache` is not an argument, and the command will
@@ -34,9 +34,8 @@ to reboot a DIFFERENT chat from outside it, which is not what this command is fo
 
 **Typed by the human, `/reload …` never reaches the model** — the `pfm internal reload-intercept`
 UserPromptSubmit hook executes it and blocks the prompt (Claude seats only; a Codex seat still
-routes through this body). This body is for the model's OWN calls — limit rescue, a config change
-that needs a fresh session — and for the body of a user-fired `/handoff`. Neither is ever the
-answer to "compact yourself": that is `chat_self_compact`, which keeps the session.
+routes through this body). This body is for the calls the user asked the model to make — a limit
+rescue, a config change that needs a fresh session.
 
 With no flags, the current engine account is preserved. The chat auto-exits and reboots in the
 same window and pane; split siblings are untouched. With `--then`, the script waits for the reborn
@@ -64,18 +63,17 @@ is untouched and stays resumable from the picker. Add `--hide` and the conversat
 hidden from the picker instead (a permanent kill recorded once the reboot completes — never before,
 so a reload that fails leaves the live chat listed; `pfm chat unkill <id>` brings it back).
 `--hide` needs `--fresh`: a reload that resumes the same conversation cannot hide it. Pairs with
-`--then` for a handoff: reboot fresh, hide the chat being replaced, hand the reborn chat its
-first prompt — which is exactly what `/handoff` does.
+`--then`: reboot fresh, hide the chat being replaced, hand the reborn chat its first prompt.
 
-## Reloading yourself onto another account (limit rescue)
+## Reloading onto another account (limit rescue)
 
-When the current account's usage limit is nearly exhausted and work remains, invoke this yourself
-instead of stalling:
+When the user sends you to another account because the current one's usage limit is nearly
+exhausted and work remains:
 
 1. **Land in-flight work first** — sub-agents, workflows, and background tasks do NOT survive the
    reboot. Finish or checkpoint them; never reload mid-flight.
 2. **Pick a different configured account for the current engine** from `pfm config show`.
-3. **Reload with a handoff**:
+3. **Reload with a baton prompt**:
    `~/.local/bin/pfm chat reload --account <other-n> --then "Continue: <what you were doing + the next concrete step>"`
 4. One short line to the user (which account you moved to and why), end turn. The reborn you
    reads the `--then` prompt and continues on the fresh account's budget.

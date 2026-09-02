@@ -611,3 +611,54 @@ func writeStatsFixture(t *testing.T, proc string, systemTicks, processTicks uint
 		t.Fatal(err)
 	}
 }
+
+// Claude writes one transcript record per content block of an assistant
+// message — text, thinking, each tool_use — and every record repeats the
+// message's usage block verbatim. A live transcript measured 967 records for
+// 388 messages: summing per record inflated the lifetime tokens column, and
+// the per-minute rate derived from it, by 2.49×. Usage counts once per
+// message id (requestId when the id is absent); records with neither keep
+// counting individually, which is what every older fixture relies on.
+func TestSamplerCountsAMultiRecordAssistantMessageOnce(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	if err := os.MkdirAll(filepath.Join(proc, "pressure"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+
+	usageA := `"usage":{"input_tokens":100,"cache_read_input_tokens":200,"cache_creation_input_tokens":300,"output_tokens":400}`
+	path := filepath.Join(root, "split.jsonl")
+	transcript := strings.Join([]string{
+		`{"timestamp":"2026-09-02T10:00:00Z","type":"assistant","requestId":"req_A","message":{"id":"msg_A","content":[{"type":"thinking"}],` + usageA + `}}`,
+		`{"timestamp":"2026-09-02T10:00:01Z","type":"assistant","requestId":"req_A","message":{"id":"msg_A","content":[{"type":"text","text":"hi"}],` + usageA + `}}`,
+		`{"timestamp":"2026-09-02T10:00:02Z","type":"assistant","requestId":"req_A","message":{"id":"msg_A","content":[{"type":"tool_use"}],` + usageA + `}}`,
+		`{"timestamp":"2026-09-02T10:00:03Z","type":"user","message":{"role":"user","content":[{"type":"tool_result"}]}}`,
+		`{"timestamp":"2026-09-02T10:00:05Z","type":"assistant","requestId":"req_B","message":{"id":"msg_B","content":[{"type":"text"}],"usage":{"input_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":30,"output_tokens":40}}}`,
+		`{"timestamp":"2026-09-02T10:00:06Z","type":"assistant","requestId":"req_C","message":{"content":[{"type":"text"}],"usage":{"output_tokens":5}}}`,
+		`{"timestamp":"2026-09-02T10:00:07Z","type":"assistant","requestId":"req_C","message":{"content":[{"type":"tool_use"}],"usage":{"output_tokens":5}}}`,
+		`{"timestamp":"2026-09-02T10:00:08Z","type":"assistant","message":{"usage":{"output_tokens":1}}}`,
+		`{"timestamp":"2026-09-02T10:00:09Z","type":"assistant","message":{"usage":{"output_tokens":1}}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 2, 10, 1, 0, 0, time.UTC).UnixNano()
+	sampler := &Sampler{
+		ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1,
+		Clock: func() int64 { return now },
+	}
+	rows := []compose.Row{{Kind: compose.LiveClaude, Socket: "split-socket", Name: "split", Path: path, PanePIDs: []int{100}}}
+	snapshot, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// msg_A once (1000) + msg_B (100) + req_C once (5) + two id-less records (1 + 1).
+	if got := chatsBySocket(snapshot.Chats)["split-socket"]; !got.TokensKnown || got.TokenCount != 1107 {
+		t.Fatalf("split-message token accounting = %#v, want 1107 (each message counted once)", got)
+	}
+}

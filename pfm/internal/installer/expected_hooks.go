@@ -80,6 +80,7 @@ func claudeHookTemplates(home string) []ExpectedHook {
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: binary + " internal explore-deny", Name: "explore-deny"},
 		{Event: "UserPromptSubmit", Command: binary + " internal epic-inject", Name: "epic-inject"},
 		{Event: "UserPromptSubmit", Command: binary + " internal reload-intercept", Name: "reload-intercept"},
+		{Event: "UserPromptSubmit", Command: binary + " internal compact-nudge", Name: "compact-nudge"},
 	}
 }
 
