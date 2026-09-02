@@ -3,7 +3,7 @@ name: reload
 description: '{{RELOAD_USAGE}}'
 ---
 
-# `/reload [--account N] [--1h on|off] [--fresh] [--then "<prompt>"]` — reboot this chat in place
+# `/reload [--account N] [--1h on|off] [--fresh [--hide]] [--then "<prompt>"]` — reboot this chat in place
 
 Run this ONCE via the Bash tool — and make it your LAST action, the chat is about to exit:
 
@@ -21,6 +21,7 @@ used, map them to a flag first:
 | "account 2", "switch seats", "other account" | `--account 2` |
 | "then continue with X" | `--then "X"` |
 | "fresh", "new conversation", "start over here" | `--fresh` |
+| "fresh and hide the old one", "replace this chat", `/handoff` | `--fresh --hide` |
 | nothing in particular | no flags at all |
 
 `pfm chat reload cache off` is not a call — `cache` is not an argument, and the command will
@@ -51,11 +52,15 @@ be forced, never assumed). With no `--account` the chat KEEPS its current accoun
 is the pure "restart this chat on the 5m cache" move. Without `--1h`, an account reload preserves
 the chat's existing cache mode (a flagless elder counts as 1h, the default it actually runs).
 
-## Fresh conversation — `/reload --fresh`
+## Fresh conversation — `/reload --fresh [--hide]`
 
 `--fresh` reboots into a NEW session id in the same pane, account, and cwd — the old conversation
-is untouched and stays resumable from the picker. Pairs with `--then` for a handoff: reboot
-fresh, then hand the reborn chat its first prompt.
+is untouched and stays resumable from the picker. Add `--hide` and the conversation left behind is
+hidden from the picker instead (a permanent kill recorded once the reboot completes — never before,
+so a reload that fails leaves the live chat listed; `pfm chat unkill <id>` brings it back).
+`--hide` needs `--fresh`: a reload that resumes the same conversation cannot hide it. Pairs with
+`--then` for a handoff: reboot fresh, hide the chat being replaced, hand the reborn chat its
+first prompt — which is exactly what `/handoff` does.
 
 ## Reloading yourself onto another account (limit rescue)
 

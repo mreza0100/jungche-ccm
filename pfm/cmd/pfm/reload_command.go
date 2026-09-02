@@ -192,10 +192,13 @@ func runChatReloadWorkerWithRuntime(
 	}
 	var account, cacheOverride, sock, then string
 	fresh := false
+	hide := false
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "--fresh":
 			fresh = true
+		case "--hide":
+			hide = true
 		case "--then":
 			if index+1 >= len(args) {
 				fmt.Fprintln(stderr, "pfm chat reload: --then needs a prompt")
@@ -283,12 +286,19 @@ func runChatReloadWorkerWithRuntime(
 		fmt.Fprintf(stderr, "pfm chat reload: %v\n", err)
 		return 1
 	}
+	// leftBehind keeps the conversation's id past the --fresh blanking below:
+	// --hide acts on it, and only once Run has reported the reboot complete.
+	leftBehind := id
 	if fresh {
 		// transcript is kept: it still supplies the CWD below. Only the
 		// resumed session id is dropped, so claudeRun/codexRun omit
 		// --resume/resume and Result.Fresh (SessionID == "") reports true.
 		id = ""
-		fmt.Fprintln(stdout, "pfm chat reload: --fresh — the reborn chat starts a NEW conversation in this pane (the old one stays resumable)")
+		if hide {
+			fmt.Fprintln(stdout, "pfm chat reload: --fresh --hide — the reborn chat starts a NEW conversation in this pane; the one left behind is hidden from the picker once the reboot completes")
+		} else {
+			fmt.Fprintln(stdout, "pfm chat reload: --fresh — the reborn chat starts a NEW conversation in this pane (the old one stays resumable)")
+		}
 	}
 	cwd, err := reload.TranscriptCWD(transcript)
 	if err != nil {
@@ -341,6 +351,21 @@ func runChatReloadWorkerWithRuntime(
 	} else {
 		fmt.Fprintf(stdout, "pfm chat reload: respawned in place: %s %s\n", filepath.Base(socketPath), pane)
 	}
+	if fresh && hide {
+		// Only now: the old chat has /exited and the reborn one owns the
+		// pane. A reload that failed returned above, so a live chat is never
+		// hidden by the command that failed to replace it.
+		if leftBehind == "" {
+			fmt.Fprintln(stdout, "pfm chat reload: --hide — nothing to hide, the conversation left behind had no transcript yet")
+			return 0
+		}
+		hidden, err := hideReloadedConversation(context.Background(), runtime, engine, leftBehind, transcript, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm chat reload: rebooted fresh, but the conversation left behind is NOT hidden: %v — run: pfm chat kill %s\n", err, leftBehind)
+			return 1
+		}
+		fmt.Fprintf(stdout, "pfm chat reload: hid the conversation left behind (%s) — pfm chat unkill %s brings it back\n", hidden, hidden)
+	}
 	return 0
 }
 
@@ -356,6 +381,7 @@ func reloadSocketArgument(args []string) string {
 func validateReloadArgs(args []string) error {
 	account := false
 	fresh := false
+	hide := false
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "--fresh":
@@ -363,6 +389,11 @@ func validateReloadArgs(args []string) error {
 				return errors.New("fresh specified twice")
 			}
 			fresh = true
+		case "--hide":
+			if hide {
+				return errors.New("hide specified twice")
+			}
+			hide = true
 		case "--then", "--sock":
 			if index+1 >= len(args) {
 				return fmt.Errorf("%s needs a value", args[index])
@@ -398,6 +429,9 @@ func validateReloadArgs(args []string) error {
 			account = true
 		}
 	}
+	if hide && !fresh {
+		return errors.New("--hide needs --fresh — a reload that resumes the same conversation cannot hide it")
+	}
 	return nil
 }
 
@@ -428,6 +462,8 @@ func reloadArgumentHint(argument string) string {
 		suggestion = "did you mean --account N?"
 	case "fresh", "new", "restart", "reset":
 		suggestion = "did you mean --fresh?"
+	case "hide", "kill", "close", "forget":
+		suggestion = "did you mean --hide? (beside --fresh: hides the conversation left behind)"
 	case "then", "prompt", "continue":
 		suggestion = "did you mean --then \"prompt\"?"
 	case "sock", "socket", "chat", "target":
@@ -447,7 +483,7 @@ func positiveAccount(value string) (int, bool) {
 func reloadRequestedAccount(args []string) int {
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
-		case "--fresh":
+		case "--fresh", "--hide":
 			continue
 		case "--then", "--sock", "--1h":
 			index++
@@ -855,6 +891,48 @@ func resolveReloadCodexPaneBinding(
 		return "", fmt.Errorf("Codex pane binding for %s %s is not a valid thread id", filepath.Base(socketPath), pane)
 	}
 	return id, nil
+}
+
+// hideReloadedConversation records a permanent kill for the conversation a
+// `--fresh --hide` reload left behind, so the picker stops listing it as a
+// resumable row. It runs only AFTER reload.Run reported the reboot complete —
+// a failed reload leaves the OLD chat live in the pane, and a live chat must
+// never be hidden by the command that failed to replace it. The kill goes
+// through the same manager as `pfm chat kill <id>` (one writer for the killed
+// store, K3): the pane's socket vouches for the engine, so an id the index has
+// not caught up with is still hidden, and for Codex the rollout path lets an
+// unindexed lineage member resolve to its root the way the picker's own ⌃X
+// does. A permanent kill, never a /clear prompt baseline: the reborn pane's
+// first prompt must not resurrect the row it replaced. Returns the id the
+// kill was recorded under (the lineage root for Codex).
+func hideReloadedConversation(
+	ctx context.Context,
+	runtime commandRuntime,
+	engine pfmengine.ID,
+	id, transcript string,
+	stderr io.Writer,
+) (hidden string, err error) {
+	if id == "" {
+		return "", errors.New("hide needs the id of the conversation left behind")
+	}
+	database, manager, code := openKillManager(stderr, runtime)
+	if code != 0 {
+		return "", fmt.Errorf("open the fleet store to hide %s (exit %d, cause above)", id, code)
+	}
+	defer func() {
+		if closeErr := database.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close fleet store after hiding %s: %w", id, closeErr))
+		}
+	}()
+	rolloutPath := ""
+	if engine == pfmengine.Codex {
+		rolloutPath = transcript
+	}
+	target, err := manager.Kill(ctx, kill.Request{ID: id, Engine: engine, RolloutPath: rolloutPath})
+	if err != nil {
+		return "", fmt.Errorf("hide %s: %w", id, err)
+	}
+	return target.ID, nil
 }
 
 func findEngineTranscript(resolved paths.Values, machine pfmconfig.Config, engine pfmengine.ID, id string) (string, error) {

@@ -107,6 +107,33 @@ func TestReloadFreshFlag(t *testing.T) {
 	}
 }
 
+// --hide is --fresh's companion: the conversation a fresh reboot leaves
+// behind is hidden from the picker instead of lingering as a resumable row.
+// A bare flag, accepted once in either order beside --fresh, meaningless
+// without it (a reload that resumes the same conversation cannot hide it),
+// invisible to reloadRequestedAccount, and the bare word "hide" points at
+// the flag the same way "fresh" does.
+func TestReloadHideFlag(t *testing.T) {
+	if err := validateReloadArgs([]string{"--fresh", "--hide"}); err != nil {
+		t.Fatalf("--fresh --hide rejected: %v", err)
+	}
+	if err := validateReloadArgs([]string{"--hide", "--fresh"}); err != nil {
+		t.Fatalf("--hide --fresh rejected: %v — the two flags must be order-free", err)
+	}
+	if err := validateReloadArgs([]string{"--hide"}); err == nil || !strings.Contains(err.Error(), "--hide needs --fresh") {
+		t.Fatalf("--hide alone error=%v, want it to say \"--hide needs --fresh\"", err)
+	}
+	if err := validateReloadArgs([]string{"--fresh", "--hide", "--hide"}); err == nil || !strings.Contains(err.Error(), "hide specified twice") {
+		t.Fatalf("--hide --hide error=%v, want it to say \"hide specified twice\"", err)
+	}
+	if got := reloadRequestedAccount([]string{"--fresh", "--hide", "--account", "2"}); got != 2 {
+		t.Fatalf("account=%d, want 2 — --hide must not swallow the account flag that follows it", got)
+	}
+	if err := validateReloadArgs([]string{"--fresh", "hide"}); err == nil || !strings.Contains(err.Error(), "did you mean --hide?") {
+		t.Fatalf("bare word \"hide\" error=%v, want the --hide hint", err)
+	}
+}
+
 // The usage line is the last thing a confused caller reads, so it must carry
 // the two facts that were missing: every setting has a flag, and the socket
 // finds itself.
@@ -114,6 +141,8 @@ func TestReloadUsageTeachesTheFlagsAndTheSocketDefault(t *testing.T) {
 	for _, want := range []string{
 		"--account N",
 		"--1h on|off",
+		"--fresh",
+		"--hide",
 		"--then",
 		"--sock",
 		"detected automatically",

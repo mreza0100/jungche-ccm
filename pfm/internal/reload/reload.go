@@ -37,8 +37,9 @@ import (
 // verbatim into the `/reload` slash command's own description — the picker
 // shows the human exactly the flags this package's Run understands, never a
 // hand-maintained restatement that can drift from them.
-const Usage = "usage: pfm chat reload [--account N] [--1h on|off] [--fresh] [--then \"prompt\"] [--sock socket]\n" +
-	"       with no --sock, the calling chat's own pane is detected automatically"
+const Usage = "usage: pfm chat reload [--account N] [--1h on|off] [--fresh [--hide]] [--then \"prompt\"] [--sock socket]\n" +
+	"       with no --sock, the calling chat's own pane is detected automatically;\n" +
+	"       --hide (with --fresh) hides the conversation left behind from the picker"
 
 type Pane struct {
 	ID          string
