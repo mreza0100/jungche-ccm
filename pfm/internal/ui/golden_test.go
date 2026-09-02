@@ -331,15 +331,15 @@ func cosmosGoldenSnapshot(width int, noSky bool) Snapshot {
 	return snapshot
 }
 
-// cosmosGoldenSnapshotSeeded is cosmosGoldenSnapshot's seedLive=true sibling
-// — the live-build shape (ui/model.go's own BuildCosmos call), not the
-// replay shape every other cosmos golden above pins. It renders through the
-// SAME fixture rows and the SAME cosmosGoldenEvents ledger, so the only
+// cosmosGoldenSnapshotSeeded is cosmosGoldenSnapshot's live=true sibling —
+// the live-build shape (ui/model.go's own BuildCosmos call), not the replay
+// shape every other cosmos golden above pins. It renders through the SAME
+// fixture rows and the SAME cosmosGoldenEvents ledger, so the only
 // difference from ui_cosmos_80.ansi is the seeded node: fixtureSnapshot's
 // row[2] (LiveSplit, "🚀🧭🛠️📦🧪✨ fleet") is never a sender or receiver in
-// cosmosGoldenEvents, so under seedLive=false it renders as no node at all —
+// cosmosGoldenEvents, so under live=false it renders as no node at all —
 // exactly the traffic-free-live-row-is-absent law this change replaced. With
-// seedLive=true it must appear on its home ring with zero edges.
+// live=true it must appear on its home ring with zero edges.
 func cosmosGoldenSnapshotSeeded(width int) Snapshot {
 	snapshot := fixtureSnapshot(width)
 	snapshot.NoSky = true
@@ -411,7 +411,7 @@ func cosmosGoldenModel(width int) Model {
 }
 
 // cosmosSeededGoldenModel renders cosmosGoldenSnapshotSeeded: the same
-// no-sky cosmos as cosmosGoldenModel, but built with seedLive=true, so the
+// no-sky cosmos as cosmosGoldenModel, but built with live=true, so the
 // quiet LiveSplit row (fixtureSnapshot's row[2], never named by
 // cosmosGoldenEvents) now draws as a zero-edge node on its own ring instead
 // of being absent.

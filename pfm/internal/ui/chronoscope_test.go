@@ -152,11 +152,12 @@ func TestChronoscopePlayAdvancesAtSixtyTimesAndSnapsToLive(t *testing.T) {
 
 // U5: TestChronoscopeReplayRendersADeadChatAsAGhostNotAnAlarm pins replay
 // death honesty (cosmos.go's drawCosmosUniverse Dead branch, and
-// applyCosmosGraph's doc comment): a row Killed right now, with ledger
-// activity in the past, is dropped from the LIVE graph (never witnessed
-// alive by this model, so applyCosmosGraph drops it as unwitnessed) but
-// still renders — dim and static, never the alarm blink — when the
-// chronoscope is scrubbed back to when it was talking.
+// compose.BuildCosmos's own live-drop doc comment): a row Killed right now,
+// with ledger activity in the past, is dropped from the LIVE graph by
+// BuildCosmos(live=true) itself — the exact shape every real caller builds
+// model.cosmos from (cmd/pfm/pipeline.go, ui/model.go's own refresh) — but
+// still renders — dim and static, never the removed alarm blink — when the
+// chronoscope is scrubbed back to when it was talking, cut with live=false.
 func TestChronoscopeReplayRendersADeadChatAsAGhostNotAnAlarm(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	snapshot.NoSky = false // the sky must be ON: the ghost rule must hold even then
@@ -170,7 +171,7 @@ func TestChronoscopeReplayRendersADeadChatAsAGhostNotAnAlarm(t *testing.T) {
 		SenderUUID: rows[0].ID, Target: rows[1].Name, ReceiverSocket: rows[1].Socket,
 		Message: "dying words",
 	}
-	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, []shared.CommsEvent{oldEvent}, fixtureNowNS, false)
+	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, []shared.CommsEvent{oldEvent}, fixtureNowNS, true)
 
 	model := NewModel(snapshot)
 	model.tab = TabCosmos
@@ -178,7 +179,7 @@ func TestChronoscopeReplayRendersADeadChatAsAGhostNotAnAlarm(t *testing.T) {
 
 	for _, node := range model.cosmos.Nodes {
 		if node.Key == deadKey {
-			t.Fatalf("the live graph kept a node this model never witnessed alive: %#v", node)
+			t.Fatalf("the live graph kept the killed row's node — BuildCosmos(live=true) should have dropped it: %#v", node)
 		}
 	}
 
@@ -188,12 +189,13 @@ func TestChronoscopeReplayRendersADeadChatAsAGhostNotAnAlarm(t *testing.T) {
 	if replay.cosmosPast == nil {
 		t.Fatal("[ did not enter replay")
 	}
-	// The live graph had only RR seated (Ghosty was dropped as unwitnessed);
-	// entering replay adds Ghosty as a brand-new seat at its own target while
-	// RR's pre-existing seat only starts EASING toward its own new target —
-	// by design, seats never teleport. Settle both here so the render below
-	// checks the settled picture a viewer actually sees, not the one
-	// coincidental transient frame where an old and a new seat overlap.
+	// The live graph had only RR seated (Ghosty was dropped by BuildCosmos
+	// itself); entering replay adds Ghosty as a brand-new seat at its own
+	// target while RR's pre-existing seat only starts EASING toward its own
+	// new target — by design, seats never teleport. Settle both here so the
+	// render below checks the settled picture a viewer actually sees, not
+	// the one coincidental transient frame where an old and a new seat
+	// overlap.
 	for _, seat := range replay.cosmosSeats {
 		seat.Angle = seat.Target
 		seat.Ring = seat.RingTarget
@@ -405,6 +407,31 @@ func TestNavigatorEnterOpensTheSelectedRow(t *testing.T) {
 	}
 	if !strings.Contains(refusedNone.cosmosStatus, "nothing selected") {
 		t.Fatalf("cosmosStatus = %q, want it to name that nothing is selected", refusedNone.cosmosStatus)
+	}
+}
+
+// TestOpenCosmosSelectionNamesTheGoneChatExactly pins openCosmosSelection's
+// literal refusal text for a replay node with no RowKey — the ghost of a
+// chat the fleet no longer lists at all, distinct from the row-since-closed
+// refusal a few lines below it in chronoscope.go. This is the exact string
+// an operator reads on the query row; a paraphrase drifting from it (e.g.
+// the retired "is a ghost only the ledger remembers") would pass every
+// substring check above without this one.
+func TestOpenCosmosSelectionNamesTheGoneChatExactly(t *testing.T) {
+	model := cosmosTestModel(120, true)
+	model.tab = TabCosmos
+	model.cosmosPast = &compose.CosmosGraph{Nodes: []compose.CosmosNode{
+		{Key: "chat:name:vanished", Label: resolve.Named("Vanished"), Dead: true},
+	}}
+	model.cosmosSelected = "chat:name:vanished"
+
+	refused, cmd := applyKey(t, model, specialKey(tea.KeyEnter))
+	if cmd != nil {
+		t.Fatal("enter on a replay ghost with no RowKey returned a quit command")
+	}
+	want := "enter needs a live chat — Vanished is gone; only the ledger remembers it"
+	if refused.cosmosStatus != want {
+		t.Fatalf("cosmosStatus = %q, want exactly %q", refused.cosmosStatus, want)
 	}
 }
 

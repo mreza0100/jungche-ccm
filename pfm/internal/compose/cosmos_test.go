@@ -64,8 +64,8 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 // like Quiet above: a RESUMABLE row carries no live pane at all (liveRow
 // false), a KILLED live row is positively known gone, and a BG live row is
 // deliberately excluded from the picker's default view — none of the three
-// earns a node from seedLive, and with no events either, BuildCosmos must
-// produce an entirely empty graph.
+// earns a node from the live seed, and with no events either, BuildCosmos
+// must produce an entirely empty graph.
 func TestBuildCosmosSeedLiveSkipsNonLiveKilledAndBGRows(t *testing.T) {
 	rows := []Row{
 		{Kind: ResumeClaude, ID: "resumable-id", Name: "Resumable", ActivityNS: 5},
@@ -80,10 +80,10 @@ func TestBuildCosmosSeedLiveSkipsNonLiveKilledAndBGRows(t *testing.T) {
 
 // TestBuildCosmosSeedLiveFalseSeedsNothing pins the replay contract: the
 // exact same rows that TestBuildCosmosResolvesParticipantsAndAggregatesEdges
-// proves DO seed under seedLive=true must seed NOTHING under seedLive=false
-// — the shape the chronoscope replay path always calls with, because the
-// past is the ledger of what happened, not today's roster of who is
-// currently sitting at a pane.
+// proves DO seed under live=true must seed NOTHING under live=false — the
+// shape the chronoscope replay path always calls with, because the past is
+// the ledger of what happened, not today's roster of who is currently
+// sitting at a pane.
 func TestBuildCosmosSeedLiveFalseSeedsNothing(t *testing.T) {
 	rows := []Row{
 		{Kind: LiveClaude, ID: "quiet-id", Name: "Quiet", Socket: "cc-quiet", PaneID: "%1", ActivityNS: 5},
@@ -91,7 +91,7 @@ func TestBuildCosmosSeedLiveFalseSeedsNothing(t *testing.T) {
 	}
 	graph := BuildCosmos(rows, nil, 100, false)
 	if len(graph.Nodes) != 0 {
-		t.Fatalf("nodes = %#v, want none: seedLive=false must not seed a node even for live rows", graph.Nodes)
+		t.Fatalf("nodes = %#v, want none: live=false must not seed a node even for live rows", graph.Nodes)
 	}
 }
 
@@ -307,19 +307,20 @@ func TestBuildCosmosLiveChatStillYieldsOneNodeAcrossSpawnAndInject(t *testing.T)
 	}
 }
 
-// TestBuildCosmosDoesNotPruneDeadNodesByTime documents the current division
-// of labor, corrected from an earlier version of this package that pruned a
-// dead node here once nowNS - DiedNS exceeded the blink+fade window:
-// BuildCosmos has no memory across calls, so DiedNS (last edge activity) is
-// the only fact it can honestly report, and that fact cannot answer "when
-// did it die" — a chat killed after a long idle period would already be
-// past any window BuildCosmos could check on the very first call that
-// notices it, pruning it before anything downstream ever had a chance to
-// animate it. Deciding how long a dead node stays visible after it is first
-// OBSERVED dead is therefore not this package's job: model.applyCosmosGraph
-// (internal/ui) owns it, using a detection timestamp only a caller with
-// memory between renders can produce. A dead node, and every edge naming
-// it, survive here regardless of age.
+// TestBuildCosmosDoesNotPruneDeadNodesByTime is now two truths cut from the
+// same events, since the LIVE ruling did not touch replay's promise: REPLAY
+// (live=false) still refuses to prune a dead node by age — BuildCosmos has
+// no memory across calls, so DiedNS (last edge activity) is the only fact
+// it can honestly report, and that fact cannot answer "when did it die" — a
+// chat killed after a long idle period would already be past any fixed
+// window on the very first call that notices it, pruning it before a
+// replay ever got to show it as the ghost it was. A dead node, and every
+// edge naming it, survive REPLAY regardless of age.
+//
+// LIVE (live=true) is the opposite promise this change adds: the sky of
+// now never shows a dead or hidden chat at all, so the exact same events —
+// aged the exact same ten hours — produce no node for the dead identity
+// and no edge naming it.
 func TestBuildCosmosDoesNotPruneDeadNodesByTime(t *testing.T) {
 	events := []shared.CommsEvent{
 		{
@@ -328,13 +329,13 @@ func TestBuildCosmosDoesNotPruneDeadNodesByTime(t *testing.T) {
 		},
 	}
 	// Ten hours past a zero-timestamp event would have been many orders of
-	// magnitude past CosmosDeathBlink+CosmosDeathFade under the old
-	// nowNS-based prune. It changes nothing here now.
-	graph := BuildCosmos(nil, events, int64(10*time.Hour), false)
-	if len(graph.Nodes) != 2 || len(graph.Edges) != 1 {
-		t.Fatalf("BuildCosmos dropped a dead node or its edge by age: nodes=%#v edges=%#v", graph.Nodes, graph.Edges)
+	// magnitude past CosmosRowGrace under the old nowNS-based prune. It
+	// changes nothing for replay here now.
+	replay := BuildCosmos(nil, events, int64(10*time.Hour), false)
+	if len(replay.Nodes) != 2 || len(replay.Edges) != 1 {
+		t.Fatalf("BuildCosmos(live=false) dropped a dead node or its edge by age: nodes=%#v edges=%#v", replay.Nodes, replay.Edges)
 	}
-	for _, node := range graph.Nodes {
+	for _, node := range replay.Nodes {
 		if !node.Dead {
 			t.Fatalf("node %#v should be Dead: no row survives for either fallback identity", node)
 		}
@@ -342,13 +343,53 @@ func TestBuildCosmosDoesNotPruneDeadNodesByTime(t *testing.T) {
 			t.Fatalf("node %#v DiedNS should be 0 (its only touch was AtNS 0), not a fabricated later time", node)
 		}
 	}
+
+	live := BuildCosmos(nil, events, int64(10*time.Hour), true)
+	if len(live.Nodes) != 0 || len(live.Edges) != 0 {
+		t.Fatalf("BuildCosmos(live=true) kept a dead node or its edge from the SAME events: nodes=%#v edges=%#v", live.Nodes, live.Edges)
+	}
 }
 
-// TestBuildCosmosNoRowMatchIsPendingWithinGraceThenDead pins the boundary
-// of the grace window itself: a node with no matching row is PENDING
-// (Dead false) while nowNS - LastNS is within CosmosDeathBlink+
-// CosmosDeathFade — long enough for the row layer to index a freshly
-// spawned chat — and only becomes Dead once that grace has elapsed. A
+// TestBuildCosmosKilledRowIsDroppedLiveButKeptInReplay is the LIVE half of
+// the ruling for the OTHER kind of death: a matched row's Killed bool is
+// positive evidence, not a grace-window guess, and needs no waiting —
+// BuildCosmos(live=true) drops that node (and every edge naming it)
+// outright, exactly as it drops a grace-expired unmatched identity. Replay
+// keeps it as the ghost it was, Dead and edged, same as always.
+func TestBuildCosmosKilledRowIsDroppedLiveButKeptInReplay(t *testing.T) {
+	rows := []Row{{Kind: LiveClaude, ID: "killed-id", Name: "Killed", Socket: "cc-killed", PaneID: "%1", Killed: true}}
+	events := []shared.CommsEvent{{
+		AtNS: 10, Kind: shared.KindInject, SenderUUID: "killed-id",
+		Target: "Someone", Message: "last words",
+	}}
+
+	live := BuildCosmos(rows, events, 100, true)
+	if _, found := nodeWithKey(live, "chat:id:killed-id"); found {
+		t.Fatalf("live graph kept the killed row's node: %#v", live.Nodes)
+	}
+	for _, edge := range live.Edges {
+		if edge.From == "chat:id:killed-id" || edge.To == "chat:id:killed-id" {
+			t.Fatalf("live graph kept an edge naming the killed row's node: %#v", live.Edges)
+		}
+	}
+
+	replay := BuildCosmos(rows, events, 100, false)
+	node, found := nodeWithKey(replay, "chat:id:killed-id")
+	if !found {
+		t.Fatalf("replay dropped the killed row's node: %#v", replay.Nodes)
+	}
+	if !node.Dead {
+		t.Fatalf("replay node for a killed row should be Dead: %#v", node)
+	}
+}
+
+// TestBuildCosmosNoRowMatchIsPendingWithinGraceThenDead pins the boundary of
+// the grace window in BOTH modes: a node with no matching row is PENDING
+// (Dead false) while nowNS - LastNS is within CosmosRowGrace — long enough
+// for the row layer to index a freshly spawned chat — the same in live and
+// in replay, since a newborn must not blink out of the live sky either. One
+// tick past the grace window the two modes diverge exactly as the ruling
+// says: live drops the node entirely, replay keeps it and marks it Dead. A
 // matched row's Dead (row.Killed) is positive evidence and does not wait;
 // this boundary only applies to the ambiguous no-row-match case.
 func TestBuildCosmosNoRowMatchIsPendingWithinGraceThenDead(t *testing.T) {
@@ -356,36 +397,75 @@ func TestBuildCosmosNoRowMatchIsPendingWithinGraceThenDead(t *testing.T) {
 		AtNS: 0, Kind: shared.KindInject, SenderLabel: "Newborn",
 		Target: "Someone", Message: "hi",
 	}}
-	grace := int64(CosmosDeathBlink + CosmosDeathFade)
+	grace := int64(CosmosRowGrace)
 
-	pending := BuildCosmos(nil, events, grace, false)
-	pendingFound := false
-	for _, node := range pending.Nodes {
-		if node.Key != "chat:name:Newborn" {
-			continue
-		}
-		pendingFound = true
-		if node.Dead {
-			t.Fatalf("node exactly at the grace boundary should still be PENDING: %#v", node)
-		}
-	}
-	if !pendingFound {
-		t.Fatal("pending node missing from the graph entirely")
-	}
+	for _, mode := range []struct {
+		name string
+		live bool
+	}{{"replay", false}, {"live", true}} {
+		t.Run(mode.name, func(t *testing.T) {
+			pending := BuildCosmos(nil, events, grace, mode.live)
+			node, found := nodeWithKey(pending, "chat:name:Newborn")
+			if !found {
+				t.Fatal("pending node missing from the graph entirely: both modes must show a node still inside its grace window")
+			}
+			if node.Dead {
+				t.Fatalf("node exactly at the grace boundary should still be PENDING: %#v", node)
+			}
 
-	gone := BuildCosmos(nil, events, grace+1, false)
-	goneFound := false
-	for _, node := range gone.Nodes {
-		if node.Key != "chat:name:Newborn" {
-			continue
-		}
-		goneFound = true
-		if !node.Dead {
-			t.Fatalf("node one tick past the grace window should be Dead: %#v", node)
-		}
+			gone := BuildCosmos(nil, events, grace+1, mode.live)
+			goneNode, goneFound := nodeWithKey(gone, "chat:name:Newborn")
+			if mode.live {
+				if goneFound {
+					t.Fatalf("live graph kept a node one tick past its own grace window: %#v", goneNode)
+				}
+				return
+			}
+			if !goneFound {
+				t.Fatal("replay dropped a dead node instead of keeping it as a ghost")
+			}
+			if !goneNode.Dead {
+				t.Fatalf("node one tick past the grace window should be Dead: %#v", goneNode)
+			}
+		})
 	}
-	if !goneFound {
-		t.Fatal("dead node missing from the graph entirely")
+}
+
+// TestBuildCosmosLiveEdgeFilterDropsOnlyTheDeadEndAndItsStar pins the live
+// edge/star half of the drop: an edge between a surviving node and a
+// dropped one must not draw either — the canvas has no seat left for the
+// dead end — while the surviving node keeps whatever LastNS the ordinary
+// event walk already gave it (the presence filter is a final membership
+// pass over the built Nodes/Edges slices, not an early bypass that also
+// skips touching the surviving end). Stars is computed from graph.Nodes
+// AFTER the drop, so a home whose only node was dropped earns no star, and
+// the survivor's own home keeps its.
+func TestBuildCosmosLiveEdgeFilterDropsOnlyTheDeadEndAndItsStar(t *testing.T) {
+	rows := []Row{
+		{Kind: LiveClaude, ID: "alive-id", Name: "Alive", Socket: "cc-alive", PaneID: "%1", Project: "home", ActivityNS: 5},
+		{Kind: LiveClaude, ID: "dead-id", Name: "Dead", Socket: "cc-dead", PaneID: "%2", Project: "lonely", Killed: true},
+	}
+	events := []shared.CommsEvent{{
+		AtNS: 40, Kind: shared.KindInject, SenderUUID: "dead-id",
+		Target: "Alive", ReceiverSocket: "cc-alive", Message: "last words",
+	}}
+
+	live := BuildCosmos(rows, events, 100, true)
+	if len(live.Edges) != 0 {
+		t.Fatalf("live graph kept an edge naming a dropped node: %#v", live.Edges)
+	}
+	alive, found := nodeWithKey(live, "chat:id:alive-id")
+	if !found {
+		t.Fatalf("the surviving node was dropped along with the dead one: %#v", live.Nodes)
+	}
+	if alive.LastNS != 40 {
+		t.Fatalf("surviving node LastNS = %d, want 40: the event walk touches it before the drop pass runs, and the drop must not roll that touch back", alive.LastNS)
+	}
+	if _, ok := live.Stars["lonely"]; ok {
+		t.Fatalf("a home whose only node was dropped still earned a star: %#v", live.Stars)
+	}
+	if _, ok := live.Stars["home"]; !ok {
+		t.Fatalf("the surviving node's own home lost its star: %#v", live.Stars)
 	}
 }
 

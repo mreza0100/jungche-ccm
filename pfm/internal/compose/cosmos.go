@@ -21,21 +21,17 @@ const (
 	// heat it had then.
 	CosmosTrafficWindow = time.Hour
 
-	// CosmosDeathBlink is how long a dead node blinks like an alarm before it
-	// starts to fade. CosmosDeathFade is the fade tail that follows, after
-	// which the model stops rendering it. Both live here — not in
-	// internal/ui, which is where they are actually consumed — so the
-	// renderer's animation timing and model.applyCosmosGraph's pruning
-	// window agree on where "dead" ends: one clock, not two that can drift
-	// apart. This package does not use them itself; it has no clock to
-	// measure them against.
+	// CosmosRowGrace is how long an identity with no matching row stays
+	// PENDING rather than GONE: a freshly spawned chat looks identical to a
+	// vanished one until the row layer catches up, so BuildCosmos waits
+	// this long past the node's own last edge activity (nowNS - LastNS)
+	// before calling a still-missing row dead — see the grace-window
+	// resolution below, the one nowNS-dependent verdict this stateless
+	// package makes on its own.
 	//
-	// Short on purpose: a chat that just died should read as gone quickly
-	// and calmly, not strobe. A handful of fast alarm toggles says "this one
-	// just stopped" without turning the whole tab into a strobe light for
-	// ten seconds.
-	CosmosDeathBlink = 1200 * time.Millisecond
-	CosmosDeathFade  = 1500 * time.Millisecond
+	// Short on purpose: a chat that just died should read as gone quickly,
+	// not linger as a ghost the row layer never explains.
+	CosmosRowGrace = 2700 * time.Millisecond
 )
 
 type CosmosNode struct {
@@ -76,11 +72,10 @@ type CosmosNode struct {
 	// timestamp), and a chat that vanished without ever being recorded
 	// killed has no timestamp at all. That is the most honest fact this
 	// stateless package has; it is NOT when the chat died and this package
-	// never claims otherwise. model.applyCosmosGraph (internal/ui)
-	// overwrites this field with the render-detection moment — when the
-	// model itself first observed the node Dead — before storing the graph
-	// it actually renders from, because only a caller with memory across
-	// calls can answer "when did it die".
+	// never claims otherwise. Only replay ever hands this value to a
+	// renderer — the live graph drops every dead node before DiedNS could
+	// reach one (see live in BuildCosmos's doc comment) — and even there it
+	// stays labeled as last edge activity, never a kill moment.
 	DiedNS int64
 }
 
@@ -147,24 +142,29 @@ type cosmosBuilder struct {
 // resolution below). That is a different question from "when did this
 // chat die" — this package still refuses that one, because LastNS cannot
 // answer it and DiedNS below stays honestly labeled as last edge activity,
-// never a kill time. Deciding how long a WITNESSED death stays visible
-// once animating is likewise still not this function's job:
-// model.applyCosmosGraph (internal/ui) owns that, keyed on the
-// render-detection moment only a caller with memory across calls can know.
+// never a kill time.
 //
-// seedLive controls whether every live pane row (liveRow) earns a node up
-// front, before the event walk runs at all: the user's ruling is that an
-// active pane IS a node whether or not it ever spoke through the chat MCP,
-// so a quiet live chat must not read as absent just because chatNode never
-// had an event to resolve it from. A seeded node carries no edges and is
-// stamped with the row's own last activity (Row.ActivityNS), or nowNS when
-// the row carries none — never nowNS outright, or a chat idle for hours
-// would read as having just spoken; the event walk beneath still advances a
-// node's LastNS past its seed the moment real traffic is newer, since touch
-// only ever moves a node's clock forward. A caller rendering the past
-// disables this: chronoscope replay stays events-only, because the past is
-// the ledger, not the roster as it stands today.
-func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive bool) CosmosGraph {
+// live controls two linked things: whether every live pane row (liveRow)
+// earns a node up front, before the event walk runs at all — the user's
+// ruling is that an active pane IS a node whether or not it ever spoke
+// through the chat MCP, so a quiet live chat must not read as absent just
+// because chatNode never had an event to resolve it from — and whether a
+// dead or hidden chat's node survives into the returned graph at all.
+// live=true is the sky of now: seed every live pane row, and drop every
+// node whose chat is dead or hidden (a matched row explicitly Killed, or an
+// unmatched identity past its grace window) along with every edge naming
+// one — the live sky never shows a dead or hidden chat, because a node the
+// picker would not list is not a chat the picker could open.
+// live=false is the chronoscope replay: events only, no seeding, every
+// ghost kept — the past is the ledger, not the roster as it stands today.
+//
+// A seeded node carries no edges and is stamped with the row's own last
+// activity (Row.ActivityNS), or nowNS when the row carries none — never
+// nowNS outright, or a chat idle for hours would read as having just
+// spoken; the event walk beneath still advances a node's LastNS past its
+// seed the moment real traffic is newer, since touch only ever moves a
+// node's clock forward.
+func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, live bool) CosmosGraph {
 	builder := cosmosBuilder{
 		directory: resolve.NewDirectory(rows, rowAddress),
 		nodes:     make(map[string]CosmosNode),
@@ -172,7 +172,7 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive b
 		nowNS:     nowNS,
 	}
 
-	if seedLive {
+	if live {
 		for _, row := range rows {
 			if row.Killed || row.BG || !liveRow(row) {
 				continue
@@ -221,12 +221,6 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive b
 		}
 	}
 
-	// The row layer's own indexing latency is bounded and short, unlike a
-	// chat's idle time — reusing CosmosDeathBlink+CosmosDeathFade here is
-	// not a coincidence of convenience, it is the same "how long does the
-	// app wait before treating an absence as final" question this package
-	// already has one answer to, so a second, independently-tuned knob
-	// would just be two numbers that can drift apart for no reason.
 	if unsigned > 0 {
 		// Error is never absence: an unsigned event has no sender node, so
 		// its line and its lineage CANNOT be drawn — and a universe missing
@@ -236,7 +230,7 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive b
 			"%d events carry no sender identity — their lines cannot be drawn", unsigned,
 		))
 	}
-	rowGrace := int64(CosmosDeathBlink + CosmosDeathFade)
+	rowGrace := int64(CosmosRowGrace)
 	graph := CosmosGraph{Warnings: builder.warnings}
 	graph.Nodes = make([]CosmosNode, 0, len(builder.nodes))
 	for key, node := range builder.nodes {
@@ -250,16 +244,25 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive b
 			// never "when did it die".
 			node.Dead = nowNS-node.LastNS > rowGrace
 		}
+		if live && node.Dead {
+			// The live sky never shows a dead or hidden chat — no blink,
+			// no fade, no debris; a node the picker would not list is not
+			// in the graph. A row explicitly Killed and an unmatched
+			// identity past rowGrace are both "dead" for this purpose, and
+			// this is the only place either verdict is acted on. Replay
+			// never takes this branch — live is false there — so a chat
+			// that has since died still renders as the ghost it was.
+			continue
+		}
 		if node.Dead {
 			// The only death time this package can honestly report is the
 			// node's own last edge activity: compose.Row carries a Killed
 			// bool but no kill timestamp, and a chat that vanished without
 			// ever being recorded killed has no timestamp at all.
 			// Fabricating a more precise one would be a lie the graph
-			// cannot back up — and this package has no memory of its own
-			// prior calls to do better, so it does not try. The node stays
-			// in the graph regardless of age; model.applyCosmosGraph
-			// decides how long to keep RENDERING it.
+			// cannot back up. Reaching here means live is false — the
+			// branch above already dropped this node when live was true —
+			// so DiedNS only ever reaches a replay renderer.
 			node.DiedNS = node.LastNS
 		}
 		graph.Nodes = append(graph.Nodes, node)
@@ -270,8 +273,19 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive b
 	// surviving node (there is none such today, but the rule is the graph's
 	// node set decides, not the builder's touch history) does not get one.
 	homes := make(map[string]bool, len(graph.Nodes))
+	// present is the live-only membership test the edge filter below uses:
+	// an edge naming a node the live drop just removed cannot be drawn
+	// either, and the graph's own node set — not the builder's edge or
+	// touch history — is what decides who survived.
+	var present map[string]bool
+	if live {
+		present = make(map[string]bool, len(graph.Nodes))
+	}
 	for _, node := range graph.Nodes {
 		homes[node.Home] = true
+		if present != nil {
+			present[node.Key] = true
+		}
 	}
 	graph.Stars = make(map[string]CosmosStar, len(homes))
 	for home := range homes {
@@ -292,6 +306,9 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64, seedLive b
 	})
 	graph.Edges = make([]CosmosEdge, 0, len(builder.edges))
 	for _, edge := range builder.edges {
+		if present != nil && (!present[edge.From] || !present[edge.To]) {
+			continue
+		}
 		graph.Edges = append(graph.Edges, edge)
 	}
 	sort.Slice(graph.Edges, func(left, right int) bool {

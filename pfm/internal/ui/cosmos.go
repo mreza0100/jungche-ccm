@@ -202,124 +202,17 @@ func (model *Model) advanceCosmos(nowNS int64) {
 	model.advanceChronoscope(dt)
 }
 
-// applyCosmosGraph is the single place model.cosmos is ever replaced. It is
-// what makes "when did it die" honest: compose.BuildCosmos is stateless and
-// reads no clock, so DiedNS as IT reports is only ever last edge activity —
-// close to useless for animating a death, since killing a chat writes no
-// ledger event and a chat idle for even a few seconds before its kill would
-// already read as long past any blink+fade window on the very first frame
-// that notices it. This method is the caller with memory across renders
-// that compose cannot be: it diffs the incoming graph against the model's
-// OWN previous graph, and the render-time moment (model.cosmosNowNS) a node
-// key is first seen transition from alive to Dead is what actually drives
-// cosmosDeathVisual — not compose's DiedNS, which this method overwrites
-// before the node is ever stored or rendered.
-//
-// A node that is Dead on the very FIRST graph this method ever sees for
-// that key (no prior "was alive" observation — a fresh app launch, or a
-// chat that was already dead before anything here ever watched it) gets
-// no animation and is DROPPED, exactly as if its blink+fade window had
-// already elapsed — because it has: this method never witnessed the
-// transition, so there is no honest detection moment, and the drop is the
-// only truthful outcome left. This used to be a middle branch that kept
-// such a node undated, dimmed, and permanent, which was wrong for exactly
-// this case — a chat killed before the picker ever opened stayed on
-// screen for the entire 24h ledger window, the same "permanent debris"
-// this whole feature exists to remove, arriving through a different door.
-//
-// That undated branch WAS right for one thing it was also asked to cover:
-// a freshly spawned child whose row has not been gathered yet, which also
-// arrives as Dead with no baseline and must not be hidden
-// (TestCosmosParentlessSpawnIsNotEmptyInEitherLayout). Compose now answers
-// that ambiguity upstream instead, with the one nowNS-dependent question
-// it CAN answer honestly (see BuildCosmos's own doc comment): a no-row
-// node is PENDING — Dead false, rendered like any other node — until a
-// short grace window elapses with still no row, at which point compose
-// itself calls it Dead. By the time a node reaches this method as Dead
-// with no witnessed transition, compose has already given it every chance
-// to be a newborn; dropping it here is correct in both cases, because they
-// are no longer the same case.
-//
-// Once a node IS blinking or fading, this method is also what finally
-// drops it — and it prunes any edge naming a dropped node in the same
-// pass, so model.cosmos.Nodes and model.cosmos.Edges stay consistent by
-// construction and the header's "N chats · N edges" always names a
-// quantity the canvas can actually draw. A dropped node's cosmosDiedAtNS
-// entry is deliberately NOT deleted at drop time — compose keeps emitting
-// it every frame the ledger still carries it (compose no longer prunes by
-// time at all), and an entry-less "known" would read exactly like a node
-// this method had never seen before, resurrecting it into the undated
-// branch above forever. The entry is retired in place instead, and the
-// only sweep that removes it is keyed on compose ceasing to emit the node
-// at all — bounded by the same 24h ledger window compose already enforces
-// upstream, one entry per node it still knows about.
+// applyCosmosGraph is the single place model.cosmos is ever replaced. Every
+// caller hands it a live graph — compose.BuildCosmos(..., live=true) — whose
+// own contract already drops every dead or hidden node and every edge
+// naming one before returning (see BuildCosmos's doc comment): the live sky
+// never shows a dead or hidden chat, no blink, no fade, no debris, so there
+// is nothing left here to diff, date, or prune. This method used to be that
+// diff — watching a node's own alive-to-dead transition across renders to
+// drive a blink-then-fade animation before dropping it — but compose now
+// makes the only call that ever needed making (dead or not), upstream of
+// this method, once for every caller instead of once per renderer.
 func (model *Model) applyCosmosGraph(next compose.CosmosGraph) {
-	previousAlive := make(map[string]bool, len(model.cosmos.Nodes))
-	for _, node := range model.cosmos.Nodes {
-		if !node.Dead {
-			previousAlive[node.Key] = true
-		}
-	}
-	if model.cosmosDiedAtNS == nil {
-		model.cosmosDiedAtNS = make(map[string]int64)
-	}
-	deathWindow := int64(compose.CosmosDeathBlink + compose.CosmosDeathFade)
-	seenThisGraph := make(map[string]bool, len(next.Nodes))
-	keep := make(map[string]bool, len(next.Nodes))
-	nodes := make([]compose.CosmosNode, 0, len(next.Nodes))
-	for _, node := range next.Nodes {
-		seenThisGraph[node.Key] = true
-		if !node.Dead {
-			delete(model.cosmosDiedAtNS, node.Key) // alive again (or never dead): forget any stale detection
-			nodes = append(nodes, node)
-			keep[node.Key] = true
-			continue
-		}
-		diedAt, known := model.cosmosDiedAtNS[node.Key]
-		if !known && !previousAlive[node.Key] {
-			// No witnessed transition — see the doc comment above for why
-			// this is a drop, not a keep, now that compose has already
-			// resolved the newborn-vs-vanished ambiguity upstream.
-			continue
-		}
-		if !known {
-			diedAt = model.cosmosNowNS
-			model.cosmosDiedAtNS[node.Key] = diedAt
-		}
-		if model.cosmosNowNS-diedAt > deathWindow {
-			// Retired, not forgotten: the entry MUST survive so `known`
-			// stays true on the next frame. compose no longer prunes by
-			// time, so it will keep emitting this Dead node every frame
-			// the ledger still carries it — deleting the entry here made
-			// the very next frame see known=false, previousAlive=false
-			// (this key is no longer in model.cosmos.Nodes to be alive
-			// in), and land in the undated branch above: a retired node
-			// resurrected as permanent dim-static debris one frame after
-			// it correctly dropped. The only place this entry is removed
-			// is the seenThisGraph sweep below, which fires exactly when
-			// compose stops emitting the node at all (it left the 24h
-			// ledger window) — so the map stays bounded at one entry per
-			// node compose still knows about, dead or not.
-			continue // blinked, faded, and its time as debris is over
-		}
-		node.DiedNS = diedAt
-		nodes = append(nodes, node)
-		keep[node.Key] = true
-	}
-	for key := range model.cosmosDiedAtNS {
-		if !seenThisGraph[key] {
-			delete(model.cosmosDiedAtNS, key) // aged out of the ledger window entirely; nothing left to animate
-		}
-	}
-	edges := make([]compose.CosmosEdge, 0, len(next.Edges))
-	for _, edge := range next.Edges {
-		if !keep[edge.From] || !keep[edge.To] {
-			continue
-		}
-		edges = append(edges, edge)
-	}
-	next.Nodes = nodes
-	next.Edges = edges
 	model.cosmos = next
 }
 
@@ -1004,21 +897,13 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, graph compose.CosmosGraph,
 		}
 		bold := arrival > 0.4
 		if node.Dead {
-			if model.skyEnabled && model.cosmosPast == nil {
-				// DiedNS here is model.applyCosmosGraph's own detection
-				// timestamp, not compose's last-edge-activity value — the
-				// honest answer to "when did the model first notice this
-				// one was dead." Every Dead node reaching this render
-				// already went through a witnessed alive-to-dead
-				// transition (applyCosmosGraph drops anything that did
-				// not), so DiedNS is always set here.
-				color, bold = cosmosDeathVisual(base, now.Sub(time.Unix(0, node.DiedNS)))
-			} else {
-				// --no-sky, and every replayed past: dimmed, never animated.
-				// A chat dead NOW shown at a moment it was alive is a ghost
-				// of itself — the truth, not a death to re-enact.
-				color, bold = scaleRGB(base, 0.35), false
-			}
+			// Reachable only from a replay ghost: BuildCosmos(live=true)
+			// never emits a Dead node (see its own doc comment), so the
+			// live sky never reaches this branch at all. A chat dead NOW
+			// shown at a moment it was alive is a ghost of itself — the
+			// truth, not a death to re-enact — so it renders dimmed and
+			// still, never animated.
+			color, bold = scaleRGB(base, 0.35), false
 		}
 		if node.Key == selected {
 			// The reticle: a ring of light around the chosen body, turning
@@ -1205,26 +1090,6 @@ func drawCosmosSun(canvas *Canvas, point cosmosPoint, home string, population in
 		}
 	}
 	return scaleRGB(base, glow)
-}
-
-// cosmosDeathVisual is what a dead chat's node looks like deathAge after it
-// died: a fast, hard on/off alarm at the node's OWN engine hue (never a
-// fixed alarm tint, which would erase engine identity mid-blink), then a
-// short fade to nothing. Both windows are short on purpose — the chat
-// should read as gone quickly and calmly, not strobe the whole tab.
-func cosmosDeathVisual(base RGB, deathAge time.Duration) (RGB, bool) {
-	const blinkInterval = 200 * time.Millisecond
-	if deathAge < compose.CosmosDeathBlink {
-		if (deathAge/blinkInterval)%2 == 0 {
-			return scaleRGB(base, 1.0), true
-		}
-		return scaleRGB(base, 0.12), false
-	}
-	fadeT := float64(deathAge-compose.CosmosDeathBlink) / float64(compose.CosmosDeathFade)
-	if fadeT > 1 {
-		fadeT = 1
-	}
-	return scaleRGB(base, 0.85*(1-fadeT)), false
 }
 
 // cosmosLabelCap is the flat rune ceiling on every node label, canvas space

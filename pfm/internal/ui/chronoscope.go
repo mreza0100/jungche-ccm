@@ -342,7 +342,7 @@ func (model Model) openCosmosSelection() (tea.Model, tea.Cmd) {
 	}
 	label := node.Label.String()
 	if node.RowKey == "" {
-		model.cosmosStatus = "enter needs a fleet row — " + label + " is a ghost only the ledger remembers"
+		model.cosmosStatus = "enter needs a live chat — " + label + " is gone; only the ledger remembers it"
 		return model, nil
 	}
 	for _, row := range model.rows {

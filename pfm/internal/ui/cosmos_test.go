@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	bits2 "math/bits"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -375,37 +376,6 @@ func TestClipCosmosLabelTruncatesVisiblyWithinAvailableSpace(t *testing.T) {
 	}
 }
 
-func TestCosmosDeathVisualBlinksThenFadesThenGoesQuiet(t *testing.T) {
-	base := RGB{56, 189, 248} // Codex's own hue
-	onColor, onBold := cosmosDeathVisual(base, 0)
-	if onColor != base || !onBold {
-		t.Fatalf("blink-on at deathAge=0 = %#v bold=%v, want full base color and bold", onColor, onBold)
-	}
-	offColor, offBold := cosmosDeathVisual(base, 200*time.Millisecond)
-	if offColor == base || offBold {
-		t.Fatalf("blink-off at 200ms = %#v bold=%v, want dimmed and not bold", offColor, offBold)
-	}
-	if onColor == offColor {
-		t.Fatal("blink phases render identically: it cannot read as an alarm")
-	}
-	// Engine identity must survive the off phase too — a dimmed dot is
-	// still Codex-blue, never grey or tinted toward a fixed alarm color.
-	if offColor.B == 0 || offColor.G <= offColor.R {
-		t.Fatalf("blink-off color = %#v lost the base hue's blue-dominant shape", offColor)
-	}
-	fadingColor, fadeBold := cosmosDeathVisual(base, compose.CosmosDeathBlink+compose.CosmosDeathFade/2)
-	if fadeBold {
-		t.Fatal("fade phase reported bold: an alarm that is fading is not blinking")
-	}
-	if fadingColor == (RGB{}) {
-		t.Fatal("fade midpoint is already fully black")
-	}
-	goneColor, _ := cosmosDeathVisual(base, compose.CosmosDeathBlink+compose.CosmosDeathFade)
-	if goneColor != (RGB{}) {
-		t.Fatalf("fade end = %#v, want fully faded to black", goneColor)
-	}
-}
-
 func cosmosTestModel(width int, noSky bool) Model {
 	snapshot := fixtureSnapshot(width)
 	snapshot.NoSky = noSky
@@ -419,218 +389,113 @@ func cosmosTestModel(width int, noSky bool) Model {
 	return NewModel(snapshot)
 }
 
-// TestApplyCosmosGraphKeysDeathToDetectionNotLastMessage is the regression
-// for the DiedNS question: compose.BuildCosmos has no memory across calls,
-// so its own DiedNS is only ever last edge activity — a chat idle for a
-// long stretch before it is killed would already read as long past
-// CosmosDeathBlink+CosmosDeathFade on the very first frame that notices
-// it, and never animate at all. model.applyCosmosGraph is what fixes that:
-// it stamps the death moment from ITS OWN clock the instant it first
-// observes a transition from alive to Dead, independent of how old the
-// node's last message was.
-func TestApplyCosmosGraphKeysDeathToDetectionNotLastMessage(t *testing.T) {
+// TestApplyCosmosGraphStoresGraphAsGiven pins applyCosmosGraph's new,
+// entire job: a straight store, nothing diffed, dated, or pruned.
+// compose.BuildCosmos already resolved every Dead/live question before the
+// graph ever reaches here (see its own doc comment), so a node present in
+// graph N is in model.cosmos verbatim, and a node simply absent from graph
+// N+1 is gone on the very next frame — no lingering, no DiedNS rewrite, no
+// detection bookkeeping of any kind.
+func TestApplyCosmosGraphStoresGraphAsGiven(t *testing.T) {
 	model := NewModel(fixtureSnapshot(80))
 	model.cosmosNowNS = fixtureNowNS
-	staleActivity := fixtureNowNS - int64(2*time.Hour)
 
-	// First refresh: alive, idle for two hours already. Idle is not dead.
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{Key: "chat:id:X", Label: resolve.Named("X"), LastNS: staleActivity}},
-	})
-	if len(model.cosmos.Nodes) != 1 || model.cosmos.Nodes[0].Dead {
-		t.Fatalf("setup: node should be alive: %#v", model.cosmos.Nodes)
-	}
-
-	// Second refresh, the model's own clock 500ms later: the SAME chat is
-	// now Dead. Its last message never moved (killing a chat writes no
-	// ledger event) — LastNS/compose's own DiedNS are still two hours
-	// stale. This render is the first time the model has EVER seen it
-	// dead, and that detection moment — not the two-hour-old activity —
-	// must be what gets stamped and what keeps the node alive on canvas.
-	detectionNS := fixtureNowNS + int64(500*time.Millisecond)
-	model.cosmosNowNS = detectionNS
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{
-			Key: "chat:id:X", Label: resolve.Named("X"), Dead: true,
-			LastNS: staleActivity, DiedNS: staleActivity,
-		}},
-	})
-	if len(model.cosmos.Nodes) != 1 {
-		t.Fatalf("node vanished on the very frame its death was first observed: %#v", model.cosmos.Nodes)
-	}
-	got := model.cosmos.Nodes[0]
-	if !got.Dead {
-		t.Fatalf("node lost its Dead flag: %#v", got)
-	}
-	if got.DiedNS != detectionNS {
-		t.Fatalf("DiedNS = %d, want the detection moment %d (last-message activity was %d)", got.DiedNS, detectionNS, staleActivity)
-	}
-
-	// A third refresh just past CosmosDeathBlink+CosmosDeathFade AFTER the
-	// detection moment must finally drop it — the window is measured from
-	// detection, not from staleActivity (which is already ancient).
-	model.cosmosNowNS = detectionNS + int64(compose.CosmosDeathBlink+compose.CosmosDeathFade) + int64(time.Millisecond)
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{
-			Key: "chat:id:X", Label: resolve.Named("X"), Dead: true,
-			LastNS: staleActivity, DiedNS: staleActivity,
-		}},
-	})
-	if len(model.cosmos.Nodes) != 0 {
-		t.Fatalf("node survived past its own blink+fade window measured from detection: %#v", model.cosmos.Nodes)
-	}
-}
-
-// TestApplyCosmosGraphDropsEdgesWithTheirPrunedNode is the edge/node
-// consistency invariant, now enforced here since compose.BuildCosmos no
-// longer prunes anything by time: once a node is dropped past its own
-// blink+fade window, any edge still naming it must be dropped in the same
-// pass, or the cosmos header's "N edges" (ui/render.go, len(model.cosmos.
-// Edges) raw) would count an edge the canvas has no seat left to draw.
-func TestApplyCosmosGraphDropsEdgesWithTheirPrunedNode(t *testing.T) {
-	model := NewModel(fixtureSnapshot(80))
-	model.cosmosNowNS = fixtureNowNS
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{Key: "chat:id:X", Label: resolve.Named("X")}, {Key: "chat:id:Y", Label: resolve.Named("Y")}},
-	})
-
-	model.cosmosNowNS = fixtureNowNS + int64(time.Second)
-	model.applyCosmosGraph(compose.CosmosGraph{
+	first := compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{
-			{Key: "chat:id:X", Label: resolve.Named("X"), Dead: true, LastNS: model.cosmosNowNS},
-			{Key: "chat:id:Y", Label: resolve.Named("Y")},
+			{Key: "chat:id:X", Label: resolve.Named("X"), LastNS: fixtureNowNS},
+			{Key: "chat:id:Y", Label: resolve.Named("Y"), LastNS: fixtureNowNS},
 		},
 		Edges: []compose.CosmosEdge{{From: "chat:id:X", To: "chat:id:Y", Kind: shared.KindInject}},
-	})
-	if len(model.cosmos.Edges) != 1 {
-		t.Fatalf("edge missing right after detection, while X is still animating: %#v", model.cosmos)
+	}
+	model.applyCosmosGraph(first)
+	if len(model.cosmos.Nodes) != 2 || len(model.cosmos.Edges) != 1 {
+		t.Fatalf("frame 1 was not stored as given: %#v", model.cosmos)
 	}
 
-	model.cosmosNowNS += int64(compose.CosmosDeathBlink+compose.CosmosDeathFade) + int64(time.Millisecond)
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{
-			{Key: "chat:id:X", Label: resolve.Named("X"), Dead: true, LastNS: fixtureNowNS + int64(time.Second)},
-			{Key: "chat:id:Y", Label: resolve.Named("Y")},
-		},
-		Edges: []compose.CosmosEdge{{From: "chat:id:X", To: "chat:id:Y", Kind: shared.KindInject}},
-	})
-	for _, node := range model.cosmos.Nodes {
-		if node.Key == "chat:id:X" {
-			t.Fatalf("X should have been dropped past its own blink+fade window: %#v", model.cosmos.Nodes)
-		}
+	// Frame 2: X is simply gone from the incoming graph — no Dead flag, no
+	// DiedNS, nothing to animate. It must be gone from model.cosmos too,
+	// same frame, no lingering.
+	second := compose.CosmosGraph{
+		Nodes: []compose.CosmosNode{{Key: "chat:id:Y", Label: resolve.Named("Y"), LastNS: fixtureNowNS}},
+	}
+	model.applyCosmosGraph(second)
+	if len(model.cosmos.Nodes) != 1 || model.cosmos.Nodes[0].Key != "chat:id:Y" {
+		t.Fatalf("X lingered after being dropped from the incoming graph: %#v", model.cosmos.Nodes)
 	}
 	if len(model.cosmos.Edges) != 0 {
-		t.Fatalf("edge to a dropped node survived: %#v", model.cosmos.Edges)
+		t.Fatalf("an edge naming the vanished node lingered: %#v", model.cosmos.Edges)
 	}
-	if len(model.cosmos.Nodes) != 1 || model.cosmos.Nodes[0].Key != "chat:id:Y" {
-		t.Fatalf("Y should have survived untouched: %#v", model.cosmos.Nodes)
-	}
-}
-
-// TestApplyCosmosGraphRetiredNodeStaysGoneWhileComposeKeepsEmittingIt is the
-// regression for the resurrection bug: compose.BuildCosmos never prunes by
-// time, so it keeps emitting a Dead node every frame the ledger still
-// carries it — including frames AFTER the node has already blinked, faded,
-// and dropped past its own window. A dropped node's cosmosDiedAtNS entry
-// must survive that drop so the NEXT frame still recognizes it as already
-// retired (known=true, past its window) rather than mistaking it for a
-// node never seen before (known=false, previousAlive=false), which lands
-// in the undated branch and renders it as permanent dim-static debris —
-// the exact "permanent debris" failure this whole feature exists to
-// remove, arriving back through a different door one frame later.
-func TestApplyCosmosGraphRetiredNodeStaysGoneWhileComposeKeepsEmittingIt(t *testing.T) {
-	model := NewModel(fixtureSnapshot(80))
-	model.cosmosNowNS = fixtureNowNS
-
-	// Frame 1: alive.
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{Key: "chat:session:ghost", Label: resolve.Named("ghost")}},
-	})
-
-	// Frame 2: dies, with a baseline (previousAlive), so it is detected and
-	// stamped rather than landing in the undated path.
-	model.cosmosNowNS = fixtureNowNS + int64(time.Second)
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:ghost", Label: resolve.Named("ghost"), Dead: true, LastNS: model.cosmosNowNS,
-		}},
-	})
-	if len(model.cosmos.Nodes) != 1 {
-		t.Fatalf("frame 2: node should still be present and animating: %#v", model.cosmos.Nodes)
-	}
-
-	// Frame 3: well past the blink+fade window. compose STILL emits the
-	// same Dead node every frame — it does not prune by time at all.
-	model.cosmosNowNS += int64(compose.CosmosDeathBlink+compose.CosmosDeathFade) + int64(time.Millisecond)
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:ghost", Label: resolve.Named("ghost"), Dead: true, LastNS: fixtureNowNS + int64(time.Second),
-		}},
-	})
-	if len(model.cosmos.Nodes) != 0 {
-		t.Fatalf("frame 3: node should have dropped past its window: %#v", model.cosmos.Nodes)
-	}
-
-	// Frame 4: one tick later, compose reports the EXACT SAME dead node
-	// again (nothing about it changed — it just has not aged out of the
-	// 24h ledger window yet). It must stay gone.
-	model.cosmosNowNS += int64(time.Millisecond)
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:ghost", Label: resolve.Named("ghost"), Dead: true, LastNS: fixtureNowNS + int64(time.Second),
-		}},
-	})
-	if len(model.cosmos.Nodes) != 0 {
-		t.Fatalf("frame 4: RESURRECTION — a dropped dead node returned: %#v", model.cosmos.Nodes)
-	}
-
-	// And once compose finally stops emitting it at all (aged out of the
-	// ledger window), the retained entry must be swept — the map does not
-	// grow without bound.
-	model.applyCosmosGraph(compose.CosmosGraph{})
-	if len(model.cosmosDiedAtNS) != 0 {
-		t.Fatalf("cosmosDiedAtNS leaked an entry after compose stopped emitting the node: %#v", model.cosmosDiedAtNS)
+	if !reflect.DeepEqual(model.cosmos, second) {
+		t.Fatalf("model.cosmos = %#v, want the exact graph handed in: %#v", model.cosmos, second)
 	}
 }
 
-// TestApplyCosmosGraphDropsAnUnwitnessedDeadNodeOnFirstSight is the
-// regression for the second permanent-debris door: a chat killed BEFORE
-// the picker ever opened the cosmos tab has no row (the fleet DB carries
-// none for it) and no witnessed alive->dead transition — this model has
-// simply never seen it before. compose has already resolved that ambiguity
-// upstream (its grace window elapsed with no row), so it arrives here
-// Dead. Without a witnessed transition there is no honest detection
-// moment to animate from, and per applyCosmosGraph's doc comment that is
-// treated as already past its window: dropped on sight, not kept as
-// permanent dim-static debris.
-func TestApplyCosmosGraphDropsAnUnwitnessedDeadNodeOnFirstSight(t *testing.T) {
-	model := NewModel(fixtureSnapshot(80))
-	model.cosmosNowNS = fixtureNowNS
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:already-dead", Label: resolve.Named("already-dead"),
-			Dead: true, LastNS: fixtureNowNS - int64(time.Hour),
-		}},
-	})
-	if len(model.cosmos.Nodes) != 0 {
-		t.Fatalf("a node Dead on the very first graph this model ever saw was rendered: %#v", model.cosmos.Nodes)
+// TestApplyCosmosGraphNeverCarriesADeadNodeLiveButReplayRendersItDimmed is
+// the end-to-end pin for the ruling itself: a live graph — the shape
+// applyCosmosGraph is ALWAYS handed for model.cosmos, compose.BuildCosmos
+// with live=true — never carries a Dead node or an edge naming one, all
+// the way through the model that renders it. The same rows and events, cut
+// with live=false and fed as the chronoscope's replay graph instead, keep
+// the dead chat and render it dimmed and static (scaleRGB(base, 0.35), not
+// bold) — the ghost of itself it truthfully is, never the removed alarm
+// blink.
+func TestApplyCosmosGraphNeverCarriesADeadNodeLiveButReplayRendersItDimmed(t *testing.T) {
+	rows := []compose.Row{
+		{Kind: compose.LiveClaude, ID: "killed-id", Name: "Killed", Socket: "cc-killed", PaneID: "%1", Killed: true},
 	}
-}
+	events := []shared.CommsEvent{{
+		AtNS: fixtureNowNS - int64(time.Hour), Kind: shared.KindInject,
+		SenderUUID: "killed-id", Target: "Someone", Message: "last words",
+	}}
+	deadKey := "chat:id:killed-id"
 
-// TestApplyCosmosGraphRendersAPendingNodeInsideTheGraceWindow is the
-// companion half: a node compose has NOT (yet) called Dead — inside its
-// row-indexing grace window, a freshly spawned child whose row has not
-// been gathered — must render normally, exactly like any other node.
-func TestApplyCosmosGraphRendersAPendingNodeInsideTheGraceWindow(t *testing.T) {
+	live := compose.BuildCosmos(rows, events, fixtureNowNS, true)
 	model := NewModel(fixtureSnapshot(80))
 	model.cosmosNowNS = fixtureNowNS
-	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:newborn", Label: resolve.Named("newborn"), LastNS: fixtureNowNS,
-		}},
-	})
-	if len(model.cosmos.Nodes) != 1 || model.cosmos.Nodes[0].Dead {
-		t.Fatalf("a pending (not-yet-dead) node was not rendered normally: %#v", model.cosmos.Nodes)
+	model.rows = rows
+	model.applyCosmosGraph(live)
+	for _, node := range model.cosmos.Nodes {
+		if node.Dead {
+			t.Fatalf("a live graph carried a Dead node all the way to model.cosmos: %#v", node)
+		}
+		if node.Key == deadKey {
+			t.Fatalf("the killed row's node reached the live model at all: %#v", node)
+		}
+	}
+	for _, edge := range model.cosmos.Edges {
+		if edge.From == deadKey || edge.To == deadKey {
+			t.Fatalf("an edge naming the killed row's node reached the live model: %#v", edge)
+		}
+	}
+
+	replay := compose.BuildCosmos(rows, events, fixtureNowNS, false)
+	model.cosmosPast = &replay
+	node, found := cosmosNodeByKey(model.viewGraph(), deadKey)
+	if !found {
+		t.Fatalf("the replay graph dropped the dead node: %#v", model.viewGraph().Nodes)
+	}
+	if !node.Dead {
+		t.Fatalf("replay node for a killed row should be Dead: %#v", node)
+	}
+
+	// Seats must be merged against the replay graph (viewGraph() now
+	// returns cosmosPast) before layout has a point to seat the dead node
+	// at — mirroring what scrubCosmos does on every real `[` press.
+	model.mergeCosmosSeats()
+	canvas := NewCanvas(80, 24)
+	now := time.Unix(0, fixtureNowNS)
+	nodes := cosmosNodeMap(replay.Nodes)
+	frame := cosmosLayout(canvas, model.cosmosSeats, nodes, replay.Edges, now, false, false, "")
+	point, ok := frame.points[deadKey]
+	if !ok {
+		t.Fatal("the layout seated no point for the dead replay node")
+	}
+	model.drawCosmosUniverse(canvas, replay, now, now)
+	colX, colY := int(point.x)/2, int(point.y)/4
+	got := canvas.cells[colY*canvas.Cols+colX].fg
+	want := scaleRGB(cosmosNodeColor(node), 0.35)
+	if got != want {
+		t.Fatalf("replayed dead glyph color = %#v, want the static ghost color %#v (not the removed alarm blink)", got, want)
 	}
 }
 

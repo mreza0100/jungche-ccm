@@ -69,52 +69,46 @@ func (source orderedSearch) Len() int {
 // Its commands only request Bubble Tea termination; all fleet I/O belongs to
 // the Picker caller.
 type Model struct {
-	rows                []compose.Row
-	search              []string
-	groups              []projectGroup
-	nameGroups          map[int]nameGroup
-	order               []int
-	filtered            []int
-	cursor              int
-	width               int
-	height              int
-	nowNS               int64
-	view                compose.View
-	killedCount         int
-	suppressedCount     int
-	refreshing          bool
-	primary             int
-	initialPrimary      int
-	accountIDs          []int
-	codexPrimary        int
-	initialCodexPrimary int
-	codexAccountIDs     []int
-	opencodePrimary     int
-	opencodeAccountIDs  []int
-	cache1H             bool
-	tab                 Tab
-	statsSubtab         StatsSubtab
-	statsFocus          StatsFocus
-	statsSort           StatsSort
-	statsCursor         int
-	statsDockerCursor   int
-	limitsOffset        int
-	stats               pfmstats.Snapshot
-	statsSampler        StatsSampler
-	statsGeneration     uint64
-	statsLoading        bool
-	statsError          string
-	cosmos              compose.CosmosGraph
-	cosmosSampler       CosmosSampler
-	cosmosEvents        []shared.CommsEvent
-	cosmosSeats         map[string]*cosmosSeat
-	cosmosNowNS         int64
-	// cosmosDiedAtNS is the render-detection moment (cosmosNowNS at the
-	// instant applyCosmosGraph first observed a node key Dead), not the
-	// node's own last edge activity. It is what actually drives the
-	// blink-then-fade animation and the eventual drop — see
-	// applyCosmosGraph's doc comment in cosmos.go for why.
-	cosmosDiedAtNS       map[string]int64
+	rows                 []compose.Row
+	search               []string
+	groups               []projectGroup
+	nameGroups           map[int]nameGroup
+	order                []int
+	filtered             []int
+	cursor               int
+	width                int
+	height               int
+	nowNS                int64
+	view                 compose.View
+	killedCount          int
+	suppressedCount      int
+	refreshing           bool
+	primary              int
+	initialPrimary       int
+	accountIDs           []int
+	codexPrimary         int
+	initialCodexPrimary  int
+	codexAccountIDs      []int
+	opencodePrimary      int
+	opencodeAccountIDs   []int
+	cache1H              bool
+	tab                  Tab
+	statsSubtab          StatsSubtab
+	statsFocus           StatsFocus
+	statsSort            StatsSort
+	statsCursor          int
+	statsDockerCursor    int
+	limitsOffset         int
+	stats                pfmstats.Snapshot
+	statsSampler         StatsSampler
+	statsGeneration      uint64
+	statsLoading         bool
+	statsError           string
+	cosmos               compose.CosmosGraph
+	cosmosSampler        CosmosSampler
+	cosmosEvents         []shared.CommsEvent
+	cosmosSeats          map[string]*cosmosSeat
+	cosmosNowNS          int64
 	cosmosLoading        bool
 	cosmosTickGeneration uint64
 	skyEnabled           bool
@@ -125,10 +119,13 @@ type Model struct {
 	classicSky bool
 	// The chronoscope. cosmosPast is the replay graph while the playhead is
 	// off "now" — nil means live. model.cosmos stays the LIVE graph the whole
-	// time so its death bookkeeping never pauses; the sky renders whichever
-	// viewGraph returns. cosmosViewNS is the ledger clock the sky renders AT
-	// (equal to cosmosNowNS when live); cosmosTimeline is the sampled window
-	// sorted oldest-first, the source every past graph is cut from.
+	// time regardless — the live sample keeps refreshing it whether or not
+	// the playhead has scrubbed away, so returning to now is instant and
+	// rebuildCosmosPast always cuts the past against current rows; the sky
+	// renders whichever viewGraph returns. cosmosViewNS is the ledger clock
+	// the sky renders AT (equal to cosmosNowNS when live); cosmosTimeline is
+	// the sampled window sorted oldest-first, the source every past graph is
+	// cut from.
 	cosmosPast      *compose.CosmosGraph
 	cosmosViewNS    int64
 	cosmosPlaying   bool
@@ -206,7 +203,6 @@ func NewModel(snapshot Snapshot) Model {
 		statsSampler:        snapshot.StatsSampler,
 		cosmosSampler:       snapshot.CosmosSampler,
 		cosmosSeats:         make(map[string]*cosmosSeat),
-		cosmosDiedAtNS:      make(map[string]int64),
 		cosmosNowNS:         snapshot.NowNS,
 		cosmosViewNS:        snapshot.NowNS,
 		skyEnabled:          !snapshot.NoSky,
