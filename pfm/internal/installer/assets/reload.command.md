@@ -1,9 +1,9 @@
 ---
 name: reload
-description: 'Reboot THIS Claude or Codex chat IN PLACE — same pane, socket, conversation, and current account. EVERY setting is a FLAG; there are no positional words. Run exactly: `~/.local/bin/pfm chat reload [--account N] [--1h on|off] [--then "<prompt>"]`. Translate the request into flags before running: "cache off"/"5m cache" -> `--1h off`; "cache on"/"1h cache" -> `--1h on`; "switch to account 2"/"other seat" -> `--account 2`; "then continue X" -> `--then "X"`. NEVER pass bare words like `cache off` — they are not arguments. The calling chat targets ITSELF automatically; do NOT pass --sock. Invoke it yourself when config changes need a fresh session or the account is near its limit.'
+description: '{{RELOAD_USAGE}}'
 ---
 
-# `/reload [--account N] [--1h on|off] [--then "<prompt>"]` — reboot this chat in place
+# `/reload [--account N] [--1h on|off] [--fresh] [--then "<prompt>"]` — reboot this chat in place
 
 Run this ONCE via the Bash tool — and make it your LAST action, the chat is about to exit:
 
@@ -20,6 +20,7 @@ used, map them to a flag first:
 | "cache on", "1h cache", "long cache" | `--1h on` |
 | "account 2", "switch seats", "other account" | `--account 2` |
 | "then continue with X" | `--then "X"` |
+| "fresh", "new conversation", "start over here" | `--fresh` |
 | nothing in particular | no flags at all |
 
 `pfm chat reload cache off` is not a call — `cache` is not an argument, and the command will
@@ -29,6 +30,11 @@ words.
 **Do not pass `--sock`.** With no `--sock`, the command finds the CALLING chat's own pane by
 itself — Claude panes from tmux, Codex from the fleet-bound thread identity. `--sock` exists only
 to reboot a DIFFERENT chat from outside it, which is not what this command is for.
+
+**Typed by the human, `/reload …` never reaches the model** — the `pfm internal reload-intercept`
+UserPromptSubmit hook executes it and blocks the prompt (Claude seats only; a Codex seat still
+routes through this body). This body is for the model's OWN calls: limit rescue, `/handoff`, a
+config change that needs a fresh session.
 
 With no flags, the current engine account is preserved. The chat auto-exits and reboots in the
 same window and pane; split siblings are untouched. With `--then`, the script waits for the reborn
@@ -44,6 +50,12 @@ For Claude, `--1h` flips the chat's prompt-cache TTL across the reboot: `on` = �
 be forced, never assumed). With no `--account` the chat KEEPS its current account — `/reload --1h off`
 is the pure "restart this chat on the 5m cache" move. Without `--1h`, an account reload preserves
 the chat's existing cache mode (a flagless elder counts as 1h, the default it actually runs).
+
+## Fresh conversation — `/reload --fresh`
+
+`--fresh` reboots into a NEW session id in the same pane, account, and cwd — the old conversation
+is untouched and stays resumable from the picker. Pairs with `--then` for a handoff: reboot
+fresh, then hand the reborn chat its first prompt.
 
 ## Reloading yourself onto another account (limit rescue)
 

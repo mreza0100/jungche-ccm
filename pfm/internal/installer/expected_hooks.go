@@ -79,6 +79,7 @@ func claudeHookTemplates(home string) []ExpectedHook {
 		{Event: "SessionEnd", Command: binary + " internal clear-kill", Name: "clear-kill"},
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: binary + " internal explore-deny", Name: "explore-deny"},
 		{Event: "UserPromptSubmit", Command: binary + " internal epic-inject", Name: "epic-inject"},
+		{Event: "UserPromptSubmit", Command: binary + " internal reload-intercept", Name: "reload-intercept"},
 	}
 }
 

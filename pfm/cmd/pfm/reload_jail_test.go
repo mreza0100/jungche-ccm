@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
@@ -159,6 +160,151 @@ func TestChatReloadSchedulesADetachedWorker(t *testing.T) {
 	}
 	if !detached {
 		t.Fatal("reload worker retained the caller's process group or stdio pipes")
+	}
+}
+
+// reloadPromptFixture is a raw-tty pane the worker can actually /exit and
+// respawn: it echoes every typed byte itself (like injectCLIUI in
+// inject_cli_jail_test.go) so capture-pane sees a live "❯ …" composer line,
+// and it exits 0 the moment a submitted line reads exactly "/exit" — the
+// literal string reload.Run types and submits before ever touching Respawn.
+const reloadPromptFixture = `import os, sys, tty
+tty.setraw(0)
+buf = bytearray()
+sys.stdout.write("❯ ")
+sys.stdout.flush()
+while True:
+    ch = os.read(0, 1)
+    if not ch:
+        break
+    if ch == b"\x13":
+        continue
+    if ch in (b"\r", b"\n"):
+        line = bytes(buf).decode("utf-8", "replace")
+        buf.clear()
+        if line == "/exit":
+            sys.exit(0)
+        sys.stdout.write("\r\n❯ ")
+        sys.stdout.flush()
+        continue
+    buf.extend(ch)
+    sys.stdout.buffer.write(ch)
+    sys.stdout.flush()
+`
+
+// TestChatReloadWorkerFreshDropsSessionButKeepsTranscriptCWD is the
+// regression for T1: `--fresh` must blank the resumed session id (so the
+// respawned Claude never carries `--resume`) while the transcript-derived
+// CWD still reaches the respawned pane untouched. It drives the worker
+// through a REAL tmux pane end to end — cmd/pfm's worker owns no Tmux
+// interface seam of its own (unlike internal/reload's fakeReloadTmux), so a
+// live probe socket plus a substitute "claude" binary that records its own
+// argv and working directory is this package's actual stand-in for a fake.
+func TestChatReloadWorkerFreshDropsSessionButKeepsTranscriptCWD(t *testing.T) {
+	root := jailTest(t)
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is not installed")
+	}
+
+	captured := filepath.Join(t.TempDir(), "captured.txt")
+	fixtureClaude := filepath.Join(t.TempDir(), "claude-fixture.sh")
+	script := "#!/bin/sh\n{\n  pwd\n  for a in \"$@\"; do printf 'ARG:%s\\n' \"$a\"; done\n} >> '" + captured + "'\nexit 0\n"
+	if err := os.WriteFile(fixtureClaude, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	targetCWD := t.TempDir()
+
+	configPath := writeConfigFixture(t, root, `{
+  "version": 1,
+  "accounts": [
+    {"id": 1, "configDir": "`+filepath.Join(root, "account-1")+`", "claude": {"binary": "`+fixtureClaude+`"}}
+  ]
+}`)
+
+	promptScript := filepath.Join(t.TempDir(), "prompt.py")
+	if err := os.WriteFile(promptScript, []byte(reloadPromptFixture), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	socket := probeReloadSocket(t, "fresh")
+	server := exec.Command(
+		"tmux", "-S", socket, "-f", "/dev/null", "new-session", "-d", "-s", "probe",
+		"python3", promptScript,
+	)
+	server.Env = append(server.Environ(), "TMUX=")
+	if output, err := server.CombinedOutput(); err != nil {
+		t.Fatalf("start probe socket: %v: %s", err, output)
+	}
+	cleanupProbeReloadSocket(t, socket)
+
+	paneOutput, err := exec.Command("tmux", "-S", socket, "list-panes", "-F", "#{pane_id}").Output()
+	if err != nil {
+		t.Fatalf("read probe pane: %v", err)
+	}
+	pane := strings.TrimSpace(string(paneOutput))
+
+	resolved, err := paths.Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(resolved.SIDDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The crumb's own filename supplies the session id (SessionFromCrumb
+	// strips the extension off the transcript basename); the transcript
+	// FILE supplies the cwd the worker must keep even under --fresh.
+	transcript := filepath.Join(t.TempDir(), "44444444-4444-4444-8444-444444444444.jsonl")
+	if err := os.WriteFile(transcript, []byte(`{"cwd":"`+targetCWD+`"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	crumb := filepath.Join(resolved.SIDDir, filepath.Base(socket)+"."+pane)
+	if err := os.WriteFile(crumb, []byte(transcript+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PFM_RELOAD_DELAY_MS", "0")
+	t.Setenv("PFM_RELOAD_POLL_MS", "20")
+	t.Setenv("PFM_RELOAD_EXIT_TRIES", "50")
+
+	runtime, err := loadCommandRuntime(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := runChatReloadWorkerWithRuntime(
+		[]string{"--sock", socket, "--fresh", "--account", "1"}, &stdout, &stderr, runtime,
+	)
+	if code != 0 {
+		t.Fatalf("fresh reload rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "rebooted FRESH as requested") {
+		t.Fatalf("stdout=%q missing the fresh-reboot receipt", stdout.String())
+	}
+
+	// Respawn returns as soon as the tmux server has forked the replacement
+	// process; the fixture claude finishing its own write is a separate,
+	// microseconds-scale race — poll rather than assume the write already
+	// landed by the time the worker call above returned.
+	var content string
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		data, readErr := os.ReadFile(captured)
+		if readErr == nil && len(data) > 0 {
+			content = string(data)
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("fixture claude never ran within the timeout: err=%v stdout=%q stderr=%q", readErr, stdout.String(), stderr.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if strings.Contains(content, "--resume") {
+		t.Fatalf("fresh reload still resumed a session:\n%s", content)
+	}
+	if !strings.HasPrefix(content, targetCWD+"\n") {
+		t.Fatalf("fresh reload lost the transcript's cwd: got %q, want it to start with %q", content, targetCWD+"\n")
 	}
 }
 

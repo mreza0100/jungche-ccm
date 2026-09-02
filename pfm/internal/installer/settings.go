@@ -24,6 +24,7 @@ func updateSettings(
 	usageCommand := commandByName(expected, "usage")
 	exploreDenyCommand := commandByName(expected, "explore-deny")
 	epicInjectCommand := commandByName(expected, "epic-inject")
+	reloadInterceptCommand := commandByName(expected, "reload-intercept")
 	launcherRepairCommand := commandByName(expected, "launcher-repair")
 
 	changed := false
@@ -95,7 +96,7 @@ func updateSettings(
 				changed = true
 				continue
 			}
-			if !uninstall && (command == usageCommand || command == epicInjectCommand) {
+			if !uninstall && (command == usageCommand || command == epicInjectCommand || command == reloadInterceptCommand) {
 				if seenUserPromptCommands[command] {
 					changed = true
 					continue
@@ -169,6 +170,10 @@ func updateSettings(
 		}
 		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), epicInjectCommand, "") {
 			appendHookWithMatcher(document, "UserPromptSubmit", "", epicInjectCommand)
+			changed = true
+		}
+		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), reloadInterceptCommand, "") {
+			appendHookWithMatcher(document, "UserPromptSubmit", "", reloadInterceptCommand)
 			changed = true
 		}
 		if normalizeExpectedHookTypes(document, expected) {

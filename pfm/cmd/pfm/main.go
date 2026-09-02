@@ -354,6 +354,9 @@ func runInternal(
 	if len(args) != 0 && args[0] == "epic-inject" {
 		return runEpicInject(os.Stdin, stdout, stderr)
 	}
+	if len(args) != 0 && args[0] == "reload-intercept" {
+		return runReloadIntercept(os.Stdin, stderr, runtime)
+	}
 	if len(args) != 0 && args[0] == "reload-run" {
 		return runChatReloadWorkerWithRuntime(args[1:], os.Stdout, stderr, runtime)
 	}

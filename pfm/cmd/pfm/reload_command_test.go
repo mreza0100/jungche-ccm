@@ -35,11 +35,11 @@ func (reloadTargetTmux) Respawn(context.Context, string, string, string, string)
 func (reloadTargetTmux) Display(context.Context, string, string, string) error { return nil }
 
 func TestReloadUsageIsCanonicalAndSwapIsNotMentioned(t *testing.T) {
-	if !strings.Contains(reloadUsage, "usage: pfm chat reload") {
-		t.Fatalf("reload usage=%q", reloadUsage)
+	if !strings.Contains(reload.Usage, "usage: pfm chat reload") {
+		t.Fatalf("reload usage=%q", reload.Usage)
 	}
-	if strings.Contains(reloadUsage, "chat swap") {
-		t.Fatalf("legacy swap leaked into canonical usage: %q", reloadUsage)
+	if strings.Contains(reload.Usage, "chat swap") {
+		t.Fatalf("legacy swap leaked into canonical usage: %q", reload.Usage)
 	}
 }
 

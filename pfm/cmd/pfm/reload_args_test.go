@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"hostops/pfm/internal/reload"
 )
 
 // The exact call that failed on a real host: a caller told "reload the cache
@@ -86,6 +88,25 @@ func TestReloadFlagValuesAreNotReparsedAsFlags(t *testing.T) {
 	}
 }
 
+// --fresh is a bare flag (no value): accepted once, rejected twice, invisible
+// to reloadRequestedAccount (it must never swallow the account that follows
+// it), and a caller who spells it as the bare word "fresh" gets pointed at
+// the real flag the same way "cache"/"account"/"then"/"sock" already are.
+func TestReloadFreshFlag(t *testing.T) {
+	if err := validateReloadArgs([]string{"--fresh"}); err != nil {
+		t.Fatalf("--fresh rejected: %v", err)
+	}
+	if err := validateReloadArgs([]string{"--fresh", "--fresh"}); err == nil || !strings.Contains(err.Error(), "fresh specified twice") {
+		t.Fatalf("--fresh --fresh error=%v, want it to say \"fresh specified twice\"", err)
+	}
+	if got := reloadRequestedAccount([]string{"--fresh", "--account", "2"}); got != 2 {
+		t.Fatalf("account=%d, want 2 — --fresh must not swallow the account flag that follows it", got)
+	}
+	if err := validateReloadArgs([]string{"fresh"}); err == nil || !strings.Contains(err.Error(), "did you mean --fresh?") {
+		t.Fatalf("bare word \"fresh\" error=%v, want the --fresh hint", err)
+	}
+}
+
 // The usage line is the last thing a confused caller reads, so it must carry
 // the two facts that were missing: every setting has a flag, and the socket
 // finds itself.
@@ -97,8 +118,8 @@ func TestReloadUsageTeachesTheFlagsAndTheSocketDefault(t *testing.T) {
 		"--sock",
 		"detected automatically",
 	} {
-		if !strings.Contains(reloadUsage, want) {
-			t.Errorf("reloadUsage is missing %q:\n%s", want, reloadUsage)
+		if !strings.Contains(reload.Usage, want) {
+			t.Errorf("reload.Usage is missing %q:\n%s", want, reload.Usage)
 		}
 	}
 }

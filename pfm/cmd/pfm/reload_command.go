@@ -29,17 +29,6 @@ import (
 
 type reloadCommandTmux struct{}
 
-// reloadUsage leads with the flags because a caller who guesses is guessing
-// at a POSITION, and a positional slot that only accepts a bare integer is the
-// one shape a model reading "reload the cache off" will fill with the words it
-// was given. Every meaning now has a flag with a name on it.
-//
-// --sock is deliberately last and documented as the exception: with no --sock
-// the command finds the CALLER'S OWN pane by itself, so asking for it is the
-// unusual case, not the normal one.
-const reloadUsage = "usage: pfm chat reload [--account N] [--1h on|off] [--then \"prompt\"] [--sock socket]\n" +
-	"       with no --sock, the calling chat's own pane is detected automatically"
-
 var startReloadWorker = func(command *exec.Cmd) error {
 	if err := command.Start(); err != nil {
 		return err
@@ -125,7 +114,7 @@ func runChatReloadWithRuntime(
 	runtime commandRuntime,
 ) int {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprintln(stdout, reloadUsage)
+		fmt.Fprintln(stdout, reload.Usage)
 		return 0
 	}
 	if err := validateReloadArgs(args); err != nil {
@@ -202,8 +191,11 @@ func runChatReloadWorkerWithRuntime(
 		return 2
 	}
 	var account, cacheOverride, sock, then string
+	fresh := false
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
+		case "--fresh":
+			fresh = true
 		case "--then":
 			if index+1 >= len(args) {
 				fmt.Fprintln(stderr, "pfm chat reload: --then needs a prompt")
@@ -291,6 +283,13 @@ func runChatReloadWorkerWithRuntime(
 		fmt.Fprintf(stderr, "pfm chat reload: %v\n", err)
 		return 1
 	}
+	if fresh {
+		// transcript is kept: it still supplies the CWD below. Only the
+		// resumed session id is dropped, so claudeRun/codexRun omit
+		// --resume/resume and Result.Fresh (SessionID == "") reports true.
+		id = ""
+		fmt.Fprintln(stdout, "pfm chat reload: --fresh — the reborn chat starts a NEW conversation in this pane (the old one stays resumable)")
+	}
 	cwd, err := reload.TranscriptCWD(transcript)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat reload: %v; using the live pane directory\n", err)
@@ -334,7 +333,11 @@ func runChatReloadWorkerWithRuntime(
 		return 1
 	}
 	if result.Fresh {
-		fmt.Fprintln(stdout, "pfm chat reload: no transcript yet — rebooted FRESH")
+		if fresh {
+			fmt.Fprintf(stdout, "pfm chat reload: rebooted FRESH as requested: %s %s\n", filepath.Base(socketPath), pane)
+		} else {
+			fmt.Fprintln(stdout, "pfm chat reload: no transcript yet — rebooted FRESH")
+		}
 	} else {
 		fmt.Fprintf(stdout, "pfm chat reload: respawned in place: %s %s\n", filepath.Base(socketPath), pane)
 	}
@@ -352,8 +355,14 @@ func reloadSocketArgument(args []string) string {
 
 func validateReloadArgs(args []string) error {
 	account := false
+	fresh := false
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
+		case "--fresh":
+			if fresh {
+				return errors.New("fresh specified twice")
+			}
+			fresh = true
 		case "--then", "--sock":
 			if index+1 >= len(args) {
 				return fmt.Errorf("%s needs a value", args[index])
@@ -417,6 +426,8 @@ func reloadArgumentHint(argument string) string {
 		suggestion = "did you mean --1h on|off?"
 	case "account", "acct", "seat", "profile":
 		suggestion = "did you mean --account N?"
+	case "fresh", "new", "restart", "reset":
+		suggestion = "did you mean --fresh?"
 	case "then", "prompt", "continue":
 		suggestion = "did you mean --then \"prompt\"?"
 	case "sock", "socket", "chat", "target":
@@ -425,7 +436,7 @@ func reloadArgumentHint(argument string) string {
 	if suggestion == "" {
 		suggestion = "an account is passed as --account N, and every other setting has its own flag"
 	}
-	return fmt.Sprintf("%q is not a reload argument — %s\n%s", argument, suggestion, reloadUsage)
+	return fmt.Sprintf("%q is not a reload argument — %s\n%s", argument, suggestion, reload.Usage)
 }
 
 func positiveAccount(value string) (int, bool) {
@@ -436,6 +447,8 @@ func positiveAccount(value string) (int, bool) {
 func reloadRequestedAccount(args []string) int {
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
+		case "--fresh":
+			continue
 		case "--then", "--sock", "--1h":
 			index++
 			continue

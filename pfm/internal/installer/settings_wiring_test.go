@@ -85,6 +85,7 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 	}{
 		{"PreToolUse", "Agent|Task", prefix + " internal explore-deny"},
 		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
+		{"UserPromptSubmit", "", prefix + " internal reload-intercept"},
 		{"UserPromptSubmit", "", prefix + " usage-hook"},
 		{"SessionStart", "", prefix + " internal launcher-repair"},
 		{"SessionEnd", "", prefix + " internal clear-kill"},
@@ -96,8 +97,8 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 			t.Fatalf("%s %s matcher count=%d, want 1\n%s", hook.event, hook.command, got, updated)
 		}
 	}
-	if len(owned) != 5 {
-		t.Fatalf("owned hooks=%d, want 5: %#v", len(owned), owned)
+	if len(owned) != 6 {
+		t.Fatalf("owned hooks=%d, want 6: %#v", len(owned), owned)
 	}
 
 	withManual := append([]byte(`{"hooks":{"PreToolUse":[{"matcher":"Agent|Task","hooks":[{"type":"command","command":"operator-keep"}]}]}}`), '\n')
@@ -111,6 +112,49 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 	}
 	if strings.Contains(string(removed), prefix+" ") || !strings.Contains(string(removed), "operator-keep") {
 		t.Fatalf("uninstall ownership result=%s", removed)
+	}
+}
+
+// TestSettingsInstallWiresReloadInterceptHookAndDedupes pins T2's settings
+// contract on its own: a settings.json that has never seen the hook gains it
+// under UserPromptSubmit with an empty matcher (the epic-inject shape), and
+// one that already carries it TWICE — the shape a hand-edited or
+// double-installed settings.json can reach — keeps exactly one copy.
+func TestSettingsInstallWiresReloadInterceptHookAndDedupes(t *testing.T) {
+	home := filepath.Join("neutral", "home")
+	prefix := home + "/.local/bin/pfm"
+	reloadIntercept := prefix + " internal reload-intercept"
+
+	updated, changed, owned, err := updateSettings([]byte("{}\n"), home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("wiring an empty settings.json reported no change")
+	}
+	if got := hookCommandCount(t, string(updated), "UserPromptSubmit", reloadIntercept); got != 1 {
+		t.Fatalf("reload-intercept count=%d after wiring an empty settings.json, want 1\n%s", got, updated)
+	}
+	if got := hookMatcherCount(t, string(updated), "UserPromptSubmit", reloadIntercept, ""); got != 1 {
+		t.Fatalf("reload-intercept matcher count=%d, want 1 empty matcher\n%s", got, updated)
+	}
+	if owned[settingsHookKey{Event: "UserPromptSubmit", Command: reloadIntercept}] != 1 {
+		t.Fatalf("owned ledger did not claim the reload-intercept hook: %#v", owned)
+	}
+
+	twice := []byte(`{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[
+		{"type":"command","command":"` + reloadIntercept + `"},
+		{"type":"command","command":"` + reloadIntercept + `"}
+	]}]}}`)
+	deduped, changed, _, err := updateSettings(twice, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("a doubled reload-intercept hook was not rewritten")
+	}
+	if got := hookCommandCount(t, string(deduped), "UserPromptSubmit", reloadIntercept); got != 1 {
+		t.Fatalf("reload-intercept count=%d after dedupe, want exactly 1\n%s", got, deduped)
 	}
 }
 
@@ -308,8 +352,8 @@ func TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings(t *testing.T)
 	if changed {
 		t.Fatalf("an already fully-wired settings.json was unexpectedly rewritten")
 	}
-	if len(owned) != 5 {
-		t.Fatalf("owned hooks=%d, want 5 — every already-present expected hook must be claimed: %#v", len(owned), owned)
+	if len(owned) != 6 {
+		t.Fatalf("owned hooks=%d, want 6 — every already-present expected hook must be claimed: %#v", len(owned), owned)
 	}
 	for key, count := range owned {
 		if count != 1 {
@@ -388,6 +432,7 @@ func TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent(t *testing.
 	expectedKeys := []settingsHookKey{
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: prefix + " internal explore-deny"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal epic-inject"},
+		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal reload-intercept"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " usage-hook"},
 		{Event: "SessionStart", Matcher: "", Command: prefix + " internal launcher-repair"},
 		{Event: "SessionEnd", Matcher: "", Command: prefix + " internal clear-kill"},

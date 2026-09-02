@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/reload"
 	"hostops/pfm/internal/shared"
 )
 
@@ -301,6 +302,34 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("install changed operator bb.md: %q", content)
 	}
 	assertLink(t, filepath.Join(config, "commands", "reload.md"), filepath.Join(managed, "reload.command.md"))
+	// T3: the staged /reload command's frontmatter description is
+	// reload.Usage itself, folded to one line — never the unrendered
+	// {{RELOAD_USAGE}} token — so the picker shows the human exactly the
+	// flags reload.Run accepts.
+	reloadMD := readFixture(t, filepath.Join(config, "commands", "reload.md"))
+	if strings.Contains(reloadMD, "{{RELOAD_USAGE}}") {
+		t.Fatalf("reload command asset kept its unrendered token:\n%s", reloadMD)
+	}
+	descriptionLine := ""
+	for _, line := range strings.Split(reloadMD, "\n") {
+		if strings.HasPrefix(line, "description: '") {
+			descriptionLine = line
+			break
+		}
+	}
+	if descriptionLine == "" {
+		t.Fatalf("reload command asset has no frontmatter description line:\n%s", reloadMD)
+	}
+	gotDescription := strings.ReplaceAll(
+		strings.TrimSuffix(strings.TrimPrefix(descriptionLine, "description: '"), "'"),
+		"''", "'",
+	)
+	if wantDescription := foldReloadUsage(reload.Usage); gotDescription != wantDescription {
+		t.Fatalf("reload description = %q, want the folded usage line %q", gotDescription, wantDescription)
+	}
+	// T4: /handoff is a global skill, linked the same way /reload is a
+	// global command.
+	assertLink(t, filepath.Join(config, "skills", "handoff", "SKILL.md"), filepath.Join(managed, "handoff.skill.md"))
 	if _, err := os.Lstat(filepath.Join(config, "commands", "chat", "group", "send.md")); !os.IsNotExist(err) {
 		t.Fatalf("install wired a retired /chat: command link: %v", err)
 	}
@@ -437,6 +466,12 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	if _, err := os.Lstat(managed); !os.IsNotExist(err) {
 		t.Fatalf("uninstall left managed asset root: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(config, "skills", "handoff", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("uninstall left the /handoff skill link: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(config, "skills", "handoff")); !os.IsNotExist(err) {
+		t.Fatalf("uninstall left the empty handoff skill directory behind: %v", err)
 	}
 	if schedulerIsLaunchd {
 		agent := filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist")

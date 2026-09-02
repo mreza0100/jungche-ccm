@@ -233,6 +233,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireCommands(assets); err != nil {
 		return err
 	}
+	if err := installer.wireSkills(assets); err != nil {
+		return err
+	}
 	if err := installer.wireGlobalCommands(); err != nil {
 		return err
 	}
@@ -698,6 +701,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.unwireCommands(assets); err != nil {
 		return err
 	}
+	if err := installer.unwireSkills(assets); err != nil {
+		return err
+	}
 	if err := installer.reconcileCodexCommands(nil); err != nil {
 		return err
 	}
@@ -1003,6 +1009,8 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 			content, err = renderShimAsset(content, installer.options)
 		} else if asset.path == "bin/claude" {
 			content, err = renderClaudeLauncherAsset(content, installer.options)
+		} else if asset.path == "reload.command.md" {
+			content, err = renderReloadCommandAsset(content)
 		}
 		if err != nil {
 			return false, fmt.Errorf("render embedded asset %s: %w", asset.path, err)
@@ -1194,6 +1202,52 @@ func (installer *engine) commandTarget(asset string) (string, bool) {
 	switch asset {
 	case "reload.command.md":
 		return filepath.Join(commands, "reload.md"), true
+	}
+	return "", false
+}
+
+func (installer *engine) wireSkills(assets []assetFile) error {
+	installer.say("skills -> %s", filepath.Join(installer.options.ConfigDir, "skills"))
+	for _, asset := range assets {
+		target, found := installer.skillTarget(asset.path)
+		if !found {
+			continue
+		}
+		source := filepath.Join(installer.managedRoot, filepath.FromSlash(asset.path))
+		if _, err := installer.ensureLink(source, target); err != nil {
+			return err
+		}
+	}
+	installer.say("")
+	return nil
+}
+
+func (installer *engine) unwireSkills(assets []assetFile) error {
+	installer.say("skills -> %s", filepath.Join(installer.options.ConfigDir, "skills"))
+	for _, asset := range assets {
+		target, found := installer.skillTarget(asset.path)
+		if !found {
+			continue
+		}
+		if err := installer.unlinkOne(target); err != nil {
+			return err
+		}
+		// The skill's own directory (e.g. skills/handoff/) is created by
+		// ensureLink's MkdirAll on link; remove it here once its one link is
+		// gone, tolerantly — an operator file left beside it must survive.
+		if err := installer.retireEmptyDirectoryTolerant(filepath.Dir(target)); err != nil {
+			return err
+		}
+	}
+	installer.say("")
+	return nil
+}
+
+func (installer *engine) skillTarget(asset string) (string, bool) {
+	skills := filepath.Join(installer.options.ConfigDir, "skills")
+	switch asset {
+	case "handoff.skill.md":
+		return filepath.Join(skills, "handoff", "SKILL.md"), true
 	}
 	return "", false
 }

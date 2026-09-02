@@ -105,6 +105,32 @@ func TestProbeExpectedHooksFlagsRetiredHookCommandsAsStale(t *testing.T) {
 	}
 }
 
+// TestClaudeHookTemplatesIncludesReloadIntercept pins T2's installer half
+// directly at the template source doctor and the settings wiring both read:
+// the `/reload` UserPromptSubmit hook must be present, on the right event,
+// with an empty matcher (the epic-inject shape), pointing at the binary's
+// own `internal reload-intercept` subcommand.
+func TestClaudeHookTemplatesIncludesReloadIntercept(t *testing.T) {
+	home := filepath.Join("neutral", "home")
+	templates := claudeHookTemplates(home)
+	if got := commandByName(templates, "reload-intercept"); got != home+"/.local/bin/pfm internal reload-intercept" {
+		t.Fatalf("reload-intercept command=%q", got)
+	}
+	found := false
+	for _, template := range templates {
+		if template.Name != "reload-intercept" {
+			continue
+		}
+		found = true
+		if template.Event != "UserPromptSubmit" || template.Matcher != "" {
+			t.Fatalf("reload-intercept template=%#v, want UserPromptSubmit with an empty matcher", template)
+		}
+	}
+	if !found {
+		t.Fatal("claudeHookTemplates dropped the reload-intercept hook")
+	}
+}
+
 // ExpectedHooks names no Codex SessionStart hook at all anymore: the hook is
 // retired (see updateCodexHooks), and doctor reporting "missing: run pfm
 // install" for a hook that is never coming back would be the lie, not the

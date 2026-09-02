@@ -24,6 +24,22 @@ import (
 	"hostops/pfm/internal/inject"
 )
 
+// Usage leads with the flags because a caller who guesses is guessing
+// at a POSITION, and a positional slot that only accepts a bare integer is the
+// one shape a model reading "reload the cache off" will fill with the words it
+// was given. Every meaning now has a flag with a name on it.
+//
+// --sock is deliberately last and documented as the exception: with no --sock
+// the command finds the CALLER'S OWN pane by itself, so asking for it is the
+// unusual case, not the normal one.
+//
+// It is exported (not a cmd/pfm local const) because the installer folds it
+// verbatim into the `/reload` slash command's own description — the picker
+// shows the human exactly the flags this package's Run understands, never a
+// hand-maintained restatement that can drift from them.
+const Usage = "usage: pfm chat reload [--account N] [--1h on|off] [--fresh] [--then \"prompt\"] [--sock socket]\n" +
+	"       with no --sock, the calling chat's own pane is detected automatically"
+
 type Pane struct {
 	ID          string
 	Dead        bool
