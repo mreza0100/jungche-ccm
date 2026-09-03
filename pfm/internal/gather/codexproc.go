@@ -56,11 +56,24 @@ func DetectCodexThreadsInRoots(
 	identify CodexThreadResolver,
 	binaries ...string,
 ) ([]LiveCodex, error) {
-	pids, err := proc.PIDs()
+	cmdlines, err := processCmdlines(proc)
 	if err != nil {
 		return nil, fmt.Errorf("list processes for Codex scan: %w", err)
 	}
-	sort.Ints(pids)
+	return detectCodexThreadsInRootsFrom(cmdlines, proc, codexRoots, panes, identify, binaries...)
+}
+
+// detectCodexThreadsInRootsFrom is DetectCodexThreadsInRoots over an
+// already-fetched pid->cmdline snapshot — see processCmdlines.
+func detectCodexThreadsInRootsFrom(
+	cmdlines map[int][]string,
+	proc ProcFS,
+	codexRoots []string,
+	panes []Pane,
+	identify CodexThreadResolver,
+	binaries ...string,
+) ([]LiveCodex, error) {
+	pids := sortedPIDs(cmdlines)
 	paneByPID := panesByPID(panes)
 	sessionsRoots := make([]string, 0, len(codexRoots))
 	for _, codexRoot := range codexRoots {
@@ -71,8 +84,8 @@ func DetectCodexThreadsInRoots(
 
 	live := make([]LiveCodex, 0)
 	for _, pid := range pids {
-		cmdline, err := proc.Cmdline(pid)
-		if err != nil || !IsCodexCommand(cmdline, binaries...) {
+		cmdline := cmdlines[pid]
+		if !IsCodexCommand(cmdline, binaries...) {
 			continue
 		}
 		links, err := proc.FDLinks(pid)

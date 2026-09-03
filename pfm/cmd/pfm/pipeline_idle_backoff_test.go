@@ -21,17 +21,18 @@ func TestRefreshCadenceGrowsWhileUntouched(t *testing.T) {
 		)
 	}
 
-	want := []time.Duration{
-		5500 * time.Millisecond,
-		6050 * time.Millisecond,
-		6655 * time.Millisecond,
+	// growth is steep enough that ONE untouched pass already crosses
+	// fleetRefreshParkThreshold (5s * 13 = 65s > 60s) — at several
+	// CPU-seconds a pass on a real fleet (~50 tmux sockets, ~1950
+	// processes measured on devbox 2026-09-03), even a gentle multi-step
+	// ramp risks a pass landing inside any given 30s measurement window.
+	if got := cadence.next(); got != fleetRefreshParkThreshold {
+		t.Fatalf("interval after 1 untouched pass = %s, want the park threshold %s",
+			got, fleetRefreshParkThreshold)
 	}
-	for step, expected := range want {
-		got := cadence.next()
-		if got != expected {
-			t.Fatalf("interval after %d untouched passes = %s, want %s",
-				step+1, got, expected)
-		}
+	if got := cadence.next(); got != fleetRefreshParkThreshold {
+		t.Fatalf("interval after 2 untouched passes = %s, want it to stay at %s",
+			got, fleetRefreshParkThreshold)
 	}
 }
 
@@ -61,14 +62,14 @@ func TestRefreshCadenceResetsOnInteraction(t *testing.T) {
 func TestRefreshCadenceCapsAndNilClockNeverBacksOff(t *testing.T) {
 	cadence := newRefreshCadence(ui.NewActivityClock(time.Now()))
 	for range 500 {
-		if got := cadence.next(); got > fleetRefreshMaxInterval {
+		if got := cadence.next(); got > fleetRefreshParkThreshold {
 			t.Fatalf("interval %s exceeded the cap %s",
-				got, fleetRefreshMaxInterval)
+				got, fleetRefreshParkThreshold)
 		}
 	}
-	if cadence.interval != fleetRefreshMaxInterval {
+	if cadence.interval != fleetRefreshParkThreshold {
 		t.Fatalf("interval after 500 passes = %s, want the cap %s",
-			cadence.interval, fleetRefreshMaxInterval)
+			cadence.interval, fleetRefreshParkThreshold)
 	}
 
 	// A nil clock is every non-interactive caller: no presence signal must
@@ -82,44 +83,25 @@ func TestRefreshCadenceCapsAndNilClockNeverBacksOff(t *testing.T) {
 	}
 }
 
-// TestPickerRefreshStreamStretchesWhileUntouched pins the fix in the LIVE
+// TestPickerRefreshStreamParksThenWakesOnKeystroke pins the fix in the LIVE
 // loop, not just in the cadence arithmetic. A picker used to refresh on a
-// fixed ticker for its whole life, and one pass costs more than the interval
-// did — a tmux fork+exec per live socket plus a full store read — so a picker
-// left in a pane nobody watched ground half a CPU core indefinitely.
+// fixed ticker for its whole life, and one pass costs several CPU-seconds on
+// a real fleet — a tmux fork+exec per live socket plus a full store read and
+// a per-process scan for every engine detector — so a picker left in a pane
+// nobody watched ground over half a core indefinitely (2026-09-03 real-box
+// measurement, 1741 ticks/30s).
 //
-// The unit tests above prove next() computes the right numbers. Only this one
-// proves the loop actually ASKS it: a stream still wired to a constant would
-// pass every test above and keep burning the core.
-func TestPickerRefreshStreamStretchesWhileUntouched(t *testing.T) {
+// The unit tests above prove next() computes the right numbers. Only this
+// one proves the loop actually STOPS asking: it must send exactly the two
+// passes the transition into park allows (the initial synchronous pass, then
+// the one loop-driven pass that crosses fleetRefreshParkThreshold), then go
+// silent — no third pass, ever, until the activity clock moves — and a
+// keystroke must wake it within one park-poll interval, not a stale
+// already-scheduled multi-minute timer.
+func TestPickerRefreshStreamParksThenWakesOnKeystroke(t *testing.T) {
 	jailTest(t)
 	t.Setenv(codexAvailableEnv, "0")
 
-	gaps := refreshGaps(t, 4)
-	first, last := gaps[0], gaps[len(gaps)-1]
-	if last <= first {
-		t.Fatalf(
-			"refresh gaps did not stretch: first %s, last %s (all %v) — the "+
-				"loop is still refreshing on a constant interval",
-			first, last, gaps,
-		)
-	}
-	// 5s → 6.05s by the third gap is a 21% stretch; require well over half of
-	// it so scheduler noise cannot pass a loop that never backs off at all.
-	if ratio := float64(last) / float64(first); ratio < 1.10 {
-		t.Fatalf(
-			"refresh gap ratio = %.2f (first %s, last %s, all %v), want >= 1.10",
-			ratio, first, last, gaps,
-		)
-	}
-}
-
-// refreshGaps runs one untouched refresh stream and returns the intervals
-// between the first count completed passes. It fails the test outright if the
-// stream dies or starves, so a returned slice always means "we watched real
-// passes", never "we saw nothing and called it a result".
-func refreshGaps(t *testing.T, count int) []time.Duration {
-	t.Helper()
 	database, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -131,8 +113,7 @@ func refreshGaps(t *testing.T, count int) []time.Duration {
 	updates := make(chan ui.Snapshot, 1)
 	var stderr bytes.Buffer
 	runner := &immediateIndexRunner{}
-	// Stamped once at birth and never again: this picker is opened and then
-	// abandoned, which is exactly the shape that burned the core.
+	clock := ui.NewActivityClock(time.Now())
 	go streamFleetRefreshesWith(
 		ctx,
 		database,
@@ -144,38 +125,49 @@ func refreshGaps(t *testing.T, count int) []time.Duration {
 			newIndexer: func(*store.Store) (indexRunner, error) {
 				return runner, nil
 			},
-			activity: ui.NewActivityClock(time.Now()),
+			activity: clock,
 		},
 	)
 
-	starve := time.After(3 * time.Minute)
-	completed := make([]time.Time, 0, count+1)
-	for len(completed) < count+1 {
+	completed := 0
+	starve := time.After(20 * time.Second)
+	for completed < 2 {
 		select {
 		case snapshot, ok := <-updates:
 			if !ok {
-				t.Fatalf(
-					"refresh stream closed after %d of %d passes: %s",
-					len(completed), count+1, stderr.String(),
-				)
+				t.Fatalf("refresh stream closed after %d of 2 passes: %s", completed, stderr.String())
 			}
 			if !snapshot.Refreshing {
-				completed = append(completed, time.Now())
+				completed++
 			}
 		case <-starve:
-			t.Fatalf(
-				"refresh stream produced %d of %d passes in 3m: %s",
-				len(completed), count+1, stderr.String(),
-			)
+			t.Fatalf("refresh stream produced %d of 2 passes in 20s: %s", completed, stderr.String())
 		}
+	}
+
+	// Parked: no further pass for well over several fleetRefreshParkPollInterval
+	// ticks proves the loop actually stopped, not merely slowed to something
+	// this test's patience could still outlast.
+	select {
+	case snapshot, ok := <-updates:
+		if ok {
+			t.Fatalf("a third pass arrived while parked and untouched: %#v", snapshot)
+		}
+	case <-time.After(3 * time.Second):
+	}
+
+	// A keystroke must wake it inside a poll or two — not wait on an
+	// already-scheduled timer that was never armed for anything this soon.
+	clock.Stamp(time.Now())
+	select {
+	case _, ok := <-updates:
+		if !ok {
+			t.Fatal("refresh stream closed instead of waking on a keystroke")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no pass arrived within 5s of a keystroke while parked")
 	}
 	cancel()
 	for range updates {
 	}
-
-	gaps := make([]time.Duration, 0, count)
-	for index := 1; index < len(completed); index++ {
-		gaps = append(gaps, completed[index].Sub(completed[index-1]))
-	}
-	return gaps
 }

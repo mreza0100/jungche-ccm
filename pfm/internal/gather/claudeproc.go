@@ -13,16 +13,28 @@ func DetectClaudeProcesses(
 	panes []Pane,
 	binaries ...string,
 ) ([]ClaudeProcess, error) {
-	pids, err := proc.PIDs()
+	cmdlines, err := processCmdlines(proc)
 	if err != nil {
 		return nil, fmt.Errorf("list processes for Claude scan: %w", err)
 	}
-	sort.Ints(pids)
+	return detectClaudeProcessesFrom(cmdlines, proc, panes, binaries...)
+}
+
+// detectClaudeProcessesFrom is DetectClaudeProcesses over an already-fetched
+// pid->cmdline snapshot (see processCmdlines) — the shape gather.Snapshot
+// uses so its parallel detectors share one /proc walk instead of paying for
+// one each.
+func detectClaudeProcessesFrom(
+	cmdlines map[int][]string,
+	proc ProcFS,
+	panes []Pane,
+	binaries ...string,
+) ([]ClaudeProcess, error) {
+	pids := sortedPIDs(cmdlines)
 	paneByPID := panesByPID(panes)
 	processes := make([]ClaudeProcess, 0)
 	for _, pid := range pids {
-		cmdline, err := proc.Cmdline(pid)
-		if err != nil || !isClaudeCommand(cmdline, binaries...) {
+		if !isClaudeCommand(cmdlines[pid], binaries...) {
 			continue
 		}
 		pane, found := paneForProcess(proc, pid, paneByPID)

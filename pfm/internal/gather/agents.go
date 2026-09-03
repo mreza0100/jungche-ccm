@@ -13,19 +13,25 @@ import (
 // DetectAgents returns strict session identities for Claude processes using a
 // non-primary config directory.
 func DetectAgents(proc ProcFS, home string, panes []Pane, binaries ...string) ([]Agent, error) {
-	pids, err := proc.PIDs()
+	cmdlines, err := processCmdlines(proc)
 	if err != nil {
 		return nil, fmt.Errorf("list processes for agent scan: %w", err)
 	}
-	sort.Ints(pids)
+	return detectAgentsFrom(cmdlines, proc, home, panes, binaries...)
+}
+
+// detectAgentsFrom is DetectAgents over an already-fetched pid->cmdline
+// snapshot — see processCmdlines.
+func detectAgentsFrom(cmdlines map[int][]string, proc ProcFS, home string, panes []Pane, binaries ...string) ([]Agent, error) {
+	pids := sortedPIDs(cmdlines)
 	paneByPID := panesByPID(panes)
 	primaryRoot := filepath.Clean(filepath.Join(home, ".claude"))
 	seenSessions := make(map[string]struct{})
 	agents := make([]Agent, 0)
 
 	for _, pid := range pids {
-		cmdline, err := proc.Cmdline(pid)
-		if err != nil || !isClaudeCommand(cmdline, binaries...) {
+		cmdline := cmdlines[pid]
+		if !isClaudeCommand(cmdline, binaries...) {
 			continue
 		}
 		sessionIDs := claudeSessionIDs(cmdline)

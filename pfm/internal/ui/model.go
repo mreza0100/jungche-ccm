@@ -26,6 +26,25 @@ const (
 	defaultHeight         = 28
 	statsRefreshInterval  = 2 * time.Second
 	cosmosRefreshInterval = 2 * time.Second
+	// skyTickBaseInterval is the ambient sky/cosmos header widget's cadence
+	// while somebody is watching — ~8fps, fast enough that comets, wind, and
+	// twinkle read as motion. Unlike the fleet scan and the Stats/Cosmos tab
+	// samplers (both already gated off the moment their tab loses focus),
+	// this tick used to run unconditionally for the picker's entire life,
+	// tab or no tab, idle or not — an abandoned `pfm ls` (VS Code's
+	// tab-revival storm, 2026-09-03) rendered a full frame eight times a
+	// second for as long as the pane stayed open.
+	//
+	// skyTickGrowth decays it via the same tickCadence arithmetic that backs
+	// off the fleet scan (see activity.go), but steeper: at 8fps a gentle
+	// 1.1x ramp still takes minutes to matter, so skyTickParkThreshold marks
+	// the point — reached within a few seconds of continuous idle — where
+	// the loop stops rescheduling itself entirely rather than merely ticking
+	// slower forever. A keystroke (see wakeSky) restarts it instantly rather
+	// than waiting for a stale, already-scheduled tick to fire.
+	skyTickBaseInterval  = 125 * time.Millisecond
+	skyTickGrowth        = 1.35
+	skyTickParkThreshold = 1 * time.Second
 )
 
 type projectGroup struct {
@@ -146,7 +165,13 @@ type Model struct {
 	newChatEngine  pfmengine.ID
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
-	activity      *ActivityClock
+	activity *ActivityClock
+	// skyCadence backs off the ambient sky/cosmos header tick the same way
+	// the background refresh backs off — see tickCadence in activity.go.
+	// skyParked is true once the tick has stopped rescheduling itself
+	// entirely (skyCadence reached skyTickParkThreshold); wakeSky clears it.
+	skyCadence    tickCadence
+	skyParked     bool
 	query         textinput.Model
 	outcome       OutcomeKind
 	outcomeRow    compose.Row
@@ -208,6 +233,7 @@ func NewModel(snapshot Snapshot) Model {
 		skyEnabled:          !snapshot.NoSky,
 		cosmosSafe:          snapshot.CosmosSafe,
 		activity:            snapshot.Activity,
+		skyCadence:          newTickCadence(snapshot.Activity, skyTickBaseInterval, skyTickGrowth, skyTickParkThreshold),
 		mergeNewChat:        snapshot.MergeNewChat,
 		newChatEngine:       defaultNewChatEngine(snapshot.AccountIDs, snapshot.CodexAccountIDs, snapshot.OpencodeAccountIDs),
 	}
@@ -287,7 +313,7 @@ func (model Model) Init() tea.Cmd {
 	if !model.skyEnabled {
 		return nil
 	}
-	return skyTickCmd()
+	return skyTickCmd(skyTickBaseInterval)
 }
 
 // Update applies one message without touching the outside world.
@@ -359,14 +385,24 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		model.skyEvents = kept
-		return model, skyTickCmd()
+		next := model.skyCadence.next()
+		if next >= skyTickParkThreshold {
+			// Parked: no further tea.Tick gets scheduled at all, so an
+			// abandoned picker's ambient animation costs nothing rather
+			// than merely ticking slower forever. wakeSky restarts it.
+			model.skyParked = true
+			return model, nil
+		}
+		return model, skyTickCmd(next)
 	case tea.PasteMsg:
 		model.activity.Stamp(time.Now())
 		model.updateQuery(model.query.Value() + message.Content)
-		return model, nil
+		return model, model.wakeSky()
 	case tea.KeyMsg:
 		model.activity.Stamp(time.Now())
-		return model.updateKey(message)
+		wake := model.wakeSky()
+		updated, cmd := model.updateKey(message)
+		return updated, batchCommands(cmd, wake)
 	default:
 		return model, nil
 	}
@@ -818,10 +854,29 @@ type statsTickMsg struct{ generation uint64 }
 
 type skyTickMsg struct{ nowNS int64 }
 
-func skyTickCmd() tea.Cmd {
-	return tea.Tick(125*time.Millisecond, func(now time.Time) tea.Msg {
+// skyTickCmd schedules the next ambient sky/cosmos header tick after
+// interval, which the caller computes from model.skyCadence so an untouched
+// picker's animation loop decays instead of rendering at a flat 8fps for as
+// long as the pane stays open.
+func skyTickCmd(interval time.Duration) tea.Cmd {
+	return tea.Tick(interval, func(now time.Time) tea.Msg {
 		return skyTickMsg{nowNS: now.UnixNano()}
 	})
+}
+
+// wakeSky un-parks the ambient sky/cosmos tick the instant a keystroke or
+// paste arrives, rather than waiting for a pending tea.Tick that may not
+// fire for a while (skyCadence, once parked, schedules nothing further to
+// wait on). It returns nil whenever there is nothing to wake — no sky, or
+// the tick was never parked — so callers can freely batch it alongside
+// whatever command their own handling already produced.
+func (model *Model) wakeSky() tea.Cmd {
+	if !model.skyEnabled || !model.skyParked {
+		return nil
+	}
+	model.skyParked = false
+	model.skyCadence = newTickCadence(model.activity, skyTickBaseInterval, skyTickGrowth, skyTickParkThreshold)
+	return skyTickCmd(skyTickBaseInterval)
 }
 
 func liveSockets(rows []compose.Row) map[string]bool {

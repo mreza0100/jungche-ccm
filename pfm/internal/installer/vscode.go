@@ -35,6 +35,19 @@ type vscodeOwnershipRecord struct {
 	DefaultOwned          bool            `json:"defaultOwned,omitempty"`
 	HadDefault            bool            `json:"hadDefault,omitempty"`
 	PreviousDefault       json.RawMessage `json:"previousDefault,omitempty"`
+	// ScalarOwned/HadScalar/PreviousScalar extend DefaultOwned/HadDefault/
+	// PreviousDefault's exact relinquish-then-claim shape to every key in
+	// vscodeScalarKeys: tmux (`tmux -L cc-*`) is a chat's survival layer, the
+	// VS Code tab only a view onto it — enablePersistentSessions reconnects
+	// the view across a window reload; persistentSessionReviveProcess stays
+	// "never" because reviving a dead tab after a server death spawns one
+	// live picker per tab, a CPU storm (2026-09-03, see internal/ui's
+	// idle-picker backoff); showExitAlert off drops the per-chat exit toast;
+	// remote.autoForwardPorts off stops VS Code auto-forwarding a fleet
+	// chat's stray listening port.
+	ScalarOwned    map[string]bool            `json:"scalarOwned,omitempty"`
+	HadScalar      map[string]bool            `json:"hadScalar,omitempty"`
+	PreviousScalar map[string]json.RawMessage `json:"previousScalar,omitempty"`
 }
 
 func (installer *engine) wireVSCode() error {
@@ -82,7 +95,7 @@ func (installer *engine) wireVSCode() error {
 			}
 			return err
 		}
-		if next.ProfileOwned || next.DefaultOwned {
+		if next.ProfileOwned || next.DefaultOwned || len(next.ScalarOwned) != 0 {
 			ownership[path] = next
 		} else {
 			delete(ownership, path)
@@ -176,6 +189,37 @@ func (installer *engine) mergeVSCodeSettings(path string, record vscodeOwnership
 		}
 	}
 
+	for _, key := range vscodeScalarKeys {
+		want := vscodeScalarValue(key)
+		existing, hasExisting := document[key]
+		if alreadyOwned && record.ScalarOwned[key] && (!hasExisting || existing != want) {
+			// An operator's own edit after installation wins, same as DefaultOwned.
+			delete(record.ScalarOwned, key)
+			delete(record.HadScalar, key)
+			delete(record.PreviousScalar, key)
+		}
+		if installer.options.VSCode && !record.ScalarOwned[key] && (!hasExisting || existing != want) {
+			if record.ScalarOwned == nil {
+				record.ScalarOwned = map[string]bool{}
+			}
+			record.ScalarOwned[key] = true
+			if hasExisting {
+				previousRaw, marshalErr := json.Marshal(existing)
+				if marshalErr != nil {
+					return nil, record, false, fmt.Errorf("preserve VS Code %s in %s: %w", key, path, marshalErr)
+				}
+				if record.HadScalar == nil {
+					record.HadScalar = map[string]bool{}
+				}
+				record.HadScalar[key] = true
+				if record.PreviousScalar == nil {
+					record.PreviousScalar = map[string]json.RawMessage{}
+				}
+				record.PreviousScalar[key] = previousRaw
+			}
+		}
+	}
+
 	updated := append([]byte(nil), raw...)
 	changed := false
 	if record.ProfileOwned && !reflect.DeepEqual(existingProfile, canonical) {
@@ -207,6 +251,24 @@ func (installer *engine) mergeVSCodeSettings(path string, record vscodeOwnership
 	}
 	if record.DefaultOwned && (!hasDefault || existingDefault != vscodeProfileName) {
 		updated, err = setJSONCProperty(updated, 0, defaultKey, []byte(`"`+vscodeProfileName+`"`))
+		if err != nil {
+			return nil, record, false, err
+		}
+		changed = true
+	}
+	for _, key := range vscodeScalarKeys {
+		if !record.ScalarOwned[key] {
+			continue
+		}
+		want := vscodeScalarValue(key)
+		if existing, hasExisting := document[key]; hasExisting && existing == want {
+			continue
+		}
+		valueRaw, marshalErr := json.Marshal(want)
+		if marshalErr != nil {
+			return nil, record, false, marshalErr
+		}
+		updated, err = setJSONCProperty(updated, 0, key, valueRaw)
 		if err != nil {
 			return nil, record, false, err
 		}
@@ -252,6 +314,23 @@ func (installer *engine) unwireVSCode(path string, existing []byte, ownership ma
 			record.DefaultOwned = false
 			record.HadDefault = false
 			record.PreviousDefault = nil
+		}
+		for _, key := range vscodeScalarKeys {
+			if !record.ScalarOwned[key] || document[key] != vscodeScalarValue(key) {
+				continue
+			}
+			if record.HadScalar[key] {
+				updated, err = setJSONCProperty(updated, 0, key, record.PreviousScalar[key])
+			} else {
+				updated, err = removeJSONCProperty(updated, 0, key)
+			}
+			if err != nil {
+				return err
+			}
+			changed = true
+			delete(record.ScalarOwned, key)
+			delete(record.HadScalar, key)
+			delete(record.PreviousScalar, key)
 		}
 		profileRetained := false
 		if record.ProfileOwned {
@@ -463,6 +542,34 @@ func vscodeProfile() map[string]any {
 	}
 }
 
+// vscodeScalarKeys are the fixed-value settings pfm install owns besides the
+// default-profile key (handled separately — it names this profile, not a
+// constant). Unlike terminal.integrated.profiles.<platform>/defaultProfile,
+// these are not platform-suffixed: VS Code reads them the same on every OS.
+var vscodeScalarKeys = []string{
+	"terminal.integrated.enablePersistentSessions",
+	"terminal.integrated.persistentSessionReviveProcess",
+	"terminal.integrated.showExitAlert",
+	"remote.autoForwardPorts",
+}
+
+// vscodeScalarValue is the value pfm install owns key to. See
+// vscodeOwnershipRecord.ScalarOwned for why each one is what it is.
+func vscodeScalarValue(key string) any {
+	switch key {
+	case "terminal.integrated.enablePersistentSessions":
+		return true
+	case "terminal.integrated.persistentSessionReviveProcess":
+		return "never"
+	case "terminal.integrated.showExitAlert":
+		return false
+	case "remote.autoForwardPorts":
+		return false
+	default:
+		return nil
+	}
+}
+
 // The editor accepts JSONC, so installer edits must not round-trip the whole
 // document through encoding/json and erase the operator's comments. These
 // helpers parse enough structure to replace one object property surgically.
@@ -549,12 +656,18 @@ func sanitizeJSONC(raw []byte) ([]byte, error) {
 	if inString {
 		return nil, errors.New("unterminated string")
 	}
+	// A comma is trailing — VS Code accepts it, encoding/json does not — when
+	// nothing but whitespace and/or MORE commas separates it from the object
+	// or array's closing bracket. A hand edit that leaves two properties
+	// each ending in their own comma back to back (a block moved, or two
+	// edits landing on the same spot) is exactly this, one comma deeper than
+	// the single-comma case a lookahead of whitespace alone would catch.
 	for index, character := range clean {
 		if character != ',' {
 			continue
 		}
 		next := index + 1
-		for next < len(clean) && isJSONWhitespace(clean[next]) {
+		for next < len(clean) && (isJSONWhitespace(clean[next]) || clean[next] == ',') {
 			next++
 		}
 		if next < len(clean) && (clean[next] == '}' || clean[next] == ']') {
@@ -653,7 +766,12 @@ func setJSONCProperty(raw []byte, objectStart int, name string, value []byte) ([
 	if len(object.properties) != 0 && object.properties[len(object.properties)-1].commaStart < 0 {
 		prefix = ","
 	}
-	insertion := []byte(prefix + "\n" + childIndent + string(mustJSON(name)) + ": " + string(formatted) + ",\n" + closingIndent)
+	// No trailing comma after the inserted property: it is the new last
+	// member, sitting directly against the closing bracket, so the result
+	// is valid strict JSON there, not merely JSONC. A LATER insertion into
+	// the same object still lands correctly — it is the "last property has
+	// no comma" case the prefix check above already exists to handle.
+	insertion := []byte(prefix + "\n" + childIndent + string(mustJSON(name)) + ": " + string(formatted) + "\n" + closingIndent)
 	return spliceBytes(raw, object.close, object.close, insertion), nil
 }
 

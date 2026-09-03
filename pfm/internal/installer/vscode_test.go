@@ -53,6 +53,15 @@ func TestVSCodeTerminalProfileIsPreviewedMergedIdempotentAndReversed(t *testing.
 		`"PFM":`,
 		`"CC_AUTO_OPEN": "pfm"`,
 		`"terminal.integrated.defaultProfile.linux": "PFM"`,
+		// The terminal-persistence keys: tmux is the chat's survival layer,
+		// the tab only a view — persistence reconnects the view across a
+		// reload, revive stays "never" so a dead server does not spawn one
+		// live picker per tab, and the exit alert / port-forward keys stay
+		// off (see vscodeOwnershipRecord.ScalarOwned).
+		`"terminal.integrated.enablePersistentSessions": true`,
+		`"terminal.integrated.persistentSessionReviveProcess": "never"`,
+		`"terminal.integrated.showExitAlert": false`,
+		`"remote.autoForwardPorts": false`,
 	} {
 		if !strings.Contains(merged, want) {
 			t.Errorf("merged settings missing %q:\n%s", want, merged)
@@ -88,6 +97,16 @@ func TestVSCodeTerminalProfileIsPreviewedMergedIdempotentAndReversed(t *testing.
 	}
 	if strings.Contains(restored, `"PFM"`) || strings.Contains(restored, "CC_AUTO_OPEN") {
 		t.Fatalf("uninstall retained the PFM profile:\n%s", restored)
+	}
+	for _, gone := range []string{
+		"enablePersistentSessions",
+		"persistentSessionReviveProcess",
+		"terminal.integrated.showExitAlert",
+		"remote.autoForwardPorts",
+	} {
+		if strings.Contains(restored, gone) {
+			t.Fatalf("uninstall retained %q (settings.json had no such key before install):\n%s", gone, restored)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(home, ".local", "share", "pfm", "install", vscodeOwnershipName)); !os.IsNotExist(err) {
 		t.Fatalf("uninstall retained VS Code ownership ledger: %v", err)
@@ -165,6 +184,46 @@ func TestVSCodeUninstallPreservesAnOperatorOverrideAfterInstall(t *testing.T) {
 	got := readFixture(t, settings)
 	if !strings.Contains(got, `"terminal.integrated.defaultProfile.linux": "bash"`) {
 		t.Fatalf("uninstall clobbered the operator's post-install default:\n%s", got)
+	}
+}
+
+// TestVSCodeScalarKeyOperatorOverrideSurvivesUninstall mirrors
+// TestVSCodeUninstallPreservesAnOperatorOverrideAfterInstall for the four
+// scalar keys ScalarOwned added alongside DefaultOwned: an operator turning
+// the exit alert back on after install is an intentional override, and
+// uninstall must leave it exactly as the operator left it rather than
+// restoring pfm's own remembered prior state.
+func TestVSCodeScalarKeyOperatorOverrideSurvivesUninstall(t *testing.T) {
+	home := t.TempDir()
+	settings := filepath.Join(home, "settings.json")
+	writeFixture(t, settings, `{}`)
+	options := Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{}, VSCode: true,
+		vscodePlatform: "linux", vscodeSettingsPaths: []string{settings},
+	}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFixture(t, settings); !strings.Contains(got, `"terminal.integrated.showExitAlert": false`) {
+		t.Fatalf("install did not set showExitAlert:\n%s", got)
+	}
+
+	raw := []byte(readFixture(t, settings))
+	overridden, err := setJSONCProperty(raw, 0, "terminal.integrated.showExitAlert", []byte("true"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settings, overridden, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	options.Mode, options.VSCode = ModeUninstall, false
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	got := readFixture(t, settings)
+	if !strings.Contains(got, `"terminal.integrated.showExitAlert": true`) {
+		t.Fatalf("uninstall clobbered the operator's post-install showExitAlert override:\n%s", got)
 	}
 }
 
@@ -317,6 +376,232 @@ func TestMalformedVSCodeSettingsSkipsVisiblyWithoutBlockingInstall(t *testing.T)
 	}
 	if got := readFixture(t, settings); got != "{broken\n" {
 		t.Fatalf("malformed settings were rewritten: %q", got)
+	}
+}
+
+// realMalformedVSCodeSettings is a byte-for-byte copy of the live
+// ~/.vscode-server/data/Machine/settings.json backup taken on devbox
+// 2026-09-03 (settings.json.bak-20260903, 1733 bytes): a hand-inserted PFM
+// block left the "devbox (zsh)" profile's closing brace followed by a
+// comma on its own line (an orphaned separator, harmless) and then
+// terminal.integrated.profiles.linux itself closing with `},\n  },` — a
+// trailing comma before ITS OWN closing brace. errors.Is(err,
+// errMalformedVSCodeSettings) is what this used to trip.
+const realMalformedVSCodeSettings = `{
+  "terminal.integrated.profiles.linux": {
+    "bash": {
+      "path": "/usr/bin/bash"
+    },
+    "zsh": {
+      "path": "/usr/bin/zsh"
+    },
+    "tmux": {
+      "path": "/usr/local/bin/tmux",
+      "icon": "terminal-tmux"
+    },
+    "tmux + claude": {
+      "path": "/usr/bin/zsh",
+      "env": {
+        "VSCODE_AUTO_CC": "1"
+      }
+    },
+    "devbox-2 (tmux)": {
+      "path": "/usr/local/bin/tmux",
+      "args": [
+        "-L",
+        "vscode",
+        "new-session",
+        "-A",
+        "-s",
+        "main"
+      ],
+      "icon": "server-environment"
+    },
+    "devbox-2 (zsh)": {
+      "path": "/usr/bin/zsh",
+      "icon": "terminal"
+    },
+    "vsct": {
+      "path": "/home/reza/work/host-ops/devbox/scripts/vsct.sh",
+      "icon": "server-process",
+      "env": {
+        "VSCODE_AUTO_CC": "1"
+      }
+    },
+    "devbox (tmux)": {
+      "path": "/usr/local/bin/tmux",
+      "args": [
+        "-L",
+        "vscode",
+        "new-session",
+        "-A",
+        "-s",
+        "main"
+      ],
+      "icon": "server-environment"
+    },
+    "devbox (zsh)": {
+      "path": "/usr/bin/zsh",
+      "icon": "terminal"
+    }
+  ,
+    "PFM": {
+      "args": [
+        "-l"
+      ],
+      "env": {
+        "CC_AUTO_OPEN": "pfm"
+      },
+      "path": "/bin/zsh"
+    },
+  },
+  "terminal.integrated.defaultProfile.linux": "PFM",
+  "terminal.integrated.automationProfile.linux": {
+    "path": "/usr/bin/zsh"
+  },
+  "terminal.integrated.tabs.title": "${sequence}",
+  "remote.autoForwardPorts": false,
+  "terminal.integrated.enablePersistentSessions": true,
+  "terminal.integrated.persistentSessionReviveProcess": "never",
+  "terminal.integrated.persistentSessionScrollback": 2000,
+  "terminal.integrated.showExitAlert": false
+}
+`
+
+// TestVSCodeMergeToleratesTheRealMalformedTrailingCommaFile proves
+// sanitizeJSONC/parseJSONCObject's trailing-comma tolerance against the
+// actual file that tripped errMalformedVSCodeSettings on devbox, not a
+// synthetic stand-in: the merge must proceed (no skip, no error). Every
+// value pfm owns here already matches what pfm would write, so this is a
+// no-op merge (the "ok" path, not "change" — same law as every other
+// already-correct settings file) and the file is left byte-for-byte alone;
+// TestVSCodeMergeWritesStrictJSONIntoTheMalformedProfilesObject is the
+// sibling fixture that forces an actual write and proves THAT output is
+// strict-JSON-clean. What this test proves is JSONC tolerance: the merge
+// reads the malformed file successfully (decodeJSONCObject, the same
+// tolerant parser wireVSCode uses), and the PFM profile, all four
+// ScalarOwned keys, and everything the operator's file already carried —
+// the other profiles, the automation profile, the tab title — read back
+// correctly.
+func TestVSCodeMergeToleratesTheRealMalformedTrailingCommaFile(t *testing.T) {
+	home := t.TempDir()
+	settings := filepath.Join(home, "settings.json")
+	writeFixture(t, settings, realMalformedVSCodeSettings)
+
+	var output bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{}, VSCode: true, Stdout: &output,
+		vscodePlatform: "linux", vscodeSettingsPaths: []string{settings},
+	}); err != nil {
+		t.Fatalf("merge refused the real malformed file: %v\n%s", err, output.String())
+	}
+	if strings.Contains(output.String(), "VS Code settings skipped") {
+		t.Fatalf("merge skipped the real malformed file instead of tolerating it:\n%s", output.String())
+	}
+
+	got := readFixture(t, settings)
+	if _, err := decodeJSONCObject([]byte(got)); err != nil {
+		t.Fatalf("result does not parse as JSONC: %v\n%s", err, got)
+	}
+	for _, want := range []string{
+		`"PFM":`,
+		`"CC_AUTO_OPEN": "pfm"`,
+		`"terminal.integrated.defaultProfile.linux": "PFM"`,
+		`"terminal.integrated.enablePersistentSessions": true`,
+		`"terminal.integrated.persistentSessionReviveProcess": "never"`,
+		`"terminal.integrated.showExitAlert": false`,
+		`"remote.autoForwardPorts": false`,
+		// the operator's own content, untouched by the merge
+		`"bash": {`,
+		`"vsct": {`,
+		`"terminal.integrated.automationProfile.linux"`,
+		`"terminal.integrated.tabs.title": "${sequence}"`,
+		`"terminal.integrated.persistentSessionScrollback": 2000`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("result missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestVSCodeMergeWritesStrictJSONIntoTheMalformedProfilesObject is the
+// insert-shaped twin of the fixture above: strip the PFM profile out of the
+// same real malformed file, leaving profiles.linux malformed with no PFM
+// entry to converge on — exactly the state a broken hand-edit that never
+// successfully added PFM would leave, and the one shape that forces pfm to
+// actually parse into and WRITE a new property inside the malformed nested
+// object (setJSONCProperty's insert path), not just decide nothing had
+// changed. The result must still be valid strict JSON at that object.
+func TestVSCodeMergeWritesStrictJSONIntoTheMalformedProfilesObject(t *testing.T) {
+	home := t.TempDir()
+	settings := filepath.Join(home, "settings.json")
+	withoutPFM := strings.Replace(realMalformedVSCodeSettings, `    "PFM": {
+      "args": [
+        "-l"
+      ],
+      "env": {
+        "CC_AUTO_OPEN": "pfm"
+      },
+      "path": "/bin/zsh"
+    },
+`, "", 1)
+	if withoutPFM == realMalformedVSCodeSettings {
+		t.Fatal("fixture setup did not find the PFM block to strip — the constant above drifted")
+	}
+	writeFixture(t, settings, withoutPFM)
+
+	var output bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{}, VSCode: true, Stdout: &output,
+		vscodePlatform: "linux", vscodeSettingsPaths: []string{settings},
+	}); err != nil {
+		t.Fatalf("merge refused the malformed file: %v\n%s", err, output.String())
+	}
+	if strings.Contains(output.String(), "VS Code settings skipped") {
+		t.Fatalf("merge skipped the malformed file instead of tolerating it:\n%s", output.String())
+	}
+
+	got := readFixture(t, settings)
+	var strict map[string]any
+	if err := json.Unmarshal([]byte(got), &strict); err != nil {
+		t.Fatalf("result is not valid strict JSON: %v\n%s", err, got)
+	}
+	for _, want := range []string{
+		`"PFM":`,
+		`"CC_AUTO_OPEN": "pfm"`,
+		`"bash": {`,
+		`"devbox (zsh)": {`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("result missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestSanitizeJSONCToleratesConsecutiveTrailingCommas covers the one gap a
+// single-comma lookahead leaves: two (or more) trailing commas in a row —
+// two edits landing on the same spot, or a block moved and re-punctuated —
+// where the first comma is followed by another comma, not directly by
+// whitespace-then-bracket.
+func TestSanitizeJSONCToleratesConsecutiveTrailingCommas(t *testing.T) {
+	for name, content := range map[string]string{
+		"double trailing comma in a nested object":  `{"a": {"x": 1,,},"b":2}`,
+		"triple trailing comma in a nested object":  `{"a": {"x": 1,,,},"b":2}`,
+		"double trailing comma in an array":         `{"a": [1, 2,,],"b":2}`,
+		"double trailing comma spread across lines": "{\"a\": {\"x\": 1,\n  ,\n  },\"b\":2}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			document, err := decodeJSONCObject([]byte(content))
+			if err != nil {
+				t.Fatalf("decodeJSONCObject: %v", err)
+			}
+			if _, ok := document["b"].(float64); !ok {
+				t.Fatalf("decoded document missing sibling key: %#v", document)
+			}
+			if _, err := parseJSONCObject([]byte(content), 0); err != nil {
+				t.Fatalf("parseJSONCObject: %v", err)
+			}
+		})
 	}
 }
 

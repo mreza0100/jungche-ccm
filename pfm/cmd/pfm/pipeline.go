@@ -32,28 +32,40 @@ const (
 	testNowNSEnv       = "PFM_TEST_NOW_NS"
 	codexAvailableEnv  = "PFM_CODEX_AVAILABLE"
 	// fleetRefreshInterval is the cadence while somebody is driving the picker.
-	// One pass is expensive — a tmux fork+exec per live socket plus a whole
-	// store read, ~2.6 CPU-seconds on a busy box — so paying it on a fixed
-	// clock forever is what let an abandoned picker hold half a core.
+	// One pass is expensive on a real fleet — a tmux fork+exec PER LIVE
+	// SOCKET (measured ~50 on this box) plus a whole store read and a
+	// per-process scan for every engine detector — so paying it on a fixed
+	// clock forever is what let an abandoned picker hold over half a core
+	// (2026-09-03: 1741 ticks/30s, ~58%, on a real-fleet real-box measurement
+	// with the sky tick already fixed — the scan itself was the rest).
 	fleetRefreshInterval = 5 * time.Second
-	// fleetRefreshGrowth stretches the interval by 10% after every pass nobody
-	// interrupted. The decay is gentle where it is felt (5s → 5.5s → 6.05s, all
-	// still a live list) and steep where it pays (roughly 49 minutes untouched
-	// to reach the ceiling below).
-	fleetRefreshGrowth = 1.1
-	// fleetRefreshMaxInterval bounds the decay. Unbounded, 1.1^n reaches a
-	// refresh a day inside a shift, and a picker that has quietly stopped
-	// refreshing looks exactly like a fleet where nothing is happening — the
-	// screen would assert a truth it stopped checking. Five minutes keeps an
-	// abandoned picker under 1% of a core while still bounding how stale the
-	// frame in front of you can be.
-	fleetRefreshMaxInterval = 5 * time.Minute
+	// fleetRefreshGrowth stretches the interval after every pass nobody
+	// interrupted. It is deliberately steep, not the gentle curve a cheaper
+	// operation could afford: at ~5+ CPU-seconds a pass, even a handful of
+	// passes landing inside a 30s measurement window blows the ≤2%-of-a-core
+	// idle budget outright, so the climb is sized to cross
+	// fleetRefreshParkThreshold within a SINGLE untouched interval (5s × 13 =
+	// 65s ≥ 60s) rather than many gentle ones.
+	fleetRefreshGrowth = 13
+	// fleetRefreshParkThreshold is the point past which the loop stops
+	// scheduling real passes at all — see the park/poll split in
+	// streamFleetRefreshesWith. internal/ui's sky tick parks the
+	// same way for the same reason: an abandoned picker's periodic work
+	// must eventually cost nothing, not merely cost less.
+	fleetRefreshParkThreshold = 60 * time.Second
+	// fleetRefreshParkPollInterval is how often a PARKED stream checks
+	// whether the activity clock moved — an atomic int64 load and a timer
+	// reset, no tmux fork+exec, no store read, no /proc walk. Negligible
+	// even run forever, and short enough that a keystroke's next fleet scan
+	// never feels like it is waiting on a stale multi-minute timer.
+	fleetRefreshParkPollInterval = 2 * time.Second
 )
 
 // refreshCadence is one refresh stream's backoff state. It starts at
 // fleetRefreshInterval and stretches by fleetRefreshGrowth after each pass
-// that nobody interrupted, so a picker being driven stays prompt and an
-// abandoned one decays toward costing nothing.
+// that nobody interrupted, capped at fleetRefreshParkThreshold, so a picker
+// being driven stays prompt. streamFleetRefreshesWith is what turns
+// "capped" into "stopped" — see the park/poll split there.
 type refreshCadence struct {
 	activity  *ui.ActivityClock
 	lastStamp int64
@@ -85,8 +97,8 @@ func (cadence *refreshCadence) next() time.Duration {
 		return cadence.interval
 	}
 	grown := time.Duration(float64(cadence.interval) * fleetRefreshGrowth)
-	if grown > fleetRefreshMaxInterval {
-		grown = fleetRefreshMaxInterval
+	if grown > fleetRefreshParkThreshold {
+		grown = fleetRefreshParkThreshold
 	}
 	cadence.interval = grown
 	return cadence.interval
@@ -826,6 +838,14 @@ func streamFleetRefreshesWith(
 	cadence := newRefreshCadence(dependencies.activity)
 	timer := time.NewTimer(cadence.interval)
 	defer timer.Stop()
+	// parked survives across iterations: once the cadence backs off past
+	// fleetRefreshParkThreshold, the loop stops doing real passes on every
+	// fire and instead polls fleetRefreshParkPollInterval — an atomic load,
+	// no fleet I/O — until cadence.next() reports the activity clock moved,
+	// at which point it un-parks and the very fire that noticed does the
+	// pass (the "keystroke restores full cadence" promise pays out on the
+	// next poll tick, never on an already-scheduled multi-minute timer).
+	parked := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -837,7 +857,17 @@ func streamFleetRefreshesWith(
 		// bottom would be skipped by every one of them — the stream would go
 		// permanently silent on the first gather hiccup, which reads on screen
 		// as a fleet that simply stopped changing.
-		timer.Reset(cadence.next())
+		next := cadence.next()
+		if parked && next >= fleetRefreshParkThreshold {
+			timer.Reset(fleetRefreshParkPollInterval)
+			continue
+		}
+		parked = next >= fleetRefreshParkThreshold
+		if parked {
+			timer.Reset(fleetRefreshParkPollInterval)
+		} else {
+			timer.Reset(next)
+		}
 		environment, err = resolveScanEnvironment(request)
 		if err != nil {
 			writeRefreshError(ctx, stderr, "", err)

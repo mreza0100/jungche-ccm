@@ -18,17 +18,22 @@ import (
 // under a 1h default. The badge is then wrong only for a chat deliberately born
 // 5m, and it errs by NOT promising a cheaper window than the chat actually has.
 func DetectCache1H(proc ProcFS, panes []Pane, binaries ...string) ([]string, error) {
-	pids, err := proc.PIDs()
+	cmdlines, err := processCmdlines(proc)
 	if err != nil {
 		return nil, fmt.Errorf("list processes for cache scan: %w", err)
 	}
-	sort.Ints(pids)
+	return detectCache1HFrom(cmdlines, proc, panes, binaries...)
+}
+
+// detectCache1HFrom is DetectCache1H over an already-fetched pid->cmdline
+// snapshot — see processCmdlines.
+func detectCache1HFrom(cmdlines map[int][]string, proc ProcFS, panes []Pane, binaries ...string) ([]string, error) {
+	pids := sortedPIDs(cmdlines)
 	paneByPID := panesByPID(panes)
 	sockets := make(map[string]bool)
 
 	for _, pid := range pids {
-		cmdline, err := proc.Cmdline(pid)
-		if err != nil || !isClaudeCommand(cmdline, binaries...) {
+		if !isClaudeCommand(cmdlines[pid], binaries...) {
 			continue
 		}
 		pane, found := paneForProcess(proc, pid, paneByPID)
