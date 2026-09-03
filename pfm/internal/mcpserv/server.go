@@ -250,20 +250,18 @@ const noAmbientCallerRemedy = "MCP request has no _meta.threadId, and this " +
 	"if it does not, its MCP client is not attaching _meta.threadId to this call."
 
 // selfCompactNoAmbientRemedy replaces noAmbientCallerRemedy for
-// chat_self_compact alone: that message's remedy — "run the equivalent
-// `pfm chat ...` command" — dangles here, because self-compact has no CLI
-// twin. The working equivalent from a Claude chat's own shell is an inject
-// into its own pane: the /compact travels as keystrokes and the steers ride
-// the same --then waiter every inject uses.
+// chat_self_compact alone: the generic message's remedy — "run the
+// equivalent `pfm chat ...` command" — never says which subcommand.
+// chat_self_compact's CLI twin is `pfm chat self-compact`, which shares this
+// tool's engine method (Engine.ScheduleSelfCompact) and its wait-for-the-
+// caller's-own-turn-to-end contract — never a live /compact keystroke.
 const selfCompactNoAmbientRemedy = "MCP request has no _meta.threadId, and " +
 	"this server is pfm's shared HTTP daemon (one process serving every chat " +
 	"on the machine), so it cannot derive who is calling: Claude Code does " +
-	"not attach per-call caller identity over this transport — and " +
-	"chat_self_compact has no `pfm chat` CLI twin to fall back on. From the " +
-	"chat's own shell, queue the same choreography with `pfm chat inject " +
-	"--force-now --then '<steer>' $(pfm whoami) '/compact <focus>'`. A Codex " +
-	"chat should resolve automatically; if it does not, its MCP client is " +
-	"not attaching _meta.threadId to this call."
+	"not attach per-call caller identity over this transport. From the " +
+	"chat's own shell, run `pfm chat self-compact --then '<steer>' " +
+	"'<focus>'`. A Codex chat should resolve automatically; if it does not, " +
+	"its MCP client is not attaching _meta.threadId to this call."
 
 func (service *Service) selfCallerRefusal(caller callerIdentity) (bool, string) {
 	if caller.valid {
@@ -491,30 +489,6 @@ func (service *Service) chatSelfCompact(
 			Status: "not_found", Code: inject.CodeUnknown, Message: detail,
 		}, nil
 	}
-	// focus is validated above (single line, non-empty, no control characters),
-	// which is exactly what makes it safe to concatenate onto the slash
-	// command. isHarnessCommand only checks for a leading "/", so the composed
-	// string still routes through the paced-literal command transport.
-	//
-	// Codex is the exception, and it is an ASSUMPTION HELD, not one disproved:
-	// an earlier investigation recorded that Codex accepts no inline arguments
-	// on /compact. Nothing in this repo re-tests that — TESTPLAN's /compact
-	// rows are all Claude jail tests — so the claim stands until a real Codex
-	// composer says otherwise, and the focus is composed only where the target
-	// is NOT known to be Codex. (selfCompactNoAmbientRemedy's "/compact <focus>"
-	// example does not contradict it: that text fires only on the Claude-over-
-	// HTTP path, and its "a Codex chat should resolve automatically" clause is
-	// about threadId identity resolution, not about command arguments.)
-	//
-	// An unresolved caller reaches here only via the per-chat stdio server
-	// (selfCallerRefusal already refused the shared daemon), which pfm install
-	// wires for "chat" on the Claude side alone — Codex stays on HTTP, where
-	// its client always attaches a threadId and caller.valid is true. So an
-	// ambient caller is Claude, and composing for it is correct.
-	message := "/compact " + focus
-	if caller.valid && caller.row.Engine == pfmengine.Codex {
-		message = "/compact"
-	}
 	// One steer, by the operator's rule. The engine's own guards still run on
 	// it — a steer is required, and it must not start with /compact — and a
 	// blank string reaches them as no steer at all rather than as an empty one.
@@ -522,15 +496,16 @@ func (service *Service) chatSelfCompact(
 	if steer := strings.TrimSpace(input.Then); steer != "" {
 		then = []string{steer}
 	}
-	result, err := injector.ScheduleAfterCurrentTurn(ctx, inject.Request{
-		Target:  "self",
-		Message: message,
-		Then:    then,
-	})
+	// Composition ("/compact " + focus, the Codex bare-command exception) is
+	// the engine's own job now (Task D: Engine.ScheduleSelfCompact) — the one
+	// implementation `pfm chat self-compact` shares. focus is re-validated
+	// there too; the check above stays because this handler must return a
+	// tool-call error for a bad focus, not an InjectOutput refusal.
+	result, err := injector.ScheduleSelfCompact(ctx, focus, then)
 	// The stop notice is appended by the engine itself
 	// (inject.SelfCompactStopNotice), which is the single writer for every
-	// caller — MCP tool and `pfm chat inject` alike. Restating it here would
-	// double it on the MCP path only.
+	// caller — MCP tool and `pfm chat self-compact` alike. Restating it here
+	// would double it on the MCP path only.
 	return nil, outputFromInject(result), err
 }
 

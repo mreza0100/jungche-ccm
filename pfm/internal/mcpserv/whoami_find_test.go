@@ -139,28 +139,48 @@ func TestChatFindRanksByNeedleVotesAndExcludesSelf(t *testing.T) {
 }
 
 // TestChatInjectCarriesTheThenArgument proves the steer chain reaches the
-// engine through the MCP schema, and that the /compact focus rule refuses
-// before the target is even resolved.
+// engine through the MCP schema, that a /compact PRIMARY is refused outright
+// on chat_inject regardless of a then steer (Task C: compaction is
+// chat_self_compact / `pfm chat self-compact` only, never a live chat_inject
+// /compact), and that a /compact STEER is still refused by checkSteerChain
+// even when the primary is ordinary. Renamed cases from
+// steerless/recursive/unresolved "/compact hold…" primaries: the steerless
+// and legal-steer cases used to differ only in whether `then` carried a
+// steer, which no longer distinguishes anything once chat_inject bans every
+// /compact primary outright — see engine.go's Inject().
 func TestChatInjectCarriesTheThenArgument(t *testing.T) {
 	setupBackendFixture(t)
 	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 
-	steerless := callTool[InjectOutput](t, client.clientSession, "chat_inject", InjectInput{
+	compactPrimary := callTool[InjectOutput](t, client.clientSession, "chat_inject", InjectInput{
 		Target:  "no-such-chat",
 		Message: "/compact hold: read /tmp/hold.md",
 	})
-	if steerless.Code != 6 ||
-		steerless.Status != "refused" ||
-		steerless.Typed ||
-		!strings.Contains(steerless.Message, "requires a then steer") {
-		t.Fatalf("steerless /compact = %+v", steerless)
+	if compactPrimary.Code != 6 ||
+		compactPrimary.Status != "refused" ||
+		compactPrimary.Typed ||
+		!strings.Contains(compactPrimary.Message, "/compact is never injected") {
+		t.Fatalf("compact primary via chat_inject = %+v", compactPrimary)
+	}
+
+	// A /compact PRIMARY with a then steer is refused the same way — the ban
+	// is unconditional, not steer-gated.
+	compactPrimaryWithSteer := callTool[InjectOutput](t, client.clientSession, "chat_inject", InjectInput{
+		Target:  "no-such-chat",
+		Message: "/compact hold: read /tmp/hold.md",
+		Then:    []string{"resume the port"},
+	})
+	if compactPrimaryWithSteer.Code != 6 ||
+		compactPrimaryWithSteer.Typed ||
+		!strings.Contains(compactPrimaryWithSteer.Message, "/compact is never injected") {
+		t.Fatalf("compact primary with steer via chat_inject = %+v", compactPrimaryWithSteer)
 	}
 
 	recursive := callTool[InjectOutput](t, client.clientSession, "chat_inject", InjectInput{
 		Target:  "no-such-chat",
-		Message: "/compact hold: read /tmp/hold.md",
+		Message: "hold: read /tmp/hold.md",
 		Then:    []string{"/compact again"},
 	})
 	if recursive.Code != 6 ||
@@ -168,11 +188,12 @@ func TestChatInjectCarriesTheThenArgument(t *testing.T) {
 		t.Fatalf("recursive steer = %+v", recursive)
 	}
 
-	// With a legal steer the chain passes the guard and dies at resolution
-	// instead — proof the argument travelled, and that nothing was typed.
+	// With an ordinary primary and a legal steer the chain passes every guard
+	// and dies at resolution instead — proof the Then argument travelled
+	// through the MCP schema into the engine, and that nothing was typed.
 	unresolved := callTool[InjectOutput](t, client.clientSession, "chat_inject", InjectInput{
 		Target:  "no-such-chat",
-		Message: "/compact hold: read /tmp/hold.md",
+		Message: "hold: read /tmp/hold.md",
 		Then:    []string{"resume the port"},
 	})
 	if unresolved.Code != 4 ||

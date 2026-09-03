@@ -55,7 +55,7 @@ type InjectInput struct {
 	Target   string   `json:"target" jsonschema:"live session, Claude label, Codex thread name, self, or tmux pane"`
 	Message  string   `json:"message" jsonschema:"message to type and submit"`
 	ForceNow bool     `json:"force_now,omitempty" jsonschema:"interrupt a busy target with Escape before delivery"`
-	Then     []string `json:"then,omitempty" jsonschema:"follow-up steers delivered by a detached waiter after the primary turn settles to idle; in order, one settled turn apart. A /compact message REQUIRES at least one, and no steer may itself start with /compact"`
+	Then     []string `json:"then,omitempty" jsonschema:"follow-up steers delivered by a detached waiter after the primary turn settles to idle; in order, one settled turn apart. No steer may itself start with /compact — /compact itself is refused as a message here; use chat_self_compact"`
 }
 
 // InjectOutput is a stable MCP representation of inject.Result.
@@ -81,12 +81,15 @@ type InjectOutput struct {
 // SelfCompactInput safely compacts the requesting chat and carries the ONE
 // turn that resumes work after compaction. Focus is retained in the tool-call
 // history for the compactor AND composed onto the delivered command
-// ("/compact " + focus) — the single-line, control-character-free
-// validation is exactly what makes that concatenation safe. A target known
-// to be Codex still receives the bare command: an earlier investigation
-// recorded that Codex accepts no inline arguments on /compact, and nothing
-// here re-tests it, so that constraint is held rather than assumed away.
-// See chatSelfCompact for the full reasoning and what would retire it.
+// ("/compact " + focus) by Engine.ScheduleSelfCompact — the single
+// implementation `pfm chat self-compact` shares — whose single-line,
+// control-character-free validation is exactly what makes that
+// concatenation safe. A target known to be Codex still receives the bare
+// command: an earlier investigation recorded that Codex accepts no inline
+// arguments on /compact, and nothing here re-tests it, so that constraint is
+// held rather than assumed away. See Engine.ScheduleSelfCompact
+// (internal/inject/engine.go) for the full reasoning and what would retire
+// it.
 //
 // Focus and Then are the ONLY things that survive. A caller holding durable
 // state of its own — a ledger, a state file, a chat-specific memory — writes

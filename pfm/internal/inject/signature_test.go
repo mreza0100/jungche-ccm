@@ -61,7 +61,6 @@ func newSignatureEngineWith(
 		Identifier: identifier,
 		Options: Options{
 			Poll:        time.Nanosecond,
-			EnterGap:    time.Nanosecond,
 			EnterSettle: time.Nanosecond,
 			ProofSettle: time.Nanosecond,
 			BusyTries:   2,

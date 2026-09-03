@@ -88,6 +88,8 @@ func runChatWithRuntime(
 		return runHeadlessStream(rest, stdout, stderr, runtime)
 	case "inject":
 		return runHeadlessInject(rest, stdout, stderr, runtime)
+	case "self-compact":
+		return runHeadlessSelfCompact(rest, stdout, stderr, runtime)
 	case "ask":
 		return runHeadlessAsk(rest, stdout, stderr, runtime)
 	case "watch":
@@ -140,6 +142,7 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  read        read the chat's transcript")
 	fmt.Fprintln(w, "  stream      follow the transcript as it is written")
 	fmt.Fprintln(w, "  inject      deliver a message to the chat")
+	fmt.Fprintln(w, "  self-compact  compact this chat in place after its own turn settles")
 	fmt.Fprintln(w, "  ask         deliver a message and wait for the answer")
 	fmt.Fprintln(w, "  watch       block, reporting IDLE / EXIT / DEAD")
 	fmt.Fprintln(w, "  capture     print a live chat's tmux scrollback")
@@ -579,7 +582,8 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer, runtimes ...comm
 func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat inject",
-		"usage: pfm chat inject [--force-now] [--then STEER]... [--file PATH] [--allow-unsigned] <target> <message>",
+		"usage: pfm chat inject [--force-now] [--then STEER]... [--file PATH] [--allow-unsigned] <target> <message>\n"+
+			"       `/compact` is refused here — use `pfm chat self-compact`",
 		stderr,
 	)
 	var force bool
@@ -767,6 +771,76 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 	return writeInjectResult(result, targetName, stdout, stderr)
 }
 
+// singleSteer collects at most one --then flag. A self-compaction carries
+// exactly one continuation steer, by the operator's rule; a second --then is
+// a usage error (rc 2), never a chain.
+type singleSteer struct {
+	value string
+	set   bool
+}
+
+func (single *singleSteer) String() string {
+	return single.value
+}
+
+func (single *singleSteer) Set(value string) error {
+	if single.set {
+		return fmt.Errorf("--then may be given at most once")
+	}
+	if value == "" {
+		return fmt.Errorf("a then steer must be non-empty")
+	}
+	single.value = value
+	single.set = true
+	return nil
+}
+
+// runHeadlessSelfCompact is the CLI twin of the chat_self_compact MCP tool —
+// both share Engine.ScheduleSelfCompact (Task D), the ONE implementation
+// that composes "/compact " + focus and waits for the caller's OWN turn to
+// end before typing it, never a live /compact keystroke raced against
+// whatever the operator is doing right now
+// (the 2026-09-03 self-compact that ate an operator's live draft).
+func runHeadlessSelfCompact(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	flags := newFlagSet(
+		"chat self-compact",
+		// --then is NOT optional here, unlike chat inject's own
+		// [--then STEER]...: checkSteerChain unconditionally refuses any
+		// /compact primary (which is exactly what ScheduleSelfCompact
+		// always composes) carrying zero Then entries, so a self-compact
+		// call omitting --then always fails (F9 of the merge-gating
+		// review). Bracket-free and singular on purpose: exactly one.
+		"usage: pfm chat self-compact --then STEER <focus>",
+		stderr,
+	)
+	var steer singleSteer
+	flags.Var(&steer, "then", "the one mandatory post-compact steer, typed into the reborn chat once compaction settles")
+	if code, ok := parseFlags(flags, args); !ok {
+		return code
+	}
+	if flags.NArg() < 1 {
+		flags.Usage()
+		return 2
+	}
+	focus := strings.Join(flags.Args(), " ")
+	ctx := context.Background()
+	engine, err := newInjectEngine(runtimes...)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat self-compact: %v\n", err)
+		return codeUndelivered
+	}
+	var then []string
+	if steer.value != "" {
+		then = []string{steer.value}
+	}
+	result, err := engine.ScheduleSelfCompact(ctx, focus, then)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat self-compact: %v\n", err)
+		return codeUndelivered
+	}
+	return writeInjectResult(result, "self", stdout, stderr)
+}
+
 func writeInjectResult(
 	result inject.Result,
 	target string,
@@ -801,9 +875,18 @@ func writeInjectResult(
 		}
 	}
 	fmt.Fprintln(stdout, result.Message)
-	fmt.Fprintln(stdout, "--- delivery proof: target pane tail ---")
-	fmt.Fprintln(stdout, result.Proof)
-	fmt.Fprintln(stdout, "--- end delivery proof ---")
+	if result.Proof != "" {
+		// A "scheduled" result (runHeadlessSelfCompact's success case: the
+		// primary hasn't typed yet, it rides out the caller's own turn
+		// first) carries no pane proof — Typed and Proof both stay Go zero
+		// values. Printing the "--- delivery proof ---" framing anyway
+		// would sit an empty body under a header that reads as confirmed,
+		// verified delivery to anyone scanning stdout, when nothing has
+		// actually been typed yet.
+		fmt.Fprintln(stdout, "--- delivery proof: target pane tail ---")
+		fmt.Fprintln(stdout, result.Proof)
+		fmt.Fprintln(stdout, "--- end delivery proof ---")
+	}
 	return 0
 }
 

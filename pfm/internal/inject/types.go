@@ -161,6 +161,10 @@ type Tmux interface {
 	// WindowName backs chat.sh's codex label fallback: a codex chat has no 🔖
 	// statusline, so its human thread name is the tmux window name.
 	WindowName(ctx context.Context, socketPath, target string) (string, error)
+	// ClientActivity reports the most recent keystroke time among the clients
+	// attached to the session that holds target (a pane id or session name).
+	// ok is false when no client is attached — an unattended pane has no typist.
+	ClientActivity(ctx context.Context, socketPath, target string) (last time.Time, ok bool, err error)
 }
 
 // ThenSpawner starts the detached waiter that delivers --then steers. It must
@@ -192,7 +196,6 @@ type SteerSpawn struct {
 // Options controls bounded retries. Zero values select chat.sh defaults.
 type Options struct {
 	Poll              time.Duration
-	EnterGap          time.Duration
 	EnterSettle       time.Duration
 	ProofSettle       time.Duration
 	BusyTries         int
@@ -222,6 +225,11 @@ type Options struct {
 	// SENDER, where the operator can still fix the identity, beats delivering
 	// something the far end must ignore.
 	AllowUnsigned bool
+	// TypistQuiet is how long a target's composer must have gone without a
+	// keystroke before a normal (non-force-now) delivery or --then steer will
+	// type into it. C-s protects a PARKED draft, never a human mid-keystroke;
+	// this is the guard for the latter (the 2026-09-03 self-compact that ate an operator's live draft).
+	TypistQuiet time.Duration
 
 	// --then waiter cadence, mirroring chat.sh's __then subcommand.
 	ThenMin        time.Duration

@@ -285,7 +285,9 @@ func (resolver metadataNamedResolver) Resolve(
 }
 
 type recordingCompactInjector struct {
-	scheduled inject.Request
+	scheduled      inject.Request
+	scheduledFocus string
+	scheduledThen  []string
 }
 
 func (recorder *recordingCompactInjector) Resolve(context.Context, string) (inject.Target, int, string, error) {
@@ -306,6 +308,12 @@ func (recorder *recordingCompactInjector) Inject(context.Context, inject.Request
 
 func (recorder *recordingCompactInjector) ScheduleAfterCurrentTurn(_ context.Context, request inject.Request) (inject.Result, error) {
 	recorder.scheduled = request
+	return inject.Result{Status: "scheduled", Code: 0}, nil
+}
+
+func (recorder *recordingCompactInjector) ScheduleSelfCompact(_ context.Context, focus string, then []string) (inject.Result, error) {
+	recorder.scheduledFocus = focus
+	recorder.scheduledThen = then
 	return inject.Result{Status: "scheduled", Code: 0}, nil
 }
 
@@ -545,7 +553,7 @@ func TestChatSelfCompactRequiresSteerAndTargetsRequestingSeat(t *testing.T) {
 		SelfCompactInput{Focus: "preserve the active MCP investigation"},
 	)
 	if steerless.Code != inject.CodeUndelivered || steerless.Typed ||
-		!strings.Contains(steerless.Message, "requires a then steer") {
+		!strings.Contains(steerless.Message, "requires exactly one then steer") {
 		t.Fatalf("steerless self compact = %+v", steerless)
 	}
 
@@ -576,15 +584,16 @@ func TestChatSelfCompactRequiresSteerAndTargetsRequestingSeat(t *testing.T) {
 	}
 }
 
-// TestChatSelfCompactComposesFocusIntoScheduledCommand is the Task D
-// regression test: chatSelfCompact validates focus (single line, non-empty,
-// no control characters) and MUST compose it onto the delivered command
-// rather than discarding it. Renamed from
-// ...SchedulesBareSlashCommand, which pinned exactly the defect being
-// fixed — against the pre-fix code this test fails with "scheduled compact
-// command = \"/compact\", want \"/compact preserve the signed MCP
-// acceptance verdict\"" (watched below).
-func TestChatSelfCompactComposesFocusIntoScheduledCommand(t *testing.T) {
+// TestChatSelfCompactForwardsFocusAndThenToScheduleSelfCompact is the Task D
+// regression test, re-pointed: composing "/compact " + focus onto the
+// delivered command is now Engine.ScheduleSelfCompact's job
+// (internal/inject/engine.go), the one implementation `pfm chat
+// self-compact` shares — not chatSelfCompact's. What chatSelfCompact itself
+// must still get right is forwarding the validated focus and the ONE steer
+// to the injector unmodified, never discarding or recomposing them. Renamed
+// from ...ComposesFocusIntoScheduledCommand, which pinned the composition
+// here before Task D moved it.
+func TestChatSelfCompactForwardsFocusAndThenToScheduleSelfCompact(t *testing.T) {
 	recorder := &recordingCompactInjector{}
 	service := newService("test", &backend{
 		injector:             recorder,
@@ -601,20 +610,21 @@ func TestChatSelfCompactComposesFocusIntoScheduledCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "/compact preserve the signed MCP acceptance verdict"
-	if recorder.scheduled.Message != want {
-		t.Fatalf("scheduled compact command = %q, want %q", recorder.scheduled.Message, want)
+	want := "preserve the signed MCP acceptance verdict"
+	if recorder.scheduledFocus != want {
+		t.Fatalf("forwarded focus = %q, want %q", recorder.scheduledFocus, want)
 	}
-	if !reflect.DeepEqual(recorder.scheduled.Then, []string{"resume the acceptance test"}) {
-		t.Fatalf("scheduled continuation = %q", recorder.scheduled.Then)
+	if !reflect.DeepEqual(recorder.scheduledThen, []string{"resume the acceptance test"}) {
+		t.Fatalf("forwarded continuation = %q", recorder.scheduledThen)
 	}
 }
 
 // TestChatSelfCompactValidationRefusesBadFocus pins the validation
-// chatSelfCompact keeps exactly as-is while composing focus onto the
-// command (server.go's comment: "single-line, non-empty,
-// control-character-free is precisely what makes it safe to concatenate").
-// None of these cases may reach the injector.
+// chatSelfCompact keeps as its own tool-call error even though
+// Engine.ScheduleSelfCompact validates focus again on the way in — this
+// handler must still return a Go error (not an InjectOutput refusal) for a
+// bad focus, so the check stays here too. None of these cases may reach the
+// injector.
 func TestChatSelfCompactValidationRefusesBadFocus(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -644,8 +654,11 @@ func TestChatSelfCompactValidationRefusesBadFocus(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "focus must be one non-empty line") {
 				t.Fatalf("focus %q error = %v, want the one-non-empty-line refusal", test.focus, err)
 			}
-			if recorder.scheduled.Message != "" || recorder.scheduled.Target != "" {
-				t.Fatalf("invalid focus %q reached the injector: %+v", test.focus, recorder.scheduled)
+			if recorder.scheduledFocus != "" || len(recorder.scheduledThen) != 0 {
+				t.Fatalf(
+					"invalid focus %q reached the injector: focus=%q then=%q",
+					test.focus, recorder.scheduledFocus, recorder.scheduledThen,
+				)
 			}
 		})
 	}

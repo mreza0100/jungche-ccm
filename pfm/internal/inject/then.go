@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"hostops/pfm/internal/deps"
 )
@@ -38,6 +39,40 @@ func (engine *Engine) DeliverThen(
 		}
 	}
 	observed := engine.waitForSettledTurn(ctx, socketPath, target, selfTarget)
+	if quiet, readErr := engine.waitForQuietTypist(ctx, socketPath, target); !quiet {
+		// Never deliver over a typing human, and never force: the waiter has
+		// no operator standing by to authorize force_now, and the whole point
+		// of this guard is that a live keystroke is not a safe queue surface
+		// (the 2026-09-03 self-compact that ate an operator's live draft).
+		// readErr distinguishes "tmux could not be read for the whole wait
+		// window" from "a human kept typing" — the two exhaust the same loop
+		// identically, but only one of them is evidence of a typist, and an
+		// error rendered as an affirmative typing claim is the exact
+		// anti-pattern this guard exists to police.
+		if readErr != nil {
+			return Result{
+				Status: "undelivered",
+				Code:   CodeUndelivered,
+				Message: fmt.Sprintf(
+					"then steer NOT delivered: could not read who is at %q for %s (last tmux error: %v); chain aborted with %d steer(s) undelivered",
+					target,
+					time.Duration(engine.options.ThenIdleTries)*engine.options.ThenIdlePoll,
+					readErr,
+					len(steers),
+				),
+			}, nil
+		}
+		return Result{
+			Status: "typing",
+			Code:   CodeBusy,
+			Message: fmt.Sprintf(
+				"then steer NOT delivered: a human kept typing in %q for %s; chain aborted with %d steer(s) undelivered",
+				target,
+				time.Duration(engine.options.ThenIdleTries)*engine.options.ThenIdlePoll,
+				len(steers),
+			),
+		}, nil
+	}
 	result, err := engine.inject(ctx, Request{
 		Target:  target,
 		Message: steers[0],
@@ -197,6 +232,55 @@ func (engine *Engine) waitForSettledTurn(
 	}
 	sleepContext(ctx, engine.options.ThenSettle)
 	return false
+}
+
+// waitForQuietTypist holds the waiter back from delivering a steer over a
+// human mid-keystroke — the same guard engine.inject applies to a live
+// delivery (the 2026-09-03 self-compact that ate an operator's live draft). DeliverThen types through
+// engine.inject too, but only AFTER waitForSettledTurn has already decided
+// the primary's turn is over; this runs once more here so the waiter never
+// spends waitForSettledTurn's decision polling for a turn boundary while
+// missing a typist that started AFTER the turn settled.
+//
+// A tmux error is logged — the waiter's own stderr IS its log
+// (CommandThenSpawner.Spawn redirects both to LogPath) — and counts as one
+// failed poll, never as "quiet": an error is a failure to look, not evidence
+// nobody is there.
+//
+// The return is a tri-state, not a bool: quiet=true means the pane was
+// actually observed idle. quiet=false, readErr=nil means the budget
+// exhausted while an actual typist was observed — a real "someone kept
+// typing." quiet=false, readErr!=nil means EVERY poll across the whole wait
+// window failed to read tmux at all — a dead socket, a vanished pane,
+// anything that keeps erroring — which the caller must report as "could not
+// read," never alias with "a human kept typing": the two exhaust the loop
+// identically, but only one of them is evidence anyone is there.
+func (engine *Engine) waitForQuietTypist(
+	ctx context.Context,
+	socketPath, target string,
+) (quiet bool, readErr error) {
+	errCount := 0
+	var lastErr error
+	for attempt := 0; attempt < engine.options.ThenIdleTries; attempt++ {
+		last, typing, err := engine.tmux.ClientActivity(ctx, socketPath, target)
+		switch {
+		case err != nil:
+			errCount++
+			lastErr = err
+			engine.warnf(
+				"pfm: then waiter: could not read who is at %q (tmux list-clients: %v)\n",
+				target,
+				err,
+			)
+		case !typing || engine.options.Now().Sub(last) >= engine.options.TypistQuiet:
+			return true, nil
+		}
+		sleepContext(ctx, engine.options.ThenIdlePoll)
+	}
+	if engine.options.ThenIdleTries > 0 && errCount == engine.options.ThenIdleTries {
+		return false, lastErr
+	}
+	return false, nil
 }
 
 // CommandThenSpawner starts this binary's own waiter under a detached process,

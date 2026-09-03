@@ -41,6 +41,10 @@ func TestDeliverThenDoesNotRecordExcludedHandoffEdge(t *testing.T) {
 
 // TestCompactFocusRuleRefusesBeforeAnyKey covers the remaining caller-side
 // chain guards: a steerless /compact and an invalid steer die before typing.
+// It drives them through engine.inject (via injectChain) rather than the
+// public Inject(), because Inject() now refuses a /compact primary outright
+// (Task C) before checkSteerChain ever runs — these guards are reached today
+// only by a chain hop (DeliverThen, Chain: true) or ScheduleAfterCurrentTurn.
 func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -52,7 +56,7 @@ func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 			name:     "steerless compact refused",
 			request:  Request{Target: "chat", Message: "/compact hold: read /tmp/x.md"},
 			wantCode: 6,
-			wantText: "requires a then steer",
+			wantText: "requires exactly one then steer",
 		},
 		{
 			name: "compact steering into compact refused",
@@ -80,12 +84,12 @@ func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 			fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
 			spawner := &fakeSpawner{}
 			engine := newTestEngineWith(t, "cc-1-2-3", fake, spawner)
-			result, err := engine.Inject(context.Background(), test.request)
+			result, err := engine.injectChain(context.Background(), test.request)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if result.Code != test.wantCode || result.Status != "refused" {
-				t.Fatalf("Inject() = %+v", result)
+				t.Fatalf("inject() = %+v", result)
 			}
 			if !strings.Contains(result.Message, test.wantText) {
 				t.Fatalf("diagnostic %q lacks %q", result.Message, test.wantText)
@@ -102,12 +106,15 @@ func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 
 // TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit covers chat.sh:922-951:
 // the chain is armed after the primary submit is CONFIRMED, never before, and
-// an unconfirmed submit arms nothing.
+// an unconfirmed submit arms nothing. It drives the delivery through
+// injectChain (engine.inject with Chain: true) because the public Inject()
+// now refuses a /compact primary outright (Task C) — DeliverThen's waiter is
+// the only production caller left that hands engine.inject a /compact.
 func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
 	spawner := &fakeSpawner{}
 	engine := newTestEngineWith(t, "cc-1-2-3", fake, spawner)
-	result, err := engine.Inject(context.Background(), Request{
+	result, err := engine.injectChain(context.Background(), Request{
 		Target:  "chat",
 		Message: "/compact hold: read /tmp/hold.md — keep the lock scheme",
 		Then:    []string{"resume the port", "then run the tests"},
@@ -116,7 +123,7 @@ func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Code != 0 || result.Status != "delivered" || result.Steers != 2 {
-		t.Fatalf("Inject() = %+v", result)
+		t.Fatalf("inject() = %+v", result)
 	}
 	spawned := spawner.spawned()
 	if len(spawned) != 1 {
@@ -128,9 +135,16 @@ func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 		spawned[0].Steers[1] != "then run the tests" {
 		t.Fatalf("waiter = %+v", spawned[0])
 	}
-	if !strings.HasPrefix(filepath.Base(spawned[0].LogPath), "chat-then-") ||
-		!strings.HasSuffix(spawned[0].LogPath, ".log") {
-		t.Fatalf("steer log path = %q", spawned[0].LogPath)
+	// Task E: the log is scoped by SOCKET as well as pane
+	// (chat-then-<base(SocketPath)>-<Pane>.log) — a bare pane-derived name
+	// collided across every chat sharing the fleet-standard %0 pane
+	// (the 2026-09-03 self-compact that ate an operator's live draft).
+	wantLog := engine.steerLogPath(Target{
+		SocketPath: filepath.Join("/tmp", "tmux-jail", "cc-1-2-3"),
+		Pane:       "%1",
+	})
+	if spawned[0].LogPath != wantLog {
+		t.Fatalf("steer log path = %q, want %q", spawned[0].LogPath, wantLog)
 	}
 	if !strings.Contains(result.Message, "2 then steer(s) queued") {
 		t.Fatalf("banner does not report the queued steers: %q", result.Message)
@@ -145,7 +159,7 @@ func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 	unconfirmed := &fakeTmux{capture: "conversation\n❯ "}
 	spawner = &fakeSpawner{}
 	engine = newTestEngineWith(t, "cc-1-2-3", unconfirmed, spawner)
-	result, err = engine.Inject(context.Background(), Request{
+	result, err = engine.injectChain(context.Background(), Request{
 		Target:  "chat",
 		Message: "/compact hold: read /tmp/hold.md",
 		Then:    []string{"resume the port"},
@@ -165,7 +179,10 @@ func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 // TestLongCompactFocusChunksAndFires is the user-visible size-limit
 // regression fixture. A /compact focus this far beyond the TUI's paste edge
 // must be split into small literal sends, so the command itself reaches the
-// transcript and fires instead of being rejected or collapsed as a paste.
+// transcript and fires instead of being rejected or collapsed as a paste. It
+// drives delivery through injectChain: the public Inject() now refuses a
+// /compact primary outright (Task C), so the paced-literal guarantee is
+// proven the way a chain hop (DeliverThen, Chain: true) exercises it.
 func TestLongCompactFocusChunksAndFires(t *testing.T) {
 	const focusRunes = 2147
 	focus := strings.Repeat("f", focusRunes)
@@ -198,7 +215,7 @@ func TestLongCompactFocusChunksAndFires(t *testing.T) {
 			}
 			spawner := &fakeSpawner{}
 			engine := newTestEngineWith(t, "cc-long-compact", fake, spawner)
-			result, err := engine.Inject(context.Background(), Request{
+			result, err := engine.injectChain(context.Background(), Request{
 				Target:  "chat",
 				Message: wantMessage,
 				Then:    []string{"resume after compaction"},
@@ -246,6 +263,9 @@ func TestLongCompactFocusChunksAndFires(t *testing.T) {
 // here is a /compact — exempt from signing — which is exactly the case that
 // hid the defect: the chat never needed its own identity for the message it
 // typed, only for the steer a severed process would deliver minutes later.
+// It drives delivery through injectChain: the public Inject() now refuses a
+// /compact primary outright (Task C), so this is the chain-hop shape
+// DeliverThen's waiter actually uses.
 func TestWaiterCarriesTheSenderTheChatResolved(t *testing.T) {
 	fake := &fakeTmux{
 		capture:       "codex conversation\n› ",
@@ -265,7 +285,7 @@ func TestWaiterCarriesTheSenderTheChatResolved(t *testing.T) {
 			Recovered:  true,
 		},
 	}, spawner)
-	result, err := engine.Inject(context.Background(), Request{
+	result, err := engine.injectChain(context.Background(), Request{
 		Target:  "chat",
 		Message: "/compact hold: read /tmp/hold.md",
 		Then:    []string{"resume the wave"},
@@ -274,7 +294,7 @@ func TestWaiterCarriesTheSenderTheChatResolved(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Code != 0 || result.Steers != 1 {
-		t.Fatalf("Inject() = %+v", result)
+		t.Fatalf("inject() = %+v", result)
 	}
 	spawned := spawner.spawned()
 	if len(spawned) != 1 {
@@ -392,11 +412,14 @@ func TestCommandThenSpawnerFallsBackToNohup(t *testing.T) {
 
 // TestSteerSpawnFailureIsReportedNotSwallowed keeps a failed arming visible:
 // the primary landed, the follow-up did not, and the caller is told which.
+// It drives delivery through injectChain: the public Inject() now refuses a
+// /compact primary outright (Task C), so this is the chain-hop shape
+// DeliverThen's waiter actually uses.
 func TestSteerSpawnFailureIsReportedNotSwallowed(t *testing.T) {
 	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
 	spawner := &fakeSpawner{err: errors.New("no setsid")}
 	engine := newTestEngineWith(t, "cc-1-2-3", fake, spawner)
-	result, err := engine.Inject(context.Background(), Request{
+	result, err := engine.injectChain(context.Background(), Request{
 		Target:  "chat",
 		Message: "/compact hold: read /tmp/hold.md",
 		Then:    []string{"resume"},
@@ -407,7 +430,7 @@ func TestSteerSpawnFailureIsReportedNotSwallowed(t *testing.T) {
 	if result.Code != 6 ||
 		result.Steers != 0 ||
 		!strings.Contains(result.Message, "could NOT arm") {
-		t.Fatalf("Inject() = %+v", result)
+		t.Fatalf("inject() = %+v", result)
 	}
 }
 

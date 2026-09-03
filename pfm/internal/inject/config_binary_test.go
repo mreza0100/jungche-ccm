@@ -46,7 +46,6 @@ func TestInjectUsesConfiguredBinaryToDescribeBusyPane(t *testing.T) {
 		CodexBinary:  customCodex,
 		Options: Options{
 			Poll:             time.Nanosecond,
-			EnterGap:         time.Nanosecond,
 			EnterSettle:      time.Nanosecond,
 			ProofSettle:      time.Nanosecond,
 			BusyTries:        2,

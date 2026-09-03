@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"hostops/pfm/internal/deps"
 )
@@ -184,6 +186,54 @@ func (tmux CommandTmux) WindowName(
 		"#{window_name}",
 	).Output()
 	return strings.TrimSpace(string(output)), err
+}
+
+// ClientActivity reports the most recent keystroke time among the clients
+// attached to the session that holds target. Verified against a real tmux
+// server (jailed probe, Task A.1): `list-clients -t <pane-id>` resolves
+// straight through tmux's own cmd-find session->window->pane fallthrough,
+// so target is passed exactly as given — a pane id or a session name — with
+// no separate session-name resolution step. Zero attached clients is not a
+// tmux failure: list-clients still exits 0 and simply prints nothing, which
+// is the honest "an unattended pane has no typist" answer (ok=false, err
+// nil); a real tmux error is returned as err and must never be read as "the
+// pane is unattended".
+func (tmux CommandTmux) ClientActivity(
+	ctx context.Context,
+	socketPath, target string,
+) (time.Time, bool, error) {
+	output, err := tmux.command(
+		ctx,
+		socketPath,
+		"list-clients",
+		"-t",
+		target,
+		"-F",
+		"#{client_activity}",
+	).Output()
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	var last time.Time
+	found := false
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		seconds, parseErr := strconv.ParseInt(line, 10, 64)
+		if parseErr != nil {
+			return time.Time{}, false, fmt.Errorf(
+				"parse tmux client_activity %q: %w", line, parseErr,
+			)
+		}
+		found = true
+		candidate := time.Unix(seconds, 0)
+		if candidate.After(last) {
+			last = candidate
+		}
+	}
+	return last, found, nil
 }
 
 func (tmux CommandTmux) command(

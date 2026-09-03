@@ -203,13 +203,13 @@ func applyEnvironment(options *Options) {
 		target *time.Duration
 	}{
 		{"CHAT_INJECT_POLL", &options.Poll},
-		{"CHAT_INJECT_ENTER_GAP", &options.EnterGap},
 		{"CHAT_INJECT_ENTER_SETTLE", &options.EnterSettle},
 		{"CHAT_INJECT_PROOF_SETTLE", &options.ProofSettle},
 		{"CHAT_INJECT_LOCK_TIMEOUT", &options.LockTimeout},
 		{"CHAT_INJECT_LOCK_POLL", &options.LockPoll},
 		{"CHAT_INJECT_LOCK_MAXHOLD", &options.LockMaxHold},
 		{"CHAT_INJECT_COMMAND_GAP", &options.CommandChunkGap},
+		{"CHAT_INJECT_TYPIST_QUIET", &options.TypistQuiet},
 		{"CHAT_THEN_MIN", &options.ThenMin},
 		{"CHAT_THEN_IDLE_POLL", &options.ThenIdlePoll},
 		{"CHAT_THEN_SETTLE", &options.ThenSettle},
@@ -256,9 +256,6 @@ func withDefaults(options Options) Options {
 	if options.Poll == 0 {
 		options.Poll = 200 * time.Millisecond
 	}
-	if options.EnterGap == 0 {
-		options.EnterGap = 150 * time.Millisecond
-	}
 	if options.EnterSettle == 0 {
 		options.EnterSettle = 400 * time.Millisecond
 	}
@@ -294,6 +291,9 @@ func withDefaults(options Options) Options {
 	}
 	if options.LockMaxHold == 0 {
 		options.LockMaxHold = 60 * time.Second
+	}
+	if options.TypistQuiet == 0 {
+		options.TypistQuiet = 3 * time.Second
 	}
 	if options.ClaudeInlineMax == 0 {
 		options.ClaudeInlineMax = ClaudeInlineMax
@@ -528,7 +528,7 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 	steers := make([]string, 0, len(then)+1)
 	steers = append(steers, request.Message)
 	steers = append(steers, then...)
-	logPath := engine.steerLogPath(target.Pane)
+	logPath := engine.steerLogPath(target)
 	if err := engine.spawner.Spawn(ctx, SteerSpawn{
 		SocketPath: target.SocketPath,
 		Target:     target.Pane,
@@ -559,6 +559,54 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 		Steers:     len(then),
 		SteerLog:   logPath,
 	}, nil
+}
+
+// ScheduleSelfCompact composes and schedules a self-compaction the ONE way,
+// shared by every caller — the chat_self_compact MCP tool and
+// `pfm chat self-compact` alike. Nobody else composes "/compact ".
+func (engine *Engine) ScheduleSelfCompact(
+	ctx context.Context,
+	focus string,
+	then []string,
+) (Result, error) {
+	focus = strings.TrimSpace(focus)
+	// The full control-character class, not just \r\n\x00: ESC, BEL, and
+	// the rest of C0/DEL are the same threat class (an injected control
+	// byte typed as a real keypress) this diff's own typist/mash guards
+	// exist to police elsewhere, and unicode.IsControl is what makes this
+	// check match its own doc comment below (and SelfCompactInput's, in
+	// mcpserv/types.go) word for word: non-empty, single line, no control
+	// characters — one canonical rule, stated once, enforced here.
+	if focus == "" || strings.ContainsFunc(focus, unicode.IsControl) {
+		return refused(CodeUndelivered, "focus must be one non-empty line"), nil
+	}
+	target, code, detail, err := engine.Resolve(ctx, "self")
+	if err != nil {
+		return Result{}, err
+	}
+	if code != 0 {
+		return refused(code, detail), nil
+	}
+	// focus is validated above (single line, non-empty, no control characters),
+	// which is exactly what makes it safe to concatenate onto the slash
+	// command. isHarnessCommand only checks for a leading "/", so the composed
+	// string still routes through the paced-literal command transport.
+	//
+	// Codex is the exception, and it is an ASSUMPTION HELD, not one disproved:
+	// an earlier investigation recorded that Codex accepts no inline arguments
+	// on /compact. Nothing in this repo re-tests that — TESTPLAN's /compact
+	// rows are all Claude jail tests — so the claim stands until a real Codex
+	// composer says otherwise, and the focus is composed only where the target
+	// is NOT known to be Codex.
+	message := "/compact " + focus
+	if target.Engine == string(pfmengine.Codex) {
+		message = "/compact"
+	}
+	return engine.ScheduleAfterCurrentTurn(ctx, Request{
+		Target:  "self",
+		Message: message,
+		Then:    then,
+	})
 }
 
 // rolePointer looks up target's remembered T1 role — if any — and composes
@@ -652,8 +700,26 @@ const SelfCompactStopNotice = " — STOP NOW: end this turn without running " +
 
 // Inject performs the delivery and records a successful direct send without
 // making the recipient pay for a ledger failure.
+//
+// A /compact primary is refused here, before checkSteerChain or any resolve
+// step runs: /compact ends a turn at an idle prompt with none fired, so
+// typing it live races whatever the target's operator is doing right now
+// (the 2026-09-03 self-compact that ate an operator's live draft) — compaction belongs to
+// chat_self_compact / `pfm chat self-compact`, both of which wait for the
+// target's own turn to end first. The internal inject() this delegates to
+// still accepts a /compact primary when Chain is true — that is how
+// ScheduleAfterCurrentTurn's detached waiter (DeliverThen) delivers one.
 func (engine *Engine) Inject(ctx context.Context, request Request) (Result, error) {
 	ctx = withSender(ctx, engine.sender(ctx))
+	if isCompactCommand(request.Message) {
+		return refused(
+			CodeUndelivered,
+			"ABORT: /compact is never injected — compaction is chat_self_compact "+
+				"(MCP) or `pfm chat self-compact --then '<steer>' '<focus>'` (CLI); "+
+				"both wait for the target's own turn to end and never type over a "+
+				"human. Nothing was typed.",
+		), nil
+	}
 	result, err := engine.inject(ctx, request)
 	if err != nil || result.Code != 0 || !result.Typed || request.Origin != "" || engine.recorder == nil {
 		return result, err
@@ -794,6 +860,44 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 		}
 	}
 
+	// A human at the keyboard is not a safe queue surface, busy or idle: C-s
+	// below protects a PARKED draft, never a live keystroke, and the second
+	// Enter this engine used to send is exactly what let an operator's next
+	// keystroke land as a submitted message once the first Enter had already
+	// cleared the composer (the 2026-09-03 self-compact that ate an operator's live draft). ForceNow
+	// alone bypasses this — the same override that allows the Escape
+	// interrupt above.
+	if !request.ForceNow {
+		last, typing, activityErr := engine.tmux.ClientActivity(
+			ctx,
+			target.SocketPath,
+			target.Pane,
+		)
+		if activityErr != nil {
+			base.Code = CodeUndelivered
+			base.Status = "undelivered"
+			base.Message = fmt.Sprintf(
+				"ABORT: could not read who is at %q (tmux list-clients: %v); nothing was typed",
+				target.Pane,
+				activityErr,
+			)
+			return base, nil
+		}
+		if typing {
+			if quiet := engine.options.Now().Sub(last); quiet < engine.options.TypistQuiet {
+				base.Code = CodeBusy
+				base.Status = "typing"
+				base.Message = fmt.Sprintf(
+					"ABORT: a human is typing in %q (last keystroke %s ago) — the pane is busy with its operator; nothing was typed. Retry once the composer has been quiet for %s, or pass force_now to override.",
+					target.Pane,
+					quiet.Round(time.Second),
+					engine.options.TypistQuiet,
+				)
+				return base, nil
+			}
+		}
+	}
+
 	if inMode, modeErr := engine.tmux.PaneInMode(
 		ctx,
 		target.SocketPath,
@@ -861,6 +965,10 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 	// Idle panes take the ordinary C-s mash guard. A busy pane with an empty
 	// composer is already a safe queue surface and receives no control key;
 	// only an actual busy draft is stashed before the new turn is queued.
+	// The "stashed and restored on submit" semantics this guard leans on are
+	// not documented by Claude Code — they are pinned empirically, against a
+	// real process, by the PINNED OBSERVATIONS comment atop
+	// claude_stash_real_test.go's TestRealClaudeStashSemantics.
 	needsStashGuard := !queueing
 	if queueing && hasDraft(lastComposerLine(capture)) {
 		styled, _ := engine.tmux.Capture(
@@ -1031,40 +1139,34 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 		); err != nil {
 			return Result{}, err
 		}
-		if !base.DraftStashed {
-			sleepContext(ctx, engine.options.EnterGap)
-			if err := engine.tmux.SendKey(
-				ctx,
-				target.SocketPath,
-				target.Pane,
-				"Enter",
-			); err != nil {
-				return Result{}, err
-			}
-		}
 		sleepContext(ctx, engine.options.EnterSettle)
 		capture, err = engine.capture(ctx, target, 0)
 		if err != nil {
 			continue
 		}
+		// Confirmation needs POSITIVE evidence, never a blind re-Enter: a
+		// re-Enter is warranted ONLY when this LIVE capture proves the
+		// composer STILL holds the message (its prefix, or an unexpanded
+		// paste placeholder, visibly still sitting there). An unreadable or
+		// blank composer row is NOT evidence anything is still there — a
+		// large body can legitimately scroll its own "❯"/"›" marker off the
+		// visible viewport while it (or its post-submit echo) keeps
+		// rendering, and re-reading a deeper scrollback capture here used
+		// to find only the ORIGINAL pre-submit line (still holding the
+		// placeholder) sitting further back in history, so a genuinely
+		// confirmed submission could never confirm no matter how many
+		// Enters were sent (F3 of the merge-gating review — the real
+		// jailed 1MB bracketed-paste round trip). Never re-add an
+		// unconditional second Enter here: the loop already retries
+		// exactly when — and only when — the capture proves the message is
+		// still sitting in the composer.
 		input := lastComposerLine(capture)
-		if input == "" {
-			scrollback, scrollErr := engine.capture(
-				ctx,
-				target,
-				engine.options.Scrollback,
-			)
-			if scrollErr == nil {
-				input = lastComposerLine(scrollback)
-			}
-		}
-		if input == "" || HasPastePlaceholder(input) {
+		if input != "" &&
+			(HasPastePlaceholder(input) || strings.Contains(normalizeSpace(input), prefix)) {
 			continue
 		}
-		if !strings.Contains(normalizeSpace(input), prefix) {
-			submitted = true
-			break
-		}
+		submitted = true
+		break
 	}
 	if !submitted {
 		base.Status = "typed_unconfirmed"
@@ -1088,7 +1190,7 @@ func (engine *Engine) inject(ctx context.Context, request Request) (Result, erro
 	// never blocked by us; it takes its own per-target lock when it delivers.
 	if len(request.Then) > 0 {
 		lock.release()
-		base.SteerLog = engine.steerLogPath(target.Pane)
+		base.SteerLog = engine.steerLogPath(target)
 		if err := engine.spawner.Spawn(ctx, SteerSpawn{
 			SocketPath: target.SocketPath,
 			Target:     target.Pane,
@@ -1370,7 +1472,7 @@ func (engine *Engine) checkSteerChain(request Request) (Result, bool) {
 	if len(request.Then) == 0 {
 		return refused(
 			6,
-			"ABORT: a /compact inject requires a then steer — compaction ends at an idle prompt with no turn fired, stranding the target. Re-run with the steer: chat_inject{target, message:'/compact <focus>', then:['<post-compact steer>']}. Nothing was typed.",
+			"ABORT: a /compact inject requires exactly one then steer — compaction ends at an idle prompt with no turn fired, stranding the target. Use chat_self_compact{focus, then:'<post-compact steer>'} or `pfm chat self-compact --then '<steer>' '<focus>'` instead. Nothing was typed.",
 		), false
 	}
 	return Result{}, true
@@ -1660,20 +1762,38 @@ func (engine *Engine) senderLabel(
 	return strings.TrimSpace(window)
 }
 
-// steerLogPath mirrors chat.sh:940 — ${TMPDIR:-/tmp}/chat-then-<target>.log
-// with every non-alphanumeric character of the target replaced by '_'.
-func (engine *Engine) steerLogPath(target string) string {
-	sanitized := strings.Map(func(character rune) rune {
-		switch {
-		case character >= 'a' && character <= 'z',
-			character >= 'A' && character <= 'Z',
-			character >= '0' && character <= '9':
-			return character
-		default:
-			return '_'
-		}
-	}, target)
-	return filepath.Join(engine.options.ThenLogRoot, "chat-then-"+sanitized+".log")
+// steerLogPath mirrors chat.sh:940 — ${TMPDIR:-/tmp}/chat-then-<target>.log —
+// but scoped by SOCKET as well as pane. Every chat's own live pane is %0 on
+// its own dedicated socket, so a bare pane-derived name collided across
+// EVERY chat on the machine: a fresh chain on one chat truncated the exact
+// log file another chat's forensics depended on
+// (the 2026-09-03 self-compact that ate an operator's live draft). The path is now
+// ${TMPDIR:-/tmp}/chat-then-<sanitized base(SocketPath)>.<sanitized Pane>.log:
+// each component is sanitized SEPARATELY, every non-alphanumeric byte in it
+// (including a literal '-' inside the socket name itself) folded to '_',
+// BEFORE the two are joined with a '.' — a byte the sanitizer never emits.
+// Joining the raw components first (with '-') and sanitizing afterward let a
+// hyphen inside one component alias with the join delimiter: two distinct
+// (socket, pane) pairs whose hyphen boundary fell in different places could
+// sanitize to the identical path (this repo's own socket names are
+// hyphen-joined numeric triples — cmd/pfm/commands.go's freshEngineSocket,
+// "%s%d-%d-%d"). Sanitizing first and joining on a delimiter the sanitizer
+// never produces makes that collision structurally impossible.
+func (engine *Engine) steerLogPath(target Target) string {
+	sanitize := func(component string) string {
+		return strings.Map(func(character rune) rune {
+			switch {
+			case character >= 'a' && character <= 'z',
+				character >= 'A' && character <= 'Z',
+				character >= '0' && character <= '9':
+				return character
+			default:
+				return '_'
+			}
+		}, component)
+	}
+	name := sanitize(filepath.Base(target.SocketPath)) + "." + sanitize(target.Pane)
+	return filepath.Join(engine.options.ThenLogRoot, "chat-then-"+name+".log")
 }
 
 func targetFromParts(socketPath, pane string) Target {

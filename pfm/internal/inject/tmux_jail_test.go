@@ -295,7 +295,6 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 		Spawner:  &fakeSpawner{},
 		Options: Options{
 			Poll:            50 * time.Millisecond,
-			EnterGap:        50 * time.Millisecond,
 			EnterSettle:     200 * time.Millisecond,
 			ProofSettle:     150 * time.Millisecond,
 			BusyTries:       2,
@@ -374,7 +373,6 @@ func TestJailedBusyCodexQueuesAndLongFileDeliversByPaste(t *testing.T) {
 		Spawner:  &fakeSpawner{},
 		Options: Options{
 			Poll:            20 * time.Millisecond,
-			EnterGap:        20 * time.Millisecond,
 			EnterSettle:     100 * time.Millisecond,
 			ProofSettle:     50 * time.Millisecond,
 			SettleTries:     30,
@@ -450,7 +448,6 @@ func TestJailedBusyClaudeQueuesWithoutControlKeys(t *testing.T) {
 		Spawner:  &fakeSpawner{},
 		Options: Options{
 			Poll:            20 * time.Millisecond,
-			EnterGap:        20 * time.Millisecond,
 			EnterSettle:     100 * time.Millisecond,
 			ProofSettle:     50 * time.Millisecond,
 			SettleTries:     30,
@@ -501,7 +498,11 @@ func TestJailedBusyClaudeQueuesWithoutControlKeys(t *testing.T) {
 // acceptance fixture for the no-user-visible-size-limit rule. The probe emits
 // busy output during input, so an implementation that interleaves output into
 // its accumulated command or falls back to a paste is caught by the exact
-// transcript record, not by a lucky visible tail of the pane.
+// transcript record, not by a lucky visible tail of the pane. It drives
+// delivery through injectChain (engine.inject with Chain: true): the public
+// Inject() now refuses a /compact primary outright (Task C), so the
+// paced-literal/full-transcript guarantee is proven the way DeliverThen's
+// waiter actually reaches this transaction.
 func TestJailedLongCompactFocusFiresWithFullTranscript(t *testing.T) {
 	jail := newInjectTmuxJail(t)
 	socket := "probe-pfm-inject-compact-focus"
@@ -515,7 +516,6 @@ func TestJailedLongCompactFocusFiresWithFullTranscript(t *testing.T) {
 		Spawner:  &fakeSpawner{},
 		Options: Options{
 			Poll:            10 * time.Millisecond,
-			EnterGap:        20 * time.Millisecond,
 			EnterSettle:     100 * time.Millisecond,
 			ProofSettle:     100 * time.Millisecond,
 			SettleTries:     500,
@@ -546,7 +546,7 @@ func TestJailedLongCompactFocusFiresWithFullTranscript(t *testing.T) {
 	want := "/compact " + focus
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	result, err := engine.Inject(ctx, Request{
+	result, err := engine.injectChain(ctx, Request{
 		Target:  session,
 		Message: want,
 		Then:    []string{"resume after compaction"},
@@ -658,5 +658,42 @@ func TestJailedCaptureReturnsWholeScrollback(t *testing.T) {
 	if strings.Contains(tailed, "scrollrow-1\n") ||
 		!strings.Contains(tailed, "scrollrow-60") {
 		t.Fatalf("tail bound was not applied after the capture:\n%s", tailed)
+	}
+}
+
+// TestJailedClientActivityReportsUnattendedAndDeadSocket pins
+// CommandTmux.ClientActivity (Task A.1) against a REAL tmux server: an
+// unattended session (no client ever attached — every jailed fixture in
+// this package, since none of them run a real terminal client) answers
+// ok=false with no error, the honest "nobody's there" reading; a socket
+// that never had a server answers a real error, which must never be read
+// as "unattended" — an error is a failure to look, not an answer.
+func TestJailedClientActivityReportsUnattendedAndDeadSocket(t *testing.T) {
+	jail := newInjectTmuxJail(t)
+	socket := "probe-pfm-client-activity"
+	session := "probe-pfm-client-activity-session"
+	command := jail.command(
+		"-f", "/dev/null", "-L", socket, "new-session", "-d", "-s", session,
+		"sleep", "30",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("start jailed pane: %v: %s", err, output)
+	}
+	jail.sockets = append(jail.sockets, socket)
+	socketPath := filepath.Join(jail.tmuxDir, socket)
+
+	tmux := CommandTmux{}
+	last, ok, err := tmux.ClientActivity(context.Background(), socketPath, session)
+	if err != nil {
+		t.Fatalf("ClientActivity() on an unattended live session returned an error instead of ok=false: %v", err)
+	}
+	if ok {
+		t.Fatalf("ClientActivity() on an unattended session reported a client attached: last=%v", last)
+	}
+
+	deadSocket := filepath.Join(jail.tmuxDir, "probe-pfm-client-activity-dead")
+	_, deadOK, deadErr := tmux.ClientActivity(context.Background(), deadSocket, session)
+	if deadErr == nil {
+		t.Fatalf("ClientActivity() against a dead socket returned no error (ok=%v) — a failure to look must never read as \"nobody typing\"", deadOK)
 	}
 }

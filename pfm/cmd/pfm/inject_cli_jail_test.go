@@ -122,7 +122,6 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	t.Setenv("PFM_PROC_ROOT", filepath.Join(root, "proc"))
 	t.Setenv("PFM_TMUX_CONF", "/dev/null")
 	t.Setenv("CHAT_INJECT_POLL", "0.01")
-	t.Setenv("CHAT_INJECT_ENTER_GAP", "0.01")
 	t.Setenv("CHAT_INJECT_ENTER_SETTLE", "0.05")
 	t.Setenv("CHAT_INJECT_PROOF_SETTLE", "0.05")
 	// Deliberately do not enable PFM_TEST_PROBE_SOCKETS: the fleet/store scan

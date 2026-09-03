@@ -2,7 +2,10 @@ package inject
 
 import (
 	"context"
+	"errors"
+	pfmengine "hostops/pfm/internal/engine"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -288,10 +291,14 @@ func TestThenWaiterDoesNotBurnTheBudgetWaitingForATurnThatAlreadyRan(t *testing.
 
 // TestSelfCompactScheduleTellsTheCallerToStop covers the result half of the
 // stop rule at the layer that actually writes it, so BOTH callers — the
-// chat_self_compact MCP tool and `pfm chat inject --then self "/compact …"` —
-// are covered by one assertion instead of one of them being quietly missed.
-// That miss was real: the notice first shipped in the MCP handler only, which
-// left the CLI path (the one that caused the collision) saying nothing.
+// chat_self_compact MCP tool and `pfm chat self-compact` — are covered by
+// one assertion instead of one of them being quietly missed. That miss was
+// real: the notice first shipped in the MCP handler only, which left the
+// CLI path saying nothing. `pfm chat inject` no longer has a /compact path
+// at all (Task C: chat_self_compact / `pfm chat self-compact` own
+// compaction, and both share Engine.ScheduleSelfCompact -> this
+// ScheduleAfterCurrentTurn call, which is where SelfCompactStopNotice is
+// actually appended).
 func TestSelfCompactScheduleTellsTheCallerToStop(t *testing.T) {
 	fake := &fakeTmux{capture: "Working (10s)\n› Ask Codex to do anything"}
 	engine := newTestEngineWith(t, "cx-self-compact", fake, &fakeSpawner{})
@@ -385,5 +392,225 @@ func TestNonSelfWaiterDoesNotWaitOutATurnItDidNotStart(t *testing.T) {
 				"that was never going to come",
 			got, phaseDone,
 		)
+	}
+}
+
+// TestDeliverThenHoldsForTypistThenDelivers pins the waiter half of the
+// typist guard (Task A.4): waitForQuietTypist holds DeliverThen back while a
+// human keeps typing and delivers exactly once quiet holds for TypistQuiet.
+// The fake models a typist whose LAST keystroke never moves (a human who
+// typed once and stopped) while the clock advances one second per poll, so
+// "quiet" here is purely a function of elapsed time crossing TypistQuiet —
+// exactly what the production code computes. Revert waitForQuietTypist's
+// call in DeliverThen (comment it out) and this fails too: engine.inject's
+// OWN typist guard (Task A.3) still catches the still-typing pane on the
+// delivery attempt that follows, but with its OWN message text ("a human is
+// typing in..."), not this test's "delivers once quiet holds" shape — proof
+// the waiter-level check is a distinct, load-bearing layer and not just a
+// restatement of the delivery-time guard.
+func TestDeliverThenHoldsForTypistThenDelivers(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true, clientAttached: true}
+	spawner := &fakeSpawner{}
+	engine := newTestEngineWith(t, "cc-typist-hold", fake, spawner)
+	engine.options.ThenMin = time.Nanosecond
+	engine.options.ThenBusyTries = 1
+	engine.options.ThenIdlePoll = time.Nanosecond
+	engine.options.ThenIdleStable = 1
+	engine.options.ThenSettle = time.Nanosecond
+	engine.options.ThenIdleTries = 10
+	engine.options.TypistQuiet = 3 * time.Second
+
+	start := time.Unix(1_700_000_000, 0)
+	fake.clientActivity = start
+	var calls int
+	engine.options.Now = func() time.Time {
+		calls++
+		return start.Add(time.Duration(calls) * time.Second)
+	}
+
+	result, err := engine.DeliverThen(context.Background(), "", "chat", []string{"resume"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || !result.Typed {
+		t.Fatalf("DeliverThen() = %+v, want a confirmed delivery once the typist went quiet", result)
+	}
+	if calls < 3 {
+		t.Fatalf("delivered before the typist actually went quiet: waitForQuietTypist's clock only advanced %d time(s), want at least 3 (TypistQuiet=3s at 1s/poll)", calls)
+	}
+	enters := 0
+	for _, key := range fake.keys {
+		if key == "Enter" {
+			enters++
+		}
+	}
+	if enters != 1 {
+		t.Fatalf("keys=%q, want exactly one Enter once the typist cleared", fake.keys)
+	}
+}
+
+// TestDeliverThenRefusesWhenTypistNeverClears pins the exhaustion half: a
+// typist whose last keystroke NEVER ages past TypistQuiet within
+// ThenIdleTries polls gets a refused chain, code 7, "then steer NOT
+// delivered" in the message, and nothing typed. Revert
+// waitForQuietTypist's call in DeliverThen and this fails: the chain
+// delivers straight over the typing human instead of refusing.
+func TestDeliverThenRefusesWhenTypistNeverClears(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true, clientAttached: true}
+	spawner := &fakeSpawner{}
+	engine := newTestEngineWith(t, "cc-typist-refuse", fake, spawner)
+	engine.options.ThenMin = time.Nanosecond
+	engine.options.ThenBusyTries = 1
+	engine.options.ThenIdlePoll = time.Nanosecond
+	engine.options.ThenIdleStable = 1
+	engine.options.ThenSettle = time.Nanosecond
+	engine.options.ThenIdleTries = 2
+	engine.options.TypistQuiet = 3 * time.Second
+
+	start := time.Unix(1_700_000_000, 0)
+	fake.clientActivity = start
+	// The clock always reads "1s after the last keystroke" — quiet never
+	// crosses the 3s TypistQuiet threshold no matter how many times it is
+	// sampled.
+	engine.options.Now = func() time.Time { return start.Add(time.Second) }
+
+	result, err := engine.DeliverThen(context.Background(), "", "chat", []string{"resume"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != CodeBusy || result.Status != "typing" {
+		t.Fatalf("DeliverThen() = %+v, want a refused (code 7, typing) chain", result)
+	}
+	if !strings.Contains(result.Message, "then steer NOT delivered") {
+		t.Fatalf("refusal %q lacks \"then steer NOT delivered\"", result.Message)
+	}
+	if len(fake.keys) != 0 || len(fake.literals) != 0 {
+		t.Fatalf("typed despite the typist never clearing: keys=%q literals=%q", fake.keys, fake.literals)
+	}
+}
+
+// TestScheduleSelfCompactComposesPerEngineAndForwardsThen pins Task D's
+// shared composition: ScheduleSelfCompact composes "/compact " + focus for
+// a Claude self target and the bare "/compact" for a Codex one, and forwards
+// the caller's then steer(s) unmodified. Revert to a bare "/compact" for
+// every target and the "claude composes the focus" case fails.
+func TestScheduleSelfCompactComposesPerEngineAndForwardsThen(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		engine string
+		want   string
+	}{
+		{name: "claude composes the focus", engine: "", want: "/compact hold the wave state"},
+		{name: "codex sends the bare command", engine: string(pfmengine.Codex), want: "/compact"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeTmux{capture: "conversation\n❯ "}
+			spawner := &fakeSpawner{}
+			engine := newTestEngineWith(t, "cc-self-compact-compose", fake, spawner)
+			engine.whoami = fakeSelf{identity: resolve.Identity{
+				Session:    "self-session",
+				SocketPath: filepath.Join("/tmp", "tmux-jail", "cc-self-compact-compose"),
+				Pane:       "%1",
+				Engine:     test.engine,
+			}}
+			result, err := engine.ScheduleSelfCompact(context.Background(), "hold the wave state", []string{"resume the wave"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Code != 0 {
+				t.Fatalf("ScheduleSelfCompact() = %+v", result)
+			}
+			spawned := spawner.spawned()
+			if len(spawned) != 1 || len(spawned[0].Steers) == 0 || spawned[0].Steers[0] != test.want {
+				t.Fatalf("composed command = %+v, want primary %q", spawned, test.want)
+			}
+			if !reflect.DeepEqual(spawned[0].Steers[1:], []string{"resume the wave"}) {
+				t.Fatalf("then was not forwarded unmodified: %+v", spawned[0].Steers)
+			}
+		})
+	}
+}
+
+// TestScheduleSelfCompactRefusesAnInvalidFocusBeforeScheduling pins Task D's
+// validation: an empty, whitespace-only, or multi-line focus is refused
+// before anything is scheduled. Revert the validation in
+// Engine.ScheduleSelfCompact and this fails: an empty focus reaches the
+// spawner as a bare "/compact ".
+//
+// The ESC- and BEL-carrying cases pin F8 of the merge-gating review: the
+// doc comment above this validation (and SelfCompactInput's in
+// mcpserv/types.go) claims "no control characters," but the old check only
+// excluded \r\n\x00 — three bytes, not the full control-character class —
+// so ESC/BEL/the rest of C0/DEL passed through unfiltered into a string
+// typed as literal keystrokes. Narrow the check back to
+// strings.ContainsAny(focus, "\r\n\x00") and these two cases stop failing.
+func TestScheduleSelfCompactRefusesAnInvalidFocusBeforeScheduling(t *testing.T) {
+	for _, focus := range []string{
+		"", "   ", "line one\nline two",
+		"focus with an ESC\x1bbyte", "focus with a BEL\x07byte",
+	} {
+		fake := &fakeTmux{capture: "conversation\n❯ "}
+		spawner := &fakeSpawner{}
+		engine := newTestEngineWith(t, "cc-self-compact-validate", fake, spawner)
+		engine.whoami = fakeSelf{identity: resolve.Identity{
+			Session:    "self-session",
+			SocketPath: filepath.Join("/tmp", "tmux-jail", "cc-self-compact-validate"),
+			Pane:       "%1",
+		}}
+		result, err := engine.ScheduleSelfCompact(context.Background(), focus, []string{"resume"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Code != CodeUndelivered || !strings.Contains(result.Message, "focus must be one non-empty line") {
+			t.Fatalf("focus %q result = %+v", focus, result)
+		}
+		if len(spawner.spawned()) != 0 {
+			t.Fatalf("invalid focus %q reached the spawner: %+v", focus, spawner.spawned())
+		}
+	}
+}
+
+// TestDeliverThenReportsUndeliveredWhenTmuxUnreadable pins the tri-state half
+// of the typist guard (F1 of the merge-gating review): when ClientActivity
+// errors on EVERY poll across the whole ThenIdleTries wait window — a dead
+// socket, a pane that vanished mid-wait, anything that keeps failing to
+// answer "who's there" — waitForQuietTypist must not let that alias with "a
+// human kept typing." A tmux read failure is a failure to look, never
+// evidence of a typist, so DeliverThen must report Code 6 / status
+// "undelivered" naming the tmux error, not Code 7 / status "typing" naming a
+// human that was never actually observed.
+func TestDeliverThenReportsUndeliveredWhenTmuxUnreadable(t *testing.T) {
+	readErr := errors.New("boom: no server running on socket")
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true, clientErr: readErr}
+	spawner := &fakeSpawner{}
+	engine := newTestEngineWith(t, "cc-typist-unreadable", fake, spawner)
+	engine.options.ThenMin = time.Nanosecond
+	engine.options.ThenBusyTries = 1
+	engine.options.ThenIdlePoll = time.Nanosecond
+	engine.options.ThenIdleStable = 1
+	engine.options.ThenSettle = time.Nanosecond
+	engine.options.ThenIdleTries = 3
+	engine.options.TypistQuiet = 3 * time.Second
+
+	start := time.Unix(1_700_000_000, 0)
+	engine.options.Now = func() time.Time { return start }
+
+	result, err := engine.DeliverThen(context.Background(), "", "chat", []string{"resume"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != CodeUndelivered || result.Status != "undelivered" {
+		t.Fatalf("DeliverThen() = %+v, want a Code 6 undelivered result when tmux could not be read for the whole wait window (not Code 7 \"typing\" — an error is never evidence of a typist)", result)
+	}
+	if !strings.Contains(result.Message, "then steer NOT delivered") ||
+		!strings.Contains(result.Message, "could not read who is at") ||
+		!strings.Contains(result.Message, readErr.Error()) {
+		t.Fatalf("undelivered message %q lacks the \"could not read\" shape naming the tmux error %v", result.Message, readErr)
+	}
+	if strings.Contains(result.Message, "a human kept typing") {
+		t.Fatalf("undelivered message %q falsely renders a tmux read failure as \"a human kept typing\"", result.Message)
+	}
+	if len(fake.keys) != 0 || len(fake.literals) != 0 {
+		t.Fatalf("typed despite tmux being unreadable the whole wait window: keys=%q literals=%q", fake.keys, fake.literals)
 	}
 }

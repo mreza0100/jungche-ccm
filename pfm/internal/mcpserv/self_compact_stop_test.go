@@ -19,7 +19,8 @@ import (
 // result is read in the same breath as the decision it governs. This file pins
 // the description; the result half belongs to whichever layer actually writes
 // it, which is the engine — see TestSelfCompactScheduleTellsTheCallerToStop in
-// internal/inject, covering the MCP tool and `pfm chat inject` in one place.
+// internal/inject, covering the MCP tool and `pfm chat self-compact` in one
+// place.
 
 func TestSelfCompactToolDescriptionTellsTheCallerToStop(t *testing.T) {
 	description := selfCompactDescription
