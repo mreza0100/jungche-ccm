@@ -41,6 +41,7 @@ Bullets MUST follow this shape:
 
 ## Releases
 
+- [v0.68.0](releases/v0.68.0.md) — issue #14 self-hosted audit closed: installer-owned statusline overlay, tmux title and name-sync config gates, instant Claude rename, arch-pinned cosmos, stamped version; cache timer at any width; revive removed
 Reverse-chronological. Click a version to read its full notes.
 
 - [v0.67.0](releases/v0.67.0.md) — compact discipline: `chat_self_compact` is one steer and the only answer to "compact yourself", `/handoff` and `/reload` are user-only, a config-gated milestone nudge hook (`claude.compactNudge`), reload confirms Claude Code's exit dialog and `--fresh --hide` retires the old chat, the statusline cache timer and Stats token counts are corrected, the live cosmos drops dead chats.

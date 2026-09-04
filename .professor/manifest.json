@@ -3,7 +3,7 @@
   "installed_from": {
     "mode": "self-hosted",
     "repo": "mreza0100/professor",
-    "version": "0.66.0"
+    "version": "0.68.0"
   },
   "profile": "minimal",
   "answers": {
@@ -106,8 +106,7 @@
       "codex-sync.sh",
       "dev.sh",
       "explore-deny.sh",
-      "guard-stamp.sh",
-      "ptm-guard.sh"
+      "guard-stamp.sh"
     ],
     "skills_source_fetched": {
       "rr": {
@@ -136,7 +135,7 @@
     ".claude/commands/git.md": "c0d2b20ea0772a93ddbd79305a200fe8c703336feff89886963d3480a6a6b52f",
     ".claude/commands/p/360.md": "151b673eb9bc12124125277763fbeeaa1ea655ae42d09d07482a12c465f667c3",
     ".claude/commands/pfm.md": "92cc310bb449029dc32f0131a3e5dcc689d396635f0a85d7967e366bb3aac970",
-    ".claude/commands/pfm/release.md": "c8826b1ae35e8fa56dc14a0ed74475f1b74ec31b5753d710e85994d1b12a8a16",
+    ".claude/commands/pfm/release.md": "c6627633fba454736ad46676bfec96c2b997e2d4f9d772951369c585bae2850c",
     ".claude/commands/quality/doc.md": "32318fbb1c56f93634d6a14933e555a580b6443002648f024aeef06a8fdba1e6",
     ".claude/commands/quality/prompt.md": "84243757907fca2b39c63379c087540e1e24424ed59c2029537cb798ac9b3b69",
     ".claude/commands/wave/ccc.md": "ac2836af7745dc278a662fa02e0374df2d9afc7ffdd05e77d8a932de077f892b",
@@ -146,11 +145,10 @@
     ".claude/commands/wave/walker.md": "cc1713bcce44d830fbba6374218943969faa06532e687323fd08b9a7b4836ccf",
     ".claude/scripts/build-opencode.mjs": "0dd303a37b0dca6fde229ef75e2ae9080eec60cd7b009bab2466e0666cda3cb4",
     ".claude/scripts/codex-sync.sh": "05ba9af95d3d68b5005fe63d82fd6aa517afbf03eb5e8e6cc827d50ed93f92dd",
-    ".claude/scripts/dev.sh": "4ebf146aa78afe9bd25d413d8896cc747e1adb754b104d0d9cdd4f27ae6de873",
+    ".claude/scripts/dev.sh": "132c243c94346620caa6881397e1314209a80e63182f9c4c8031029ebc9fa924",
     ".claude/scripts/explore-deny.sh": "966d38099cd592963ef54b54fb7544d4d44437fd4e36faae0846219ab57b26b6",
-    ".claude/scripts/guard-stamp.sh": "e80dfb384a773c48730f7ccaf4924bcff8ad4b7941e4bdf17cd8bf5e6ceafafc",
-    ".claude/scripts/pfm-guard.sh": "741c478a171449b097d99b8ed2cea43f430173a485dda68130f2b9fc48a9e877",
-    ".claude/scripts/ptm-guard.sh": "1a8df08270ed51d1deb73207655dc2ae847bed779d72049c775ada44fcdd8cf7",
+    ".claude/scripts/guard-stamp.sh": "45e82d48d90e54906b090518d99a6085a83314380960885b2f608aa421e17e9b",
+    ".claude/scripts/pfm-guard.sh": "f8150cc7ba2e6dcf51f1cc53dd91c92f4a8550b68198b87356757a9a0c050051",
     ".claude/settings.json": "6d64400094adb69642bb79a84c0ea214431501cb798c00ba766bb0764533efe1",
     ".codex/agents/dev.toml": "2991b0a7ab962573e462b60c090a7a215cfbfe38c9a099047df5e50187435990",
     ".codex/agents/gitter.toml": "a6b7b71c5a9c6e8010ab9bef53edb2856f5f75b2df454d1bd1d0345517661192",
@@ -177,11 +175,11 @@
     ".opencode/command/wave-walker-invariants.md": "cc255c04f53d3f8648a9027facd44914c0ec14c2618f7916020b7b29072f4884",
     ".opencode/command/wave-walker.md": "5ac7fb6dd6b56933d5de34fccdf6d5b6980bdec0ece01f63457dda748e0d4d2c",
     ".opencode/opencode.jsonc": "a7d7d8147da1f7a731f971dfbc20e8497f6e1953a3ad88ff0fd705e38cadaf47",
-    "AGENTS.md": "6bb357d3a45b59749ce638d8f71be5d08c29350dde8cdb0ecfc950b5dd06b6dc",
-    "CLAUDE.md": "09ea192010ce3d4e65d9d435ea2217b8cc278d36b4ab5b5b2075123aac9e9421",
+    "AGENTS.md": "28738c8f1b4ae4fc10224f42e843d9b84921f3c0a80531380b5fdbc76706fc08",
+    "CLAUDE.md": "c83469bbea7d50d0b8b45dbc5b37b0744ce0564d4891ce03e9986fe4b7e83c0f",
     "docs/commands/pfm/references/audit-scopes.md": "8634be6c91bfcdcb3ec7609afea5470e92a24918045806f5c5e48a9ab038f4c1",
-    "docs/commands/pfm/references/refresh.md": "a33bcf14b2790b497b9ab636d98d6f32a7a505039008daf118efd833a27e6773",
-    "pfm/AGENTS.md": "942504379afb8db47287473b21279ba27f1abeffb37f90ee7d317d3b08606670",
-    "pfm/CLAUDE.md": "08a83a796c34dca21bc22a29d42a2e308fd55308c7582026f9aa54821ec8031d"
+    "docs/commands/pfm/references/refresh.md": "0fc21ca1f250c5fdd962863754e34a0e6d1f675f3a58e100091a4f6b953ce340",
+    "pfm/AGENTS.md": "e493296a3df4ce132cef8cf5c2ff0220a118c60fcb89c0ce4541e6169cf3b050",
+    "pfm/CLAUDE.md": "43b97291fa3bf4172c7032b3cb7e211dabfab510fd6f2aa92a998dcf8e3b476c"
   }
 }
