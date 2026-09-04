@@ -141,6 +141,14 @@ verified fix flips its finding to `status: resolved @{sha}`; a new defect append
 `F{n}` `open` — statuses change on evidence, never rewrite history. `waived` is the orchestrator's
 mark, never yours.
 
+A merge-gating review reads the spec, never only the diff: for every lane that touches a guard,
+validator, threshold, bound, or retry outcome, and for every field, type, query, route, surface, or
+consumer the diff deletes, open the task-file line that authorizes that lane and diff what the code
+enforces or removes against what that line enumerates. An enforcement the line never named is a
+finding (`BUILDER-INVENTION`); a deletion wider than the line's enumeration is the same finding, its
+fix line "restore to the authorized scope" — never a spec amendment absorbing it; one the line names
+that the code lacks is a finding; and the diff's "removed" angle clears none of them.
+
 ## Lane seat procedure (verbatim into every lane brief)
 
 You review one LANE: a value's path from where it is produced, through every hop that carries or
