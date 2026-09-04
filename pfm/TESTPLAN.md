@@ -39,7 +39,7 @@ The four identity/state regressions that established this plan. A tagged row mus
 6. [F — Action synthesis and launch](#f--action-synthesis-and-launch)
 7. [G — MCP server (27 tools)](#g--mcp-server-27-tools)
 8. [H — `pfm chat`: subcommands, guards, `--then`, exit codes](#h--pfm-chat-subcommands-guards---then-exit-codes)
-9. [I — zsh shell surface: launchers and revivers](#i--zsh-shell-surface-launchers-and-revivers)
+9. [I — zsh shell surface: launchers](#i--zsh-shell-surface-launchers)
 10. [J — Internal wiring and store](#j--internal-wiring-and-store)
 11. [K — Installer and systemd units](#k--installer-and-systemd-units)
 12. [Flows that CANNOT be jailed](#flows-that-cannot-be-jailed)
@@ -144,7 +144,6 @@ permanently wired fixture in this suite.
 | `index` → counters line on stdout                                                                                     | JAIL      | `commands.go:351-398`, `formatCounters` `commands.go:400-412`                                             | B4                                                         |
 | `index --full` → reparse all + `last_full_index_at` meta                                                              | JAIL      | `commands.go:386-392`                                                                                     | B4                                                         |
 | `index --progress` → start/elapsed on stderr                                                                          | JAIL      | `commands.go:378-379,394-396`                                                                             |                                                            |
-| `revive` → resume-only rows through PlainPicker; empty → "no resumable chats"                                         | JAIL      | `commands.go:414-458`                                                                                     | B2                                                         |
 | `kill <id>` → shared row + carrier line                                                                               | JAIL      | `main.go:108-146`, `kill/manager.go:69-111`                                                               | B3                                                         |
 | `kill --self` → identity from `$TMUX`/`$TMUX_PANE`/`$CLAUDE_CODE_SESSION_ID`                                          | JAIL+tmux | `main.go:114`, `kill/self.go:16-38`                                                                       | B3                                                         |
 | `kill --self --exit` → detached finisher; `--exit` without a live pane → error                                        | JAIL+tmux | `main.go:115`, `kill/manager.go:86-88,98-109`                                                             |                                                            |
@@ -172,6 +171,8 @@ permanently wired fixture in this suite.
 | PATH candidate resolution | JAIL | target-HOME canonical candidate first is clean; no target-HOME candidate or an in-home shadow is a warning and rc 1; host candidates are ignored | `doctor_jail_test.go`, `doctor_path_test.go` |
 | PATH candidate hash | JAIL | matching target-HOME candidates are clean; target-HOME read failure or hash mismatch is a warning and rc 1 | `doctor_jail_test.go`, `doctor_path_test.go` |
 | managed Claude launcher | JAIL | canonical launcher is `ok`; absent is `missing`; a native-updater replacement is `DISPLACED` and rc 1 | `launch_command_test.go`, `internal/installer/launcher_test.go` |
+| host overlay symlinks (`pfm-statusline`, `tmux-title-renudge`) and statusLine wiring | JAIL | a canonical link resolving to the managed copy is `ok`; absent is `missing`, rc 1; not resolving to the managed copy is `DISPLACED`, rc 1; a configured account's `statusLine.command` still naming raw `pfm statusline` is a FAILURE, rc 1 | `cmd/pfm/doctor_host_overlay_test.go`, `internal/installer/installer.go` (`InspectHostOverlays`) |
+| tmux title ownership per live socket | JAIL+tmux | INFO only, never a warning and never a write: the resolved `tmux.titles` policy is printed with its source, then each live socket is read with `show-options -g set-titles` and reported `pfm-owned` or `host-owned`; an unreadable socket is `unknown` with the reason | `cmd/pfm/tmux_titles_doctor.go`, `cmd/pfm/tmux_titles_doctor_test.go` |
 | external-command registry coverage | JAIL | every production literal exec is registered and routed through `deps.Resolve`; configured engine names and provisioned harvest paths have one owner | `internal/deps/guard_test.go` |
 | dependency resolve/version/minimum | JAIL | fake PATH binaries distinguish ok, below-minimum, garbage, missing, failed execution, and timeout; tmux requires 1.8 | `internal/deps/probe_test.go`, `doctor_external_test.go` |
 | dependency platform and harvest filters | JAIL | Darwin/Linux-only rows say `skipped (not this platform)` off-platform; install-owned harvest rows say provisioned-by-install or `--skip-harvest` without being probed | `internal/deps/probe_test.go` |
@@ -204,7 +205,7 @@ permanently wired fixture in this suite.
 | `reap` never reaps from AGE alone; a wedged socket times out into SKIP | JAIL | `internal/reap/reap_test.go:203-224`, `internal/reap/runner.go:33-38` | |
 | `reap --apply` re-verifies attachment at kill time and clears crumbs | JAIL+tmux | `internal/reap/runner.go:320-360` | |
 | `reap --apply` re-probes a planned corpse and skips removal if the socket becomes live or unreadable | JAIL | `internal/reap/reap_test.go:43-89`, `internal/reap/runner.go` | |
-| `reap` socket selection delegates to the canonical gather classifier: cx included, vsct/revive excluded, probe-* only with the jail opt-in | JAIL | `internal/reap/reap_test.go:91-110`, `internal/reap/runner.go:307-312` | |
+| `reap` socket selection delegates to the canonical gather classifier: cx included, vsct excluded, probe-* only with the jail opt-in | JAIL | `internal/reap/reap_test.go:91-110`, `internal/reap/runner.go:307-312` | |
 | `reap` sweeps idle `vsct` bunkers by SESSION, never by killing the server | JAIL | `internal/reap/reap_test.go:258-296` | |
 | `archive` dry run default; `--apply`, `--subagents`, `--older-than`, `--restore` | JAIL | `internal/archive/archive_test.go:85-204` | |
 | `archive` re-checks liveness at run time (argv, codex fds, sid crumbs) | JAIL | `internal/archive/live.go:20-95`, `archive_test.go:296-340` | |
@@ -217,6 +218,9 @@ permanently wired fixture in this suite.
 | `heal --thread` is a silent exit-0 no-op on a healthy thread | JAIL | `cmd/pfm/heal_jail_test.go:152-176` | |
 | ResumeCodex runs the native projection repair before the seat is created | JAIL | `internal/action/executor.go:113-127`, `testdata/golden/cmdlines.txt:47-54` | |
 | `name-sync` converges both engines' window names; `--dry-run` changes nothing | JAIL+tmux | `internal/gather/labels_jail_test.go:14-90` | |
+| `name-sync` reads every renamed window's name BACK and counts only a verified match as converged; each unverified window is printed with the value read (`window S W: wanted "A", reads "B" after rename`) and the command exits 1; `--dry-run` reports `windows planned: N` because it applied nothing | JAIL+tmux | `cmd/pfm/namesync_command.go` (`verifyRenames`), `cmd/pfm/namesync_verify_jail_test.go` | issue #14 F13 |
+| the window-name second writer: `automatic-rename` is ruled out (`rename-window` disables it window-scoped), an OSC `\e]2;…\a` write only moves `pane_title`, and `\ek…\e\\` with `allow-rename on` DOES take the name back — so `RenameWindow` latches `allow-rename off` window-scoped and the name survives the next write | JAIL+tmux | `internal/gather/tmuxprobe.go` (`RenameWindow`), `internal/gather/rename_second_writer_jail_test.go` | issue #14 F13 |
+| a claude `/rename` converges the window name from the chat's OWN statusline render (same `gather.WindowNameFor` + `RenameWindow` name-sync uses), forks nothing once converged, leaves a two-pane `/chat:branch` window alone, and never touches tmux outside a fleet socket; the timer stays the backstop | JAIL+tmux | `internal/statusline/render.go` (`convergeWindowName`), `internal/statusline/window_converge_jail_test.go` | issue #14 F11 |
 | picker/name-sync live scans seed empty Codex pane bindings but never overwrite a hook-supplied post-clear id | JAIL | `cmd/pfm/clear_kill_jail_test.go`, `cmd/pfm/pipeline.go` | |
 | `internal clear-kill` owns Claude `SessionEnd(reason=clear)` and Codex `SessionStart(source=clear)`, ignores unrelated lifecycle events, and fails open | JAIL | `cmd/pfm/clear_kill_jail_test.go` | |
 | clear-kill refreshes the indexed Claude transcript or Codex lineage before recording its prompt baseline | JAIL | `cmd/pfm/clear_kill_jail_test.go`, `internal/store/killed_test.go` | |
@@ -272,6 +276,7 @@ permanently wired fixture in this suite.
 | Limits shares one on-disk cache (`acct-<id>.json` / `codex-<id>.json`, `usagehook.DefaultCacheDir`, TTL 180s) with the UserPromptSubmit hook instead of one per process — a fetch fires only when the cached payload is missing or stale, and Codex auth/live usage still go through the 20s transport on that miss; a 429 backs off ≥10min honoring server `Retry-After` and every other failure backs off 60s, with every reader (including a second `pfm ls`) sharing the recorded status instead of repeating the request; stale statusline cache files are ignored and auth/HTTP/decode failures stay visible | JAIL      | `stats/limits.go`, `stats/limits_test.go`, `cmd/pfm/limits_accounts_test.go`, `usagehook/hook.go`      | defect RED |
 | Claude `limits[]` selects active future scoped Fable once for Stats and statusline; unknown top-level provider keys never become windows                             | JAIL      | `usagehook/hook_test.go`, `statusline/statusline_test.go`, `stats/limits_test.go` | defect RED |
 | Limits cards render fractional gradient bars, urgent/full/reset states, provider max totals, one skip footer, and fixed-width 80/120/narrow layouts                  | JAIL      | `ui/stats_test.go`, `ui/golden_test.go`, `testdata/golden/ui_limits_*.ansi`       | defect RED |
+| the cosmos goldens pin the CODE, not the CPU: the quadratic Bezier rounds each of its three products explicitly (`bezierAt`), so an FMA architecture (arm64, ppc64, s390x, riscv64) cannot contract `a*b + c` into one fused multiply-add and slide a braille dot a cell — the focus golden's dead-straight rail down pixel column 78 keeps its two truncated samples (5 and 9), and with them the ⢈ (U+2888) at byte 1325, on every machine | JAIL      | `ui/cosmoscanvas.go` (`bezierAt`), `ui/cosmoscanvas_test.go` (`TestBezierAtPinsTheStraightRailPixelColumns`, `TestBezierAtRefusesTheFusedMultiplyAdd`, `TestBezierAtRoundsEveryProductExplicitly`), `testdata/golden/ui_cosmos_focus_80.ansi` | #14 F9     |
 
 ## C — Row-kind × operation cross-matrix
 
@@ -300,7 +305,7 @@ tonight's four bugs all live in.
 | **workflow / SDK background (claude)** → `IsBG`, excluded from DefaultView, visible under `-a`                     | JAIL             | `index/claude.go:41-44,83-95`, `compose/compose.go:725-736`                      | B2         |
 | **workflow / SDK background (codex sub-thread)** → `thread_source != user` → not `Listed()`                        | JAIL             | `store/codexstate.go:44-46,252`                                                  | B2         |
 | **squatter socket** (a session whose name ≠ its socket) → never a chat row                                         | JAIL+tmux        | `check_command.go:181-203`; naming `gather/labels.go:36-56`                      |            |
-| **vsct bunker chat** → `vsct`/`revive` sockets excluded from the probe; open uses `exec`                           | JAIL+tmux        | `gather/tmuxprobe.go:356-361`, `pipeline.go:666-668`, `action/synth.go:290-310`  |            |
+| **vsct bunker chat** → `vsct` sockets excluded from the probe; open uses `exec`                                     | JAIL+tmux        | `gather/tmuxprobe.go:356-361`, `pipeline.go:666-668`, `action/synth.go:290-310`  |            |
 | **killed row** → excluded from DefaultView, counted in `KilledCount`, shown under `-K`                             | JAIL             | `compose/compose.go:660-673,708-716,738-747`                                     | B2, B3     |
 | **empty row** (size 0 / 0 prompts) → suppressed from DefaultView, counted in `SuppressedCount`                     | JAIL             | `compose/compose.go:725-736`                                                     |            |
 | **both accounts** — a row's account comes from the longest matching config root                                    | JAIL             | `compose/compose.go:865-887`, `pipeline.go:527-542`                              |            |
@@ -368,6 +373,8 @@ tonight's four bugs all live in.
 | -------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------- | ---------- |
 | `NewClaude` → `(cd -- <cwd> && CC_ARM_1H=… cc<N>)`                                                             | JAIL             | `action/synth.go:83-93`                                                 |            |
 | `NewCodex` → `(cd -- <cwd> && cx)`                                                                             | JAIL             | `action/synth.go:94-98`                                                 |            |
+| `tmux.titles.enabled` (default true) and `nameSync.interval` (Go duration, minimum 1m floor, default 15m) load, validate, round-trip through `Marshal`, and show up in `pfm config show` with their source | JAIL | `internal/config/config.go`, `internal/config/tmux_titles_test.go`, `internal/config/name_sync_test.go`, `cmd/pfm/tmux_titles_command_test.go` | issue #14 F10/F12 |
+| all three title-applying paths obey that ONE key — the Claude spawn (`spawn.CommandTmux.Titles`), the Codex spawn (plan-carried `CodexServer.Titles` set by `Synthesize`), and the shim — a disabled policy applies NEITHER option, a nil policy keeps today's behaviour, and `automatic-rename off` is never gated by it | JAIL+tmux | `internal/spawn/tmux_titles_jail_test.go`, `internal/action/tmux_titles_jail_test.go`, `cmd/pfm/tmux_titles_command_test.go`, `shim/tmux_titles_shim_test.go` | issue #14 F10 |
 | `Live` → `TMUX= tmux -L <sock> attach -t <target>`                                                             | JAIL             | `action/synth.go:99-107,300-310`                                        |            |
 | Live codex target is `session:window`, falling back to session then socket                                     | JAIL             | `action/synth.go:312-322`                                               | B1         |
 | Live codex window name verified against the live server before use                                             | JAIL+tmux        | `action/executor.go:92-98,139-156`                                      | B1         |
@@ -504,7 +511,7 @@ Slash commands never become pointers either way: they travel byte-exact in locke
 chunks, with Enter only after the final chunk — the 2,147-rune `/compact` fixture proves the
 complete command reaches the transcript and fires.
 
-## I — zsh shell surface: launchers and revivers
+## I — zsh shell surface: launchers
 
 The embedded `internal/installer/assets/shim/pfm.zsh` owns fresh interactive launchers and
 delegates fleet operations to the Go binary. `pfm install` wires this single active shim.
@@ -513,7 +520,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | --------------------------------------------------------------------------------- | --------- | ------------------------------------------------ | ---------- |
 | shim aborts when `~/.local/bin/pfm` is missing/not executable                     | JAIL+sh   | `shim/pfm.zsh:5-9`                               |            |
 | `cc-ls` routes `--check/--plain/--tsv` direct, everything else through `eval`     | JAIL+sh   | `shim/pfm.zsh:25-33`                             |            |
-| `cc-open` / `cc-revive` pass-through                                              | JAIL+sh   | `shim/pfm.zsh:35-36`                             |            |
+| `cc-open` pass-through                                                            | JAIL+sh   | `shim/pfm.zsh:39`                                |            |
 | `_pfm_eval` evals ONLY on rc 0 and non-empty output                               | JAIL+sh   | `shim/pfm.zsh:15-23`                             |            |
 | `cc` uses the primary account from hidden `pfm internal primary-get`              | JAIL+sh   | `shim/pfm.zsh`, `shim/shim_test.go`              |            |
 | `cc1` / `cc2` force an account; account 3 has no launcher                         | JAIL+sh   | `shim/pfm.zsh:107-108`, `action/synth.go:19`     |            |
@@ -526,8 +533,6 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `_cc_in_bunker` → `exec` into the client so no husk survives                      | JAIL+sh   | `shim/pfm.zsh:95,125,197`                        |            |
 | `cc-swap <1\|2>` / fzf picker → hidden `pfm internal primary-set` is the writer   | JAIL+sh   | `shim/pfm.zsh`, `shim/shim_test.go`              |            |
 | `_cc_label` reads account 1's identity from `~/.claude.json`, not the config dir  | JAIL+sh   | `shim/pfm.zsh:142-154`                           |            |
-| `cc-revive` lists resumable chats by project through the engine                   | JAIL+tmux | `cmd/pfm/commands.go:493-538`, `shim/pfm.zsh:41` | B1         |
-| `vsct-revive` restores orphaned bunkers, skipping viewport husks                  | JAIL+tmux | `shim/pfm.zsh:226-252`                           |            |
 
 ## J — Internal wiring and store
 
@@ -577,9 +582,16 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | systemd units and `.wants/` links converge without a manager; live transitions use only the injected manager                                                                             | JAIL             | installer idempotence and unit-transition tests                                           |            |
 | `pfm-name-sync.path` fires on `~/.codex/session_index.jsonl` modification                                                                                                                | **REAL-SESSION** | `systemd/pfm-name-sync.path`                                                              | **B4**     |
 | `pfm-name-sync.timer` 15-min drift fallback                                                                                                                                              | JAIL+sh          | `systemd/pfm-name-sync.timer`                                                             |            |
+| `nameSync.interval` renders into BOTH schedulers from ONE value — launchd `StartInterval` in whole seconds and systemd `OnUnitInactiveSec` as the duration — and a caller with no config falls back to the shipped 15m instead of a unit systemd refuses | JAIL | `internal/installer/namesync_schedule.go`, `internal/installer/namesync_schedule_test.go` (`TestNameSyncIntervalRendersIntoBothSchedulers`, `TestNameSyncIntervalFallsBackToTheShippedDefault`) | issue #14 F12 |
+| `pfm install --yes` stages the systemd timer with the marker already rendered — an unrendered `OnUnitInactiveSec` is a unit systemd cannot parse | JAIL | `internal/installer/namesync_schedule_test.go` (`TestApplyStagesTheTimerWithTheConfiguredInterval`) | issue #14 F12 |
+| `_cx_server` applies exactly the title options `pfm internal tmux-titles` prints, applies none when it prints none, and fails CLOSED (host keeps its title, reason on stderr) when the read fails | JAIL+sh | `internal/installer/assets/shim/pfm.zsh`, `shim/tmux_titles_shim_test.go` | issue #14 F10 |
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                                                                                                                       | JAIL+sh          | `systemd/pfm-name-sync.service`                                                           |            |
 | installer retires the carrier, old units, script links, statusline shell, segments and Python refreshers                                                                                 | JAIL             | `internal/installer`, installer tests                                                     |            |
 | installer rewires Claude and Codex clear-kill, statusline, usage and dream hooks while preserving unrelated entries                                                                       | JAIL             | `internal/installer`, installer tests                                                     |            |
+| `pfm install` owns the `pfm-statusline` and `tmux-title-renudge` host overlays end to end: staged as embedded `assets/bin/*` (mode 0755), symlinked at `~/.local/bin/NAME` to the managed copy, idempotent replace of a wrong link or a stale regular file, and unwired cleanly on uninstall | JAIL | `internal/installer/installer_test.go` (`TestApplyIsSelfContainedIdempotentAndReversible`), `internal/installer/installer.go` (`wireHostOverlays`, `InspectHostOverlays`) | |
+| `updateSettings` points a fresh or legacy `statusLine.command` (empty, `statusline-command.sh`, bare/absolute `pfm statusline`) at the `pfm-statusline` overlay; a genuinely custom command is preserved on apply AND uninstall | JAIL | `internal/installer/settings_wiring_test.go` (`TestStatusLineRewriteOwnsTheOverlayAndPreservesCustomCommands`) | issue #14 F1 |
+| `pfm doctor` fails (not warns) when either host-overlay symlink is missing/displaced, or a configured account's `statusLine.command` still names the raw `pfm statusline` instead of the overlay | JAIL | `cmd/pfm/doctor.go` (`printHostOverlayDoctor`), `cmd/pfm/doctor_host_overlay_test.go` | issue #14 F1 |
+| installer retires a renamed-away global Claude agent identity (`agents/frr.md`, the `frr`→`rr` rename) only when it is a symlink or its frontmatter `name:` still reads the retired name — never a same-named user-authored agent | JAIL | `internal/installer/installer.go` (`retireRenamedGlobalAgents`), `internal/installer/installer_test.go` | issue #14 F5 |
 | fenced e2e install/update/uninstall requires `PFM_DEV_FENCE=1`, stages the source plus every HOME/state path under `t.TempDir()`, uses `--skip-harvest`, and asserts the exact skip line | JAIL             | `e2e/install_e2e_test.go`, `scripts/e2e-linux.sh`, `.github/workflows/install-verify.yml` |            |
 
 ## L — Dream runtime resources
@@ -672,6 +684,13 @@ referenced from engine.go's stash-guard comment. Re-run on any Claude Code upgra
    `cache_read_input_tokens` on every turn, so a long chat repeatedly counts its cached prefix.
    The open product question is whether this total should remain traffic or become a billed-cost
    metric; the live-rate change deliberately leaves the total unchanged.
+5. **`lerpRGB` and `luma` still contract on an FMA architecture** (`ui/cosmoscanvas.go:20-22,37`
+   remain the only fused-multiply-add sites in the package's arm64 assembly). Measured, not
+   assumed: re-rendering every golden with EVERY fusable expression in `ui/cosmos.go` and
+   `ui/cosmoscanvas.go` contracted the way arm64's rules contract them moved exactly one byte,
+   and it was the Bezier's. Colour reaches the frame through `quantRGB`'s 8-step quantisation,
+   which absorbs a 1-ULP difference everywhere the current fixtures land. Re-open if a golden
+   goes red on an FMA host at a colour escape rather than a glyph.
 
 ---
 

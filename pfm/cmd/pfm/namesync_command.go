@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 
+	"hostops/pfm/internal/gather"
 	fleetindex "hostops/pfm/internal/index"
+	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/store"
 )
 
@@ -93,6 +96,60 @@ func runNameSync(args []string, stdout, stderr io.Writer, runtime commandRuntime
 			rename.TargetName,
 		)
 	}
-	fmt.Fprintf(stdout, "windows converged: %d\n", len(live.Renames))
+	if *dryRun {
+		// A dry run applied nothing, so it has nothing to verify. It reports
+		// the PLAN, and says so — a plan counted as an outcome is exactly the
+		// lie this command used to tell.
+		fmt.Fprintf(stdout, "windows planned: %d\n", len(live.Renames))
+		return 0
+	}
+	converged, unverified := verifyRenames(ctx, runtime, live.Renames, stderr)
+	fmt.Fprintf(stdout, "windows converged: %d\n", converged)
+	if unverified != 0 {
+		fmt.Fprintf(stdout, "windows unverified: %d\n", unverified)
+		return 1
+	}
 	return 0
+}
+
+// verifyRenames reads every renamed window's name BACK off its server and
+// counts only a match as converged.
+//
+// An attempt is not an outcome. `windows converged: N` used to count the
+// renames this pass planned, so a window whose name a second writer took back
+// — or one whose server died between the plan and the rename — was reported as
+// converged while the fleet still could not address it by that name. Each
+// unverified window is named with the value actually read, and the command
+// exits non-zero so a scheduler run that achieved nothing is not silent.
+func verifyRenames(
+	ctx context.Context,
+	runtime commandRuntime,
+	renames []gather.WindowRename,
+	stderr io.Writer,
+) (converged, unverified int) {
+	reader := inject.CommandTmux{}
+	for _, rename := range renames {
+		socketPath := filepath.Join(runtime.Paths.TmuxDir, rename.Socket)
+		actual, err := reader.WindowName(ctx, socketPath, rename.WindowID)
+		if err != nil {
+			unverified++
+			fmt.Fprintf(
+				stderr,
+				"pfm name-sync: window %s %s: wanted %q, could not be read back after rename: %v\n",
+				rename.Socket, rename.WindowID, rename.TargetName, err,
+			)
+			continue
+		}
+		if actual != rename.TargetName {
+			unverified++
+			fmt.Fprintf(
+				stderr,
+				"pfm name-sync: window %s %s: wanted %q, reads %q after rename\n",
+				rename.Socket, rename.WindowID, rename.TargetName, actual,
+			)
+			continue
+		}
+		converged++
+	}
+	return converged, unverified
 }

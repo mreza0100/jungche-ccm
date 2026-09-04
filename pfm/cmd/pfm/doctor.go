@@ -122,6 +122,8 @@ func runDoctor(
 		runtime.Config,
 		readPrimaryAccount(resolved, runtime.Config),
 	)
+	// INFO only, and it adds no warnings: both title owners are legitimate.
+	printTmuxTitlesDoctor(context.Background(), stdout, resolved, runtime.Config)
 	launcher, launcherErr := installer.InspectClaudeLauncher(resolved.Home)
 	if launcherErr != nil {
 		warnings++
@@ -141,6 +143,7 @@ func runDoctor(
 			fmt.Fprintf(stdout, "doctor: launcher: unknown state=%s — run pfm install\n", launcher.State)
 		}
 	}
+	warnings += printHostOverlayDoctor(stdout, resolved.Home, runtime.Config)
 	verboseDir := ""
 	if *verbose {
 		verboseDir = filepath.Join("tmp", "pfm-doctor")
@@ -737,6 +740,55 @@ func printHookDoctor(stdout io.Writer, home string, machine config.Config) int {
 	return warnings
 }
 
+// printHostOverlayDoctor checks the two contracted ~/.local/bin overlay
+// scripts pfm install owns (installer.InspectHostOverlays), and — for every
+// configured Claude account's settings.json — that statusLine.command names
+// the pfm-statusline overlay rather than the raw `pfm statusline` an
+// unwired or pre-overlay install leaves behind. Every non-clean state here
+// is a FAILURE (warnings++), never a soft note: an absent or misdirected
+// overlay renders identically to a healthy plain statusline (issue #14 F1)
+// — the failure is invisible from the prompt itself, so doctor has to be
+// the thing that notices it.
+func printHostOverlayDoctor(stdout io.Writer, home string, machine config.Config) int {
+	warnings := 0
+	for _, overlay := range installer.InspectHostOverlays(home) {
+		switch overlay.State {
+		case installer.HostOverlayOK:
+			fmt.Fprintf(stdout, "doctor: host_overlay %s ok\n", overlay.Name)
+		case installer.HostOverlayMissing:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: host_overlay %s missing — run pfm install --yes\n", overlay.Name)
+		case installer.HostOverlayDisplaced:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: host_overlay %s DISPLACED by %s — run pfm install --yes\n", overlay.Name, overlay.Target)
+		default:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: host_overlay %s unknown state=%s — run pfm install --yes\n", overlay.Name, overlay.State)
+		}
+	}
+	overlayCommand := installer.StatusLineOverlayCommand(home)
+	seenSettingsFiles := map[string]bool{}
+	for _, account := range machine.Accounts {
+		path := filepath.Join(account.ConfigDir, "settings.json")
+		physical, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			physical = path
+		}
+		physical = filepath.Clean(physical)
+		if seenSettingsFiles[physical] {
+			continue
+		}
+		seenSettingsFiles[physical] = true
+		command := installer.ReadStatusLineCommand(path)
+		if command == "" || command == overlayCommand || !installer.RawStatusLineCommand(home, command) {
+			continue
+		}
+		warnings++
+		fmt.Fprintf(stdout, "doctor: host_overlay statusline claude[%d] command=%q, want the overlay — run pfm install --yes\n", account.ID, command)
+	}
+	return warnings
+}
+
 func printHarvestCacheDoctor(stdout io.Writer) int {
 	root, rootErr := harvest.CacheRoot()
 	if rootErr != nil {
@@ -1244,15 +1296,14 @@ func crumbHealthWith(
 
 // nonFleetServerCrumb reports whether a crumb names a tmux server the fleet
 // deliberately excludes. The statusline writes a crumb for every Claude chat
-// it sees, including chats on the vsct bunker and the revive dashboards, so
-// those names are ordinary sid traffic rather than rot.
+// it sees, including chats on the vsct bunker, so those names are ordinary
+// sid traffic rather than rot.
 func nonFleetServerCrumb(name string) bool {
 	socket := name
 	if marker := strings.LastIndex(name, ".%"); marker >= 0 {
 		socket = name[:marker]
 	}
-	return strings.HasPrefix(socket, "vsct") ||
-		strings.HasPrefix(socket, "revive")
+	return strings.HasPrefix(socket, "vsct")
 }
 
 func knownSIDMetadata(name string) bool {

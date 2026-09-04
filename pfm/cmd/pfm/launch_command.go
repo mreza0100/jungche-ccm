@@ -149,7 +149,8 @@ func runInternalLaunch(args []string, stdout, stderr io.Writer, runtime commandR
 		gateRun = launcherStatusRun(startWait, realRun, tmuxBinary, socketPath, doneChannel, statusPath)
 	}
 
-	client := spawn.CommandTmux{Binary: tmuxBinary, TmuxDir: runtime.Paths.TmuxDir}
+	titles := runtime.Config.Tmux.Titles
+	client := spawn.CommandTmux{Binary: tmuxBinary, TmuxDir: runtime.Paths.TmuxDir, Titles: &titles}
 	ctx := context.Background()
 	if err := client.NewSession(ctx, spawn.SessionSpec{
 		Socket: socket, Session: session, Window: spawn.WindowName(""),

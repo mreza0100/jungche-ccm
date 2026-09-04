@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strconv"
 
 	"hostops/pfm/internal/config"
@@ -66,8 +67,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runConfig(args[1:], stdout, stderr, runtime)
 	case "dream":
 		return runDreamConfigured(args[1:], os.Stdin, stdout, stderr, runtime)
-	case "revive":
-		return runRevive(args[1:], stdout, stderr, runtime)
 	case "reap":
 		return runReap(args[1:], stdout, stderr, runtime)
 	case "archive":
@@ -220,8 +219,52 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	fmt.Fprintf(stdout, "pfm %s\n", version)
+	fmt.Fprintf(stdout, "pfm %s\n", displayVersion())
 	return 0
+}
+
+// displayVersion resolves the reported version. A release build stamps
+// `version` via ldflags (`-X main.version=...`, see Makefile `host-install`);
+// an unstamped build — `go build ./cmd/pfm` with no ldflags — leaves it at
+// "dev", which alone tells nobody which commit they are running. Go itself
+// already answers that: since 1.18 the toolchain embeds VCS info in every
+// build's own binary, ldflags or not, so falling back to it turns an
+// unstamped "dev" into a build the operator can still identify.
+func displayVersion() string {
+	if version != "dev" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	return resolveDevVersion(info.Settings)
+}
+
+// resolveDevVersion is the pure half of displayVersion, split out so a test
+// can drive it with fabricated settings instead of needing a real
+// VCS-stamped binary (go test's own binary carries none — see main_test.go).
+func resolveDevVersion(settings []debug.BuildSetting) string {
+	var revision string
+	var modified bool
+	for _, setting := range settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
+	}
+	if revision == "" {
+		return "dev"
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	if modified {
+		return fmt.Sprintf("dev (%s, modified)", revision)
+	}
+	return fmt.Sprintf("dev (%s)", revision)
 }
 
 func runKill(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
@@ -375,6 +418,9 @@ func runInternal(
 	}
 	if len(args) != 0 && args[0] == "prompt-args" {
 		return runInternalPromptArgs(args[1:], stdout, stderr, runtime)
+	}
+	if len(args) != 0 && args[0] == "tmux-titles" {
+		return runInternalTmuxTitles(args[1:], stdout, stderr, runtime)
 	}
 	if len(args) != 0 && args[0] == "primary-set" {
 		flags := newFlagSet(
@@ -532,7 +578,6 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  whoami    print this chat's own tmux session name")
 	fmt.Fprintln(w, "  issues    list servicedesk complaints filed through issue_servicedesk")
-	fmt.Fprintln(w, "  revive    list resumable chats by project")
 	fmt.Fprintln(w, "  reap      classify the socket graveyard; --apply reclaims it")
 	fmt.Fprintln(w, "  archive   move killed chats and old subagent transcripts out of sight, reversibly")
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")

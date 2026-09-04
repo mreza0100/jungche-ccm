@@ -264,7 +264,7 @@ func computeWindowRenames(
 		if !found {
 			continue
 		}
-		target := clipRunes(codexWindowName(live, resolveRollout, resolveID), 24)
+		target := WindowNameFor(codexWindowName(live, resolveRollout, resolveID))
 		if target == "" || pane.WindowName == target || pane.WindowID == "" {
 			continue
 		}
@@ -344,7 +344,7 @@ func claudeWindowRenames(
 		if label.Label == "" {
 			continue
 		}
-		clipped := clipRunes(label.Label, 24)
+		clipped := WindowNameFor(label.Label)
 		if plan.label != "" && plan.label != clipped {
 			plan.skip = true
 			continue
@@ -400,6 +400,21 @@ func codexWindowName(
 		return resolveID(live.ThreadID)
 	}
 	return ""
+}
+
+// WindowNameRunes bounds a tmux window name. A tab is a handful of columns
+// wide, and a name that overflows it is a name nobody can read anyway.
+const WindowNameRunes = 24
+
+// WindowNameFor is the ONE mapping from a chat's name — a codex thread name or
+// a claude 🔖 label — to the tmux window name it converges on.
+//
+// Every writer of a window name calls it: both halves of computeWindowRenames
+// here, and the claude statusline's own convergence (a /rename must not wait
+// for the name-sync timer). Two writers that clipped differently would each
+// see the other's name as drift and rename the window back and forth forever.
+func WindowNameFor(name string) string {
+	return clipRunes(name, WindowNameRunes)
 }
 
 func clipRunes(value string, limit int) string {

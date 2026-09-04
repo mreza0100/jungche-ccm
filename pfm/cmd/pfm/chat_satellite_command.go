@@ -639,7 +639,8 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 	if override := os.Getenv(testFreshSocketEnv); override != "" {
 		socket = override
 	}
-	tmux := spawn.CommandTmux{TmuxDir: resolved.TmuxDir}
+	titles := runtime.Config.Tmux.Titles
+	tmux := spawn.CommandTmux{TmuxDir: resolved.TmuxDir, Titles: &titles}
 	var branchWarnings []string
 	if engine == pfmengine.Codex {
 		spawned, spawnErr := spawn.Run(context.Background(), tmux, spawn.Request{

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,6 +31,71 @@ func TestVersion(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("run(version) stderr = %q, want empty", stderr.String())
+	}
+}
+
+// TestResolveDevVersion is the issue-14 F6 regression: an unstamped "dev"
+// build alone told nobody which commit they were running. go test's own
+// binary carries no VCS stamp (verified against `go test -c`), which is why
+// TestVersion above still asserts a bare "pfm dev\n" — this test drives the
+// fallback's pure half directly with fabricated debug.BuildSetting values
+// instead of needing a real VCS-stamped binary.
+func TestResolveDevVersion(t *testing.T) {
+	const fullRevision = "8f9b8bb29513ff82f0ce31d5fc4547f9e30b7071"
+	cases := []struct {
+		name     string
+		settings []debug.BuildSetting
+		want     string
+	}{
+		{name: "no settings", settings: nil, want: "dev"},
+		{
+			name:     "vcs present but no revision key",
+			settings: []debug.BuildSetting{{Key: "vcs", Value: "git"}},
+			want:     "dev",
+		},
+		{
+			name: "clean checkout",
+			settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: fullRevision},
+				{Key: "vcs.modified", Value: "false"},
+			},
+			want: "dev (8f9b8bb29513)",
+		},
+		{
+			name: "modified checkout",
+			settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: fullRevision},
+				{Key: "vcs.modified", Value: "true"},
+			},
+			want: "dev (8f9b8bb29513, modified)",
+		},
+		{
+			name: "revision shorter than the truncation width is left alone",
+			settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "8f9b8bb"},
+				{Key: "vcs.modified", Value: "false"},
+			},
+			want: "dev (8f9b8bb)",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveDevVersion(tc.settings); got != tc.want {
+				t.Fatalf("resolveDevVersion(%v) = %q, want %q", tc.settings, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDisplayVersionPrefersLdflagsStamp proves the VCS fallback never
+// overrides a release build's `-X main.version=...` stamp, even though this
+// test binary itself carries no VCS info to fall back to.
+func TestDisplayVersionPrefersLdflagsStamp(t *testing.T) {
+	original := version
+	t.Cleanup(func() { version = original })
+	version = "v0.67.0"
+	if got := displayVersion(); got != "v0.67.0" {
+		t.Fatalf("displayVersion() = %q, want the ldflags-stamped version unchanged", got)
 	}
 }
 
@@ -330,7 +396,7 @@ func TestKillSelfResolveAndInternalCLI(t *testing.T) {
 	}
 }
 
-func TestWiredIndexListOpenReviveAndDoctor(t *testing.T) {
+func TestWiredIndexListOpenAndDoctor(t *testing.T) {
 	root := jailTest(t)
 	t.Setenv(codexAvailableEnv, "0")
 	t.Setenv(testFreshSocketEnv, "cc-1700000000-1-1")
@@ -386,15 +452,6 @@ func TestWiredIndexListOpenReviveAndDoctor(t *testing.T) {
 		!strings.Contains(stdout.String(), id) ||
 		!strings.Contains(stdout.String(), "cc-1700000000-1-1") {
 		t.Fatalf("open stdout=%q", stdout.String())
-	}
-
-	stdout.Reset()
-	stderr.Reset()
-	if code := run([]string{"revive"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("revive code=%d stderr=%q", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "Wired prompt") {
-		t.Fatalf("revive stdout=%q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -539,17 +596,16 @@ func TestDoctorRecognizesThenFailedAsSatelliteMetadata(t *testing.T) {
 
 // The live sid directory holds two classes doctor must not call rot: crumbs
 // the statusline writes for chats on servers the fleet excludes (the vsct
-// bunker, the revive dashboards) and the dot-prefixed lock DIRECTORIES the
-// zsh creates with mkdir to serialize opens.
+// bunker) and the dot-prefixed lock DIRECTORIES the zsh creates with mkdir to
+// serialize opens.
 func TestDoctorIgnoresBunkerCrumbsAndOpenLockDirectories(t *testing.T) {
 	root := jailTest(t)
 	sidDir := filepath.Join(root, "sid")
 	for name, content := range map[string]string{
-		"cc-1-2-3":    "/transcripts/live.jsonl",
-		"vsct":        "/transcripts/bunker.jsonl",
-		"vsct.%187":   "/transcripts/bunker.jsonl",
-		"revive-vsct": "/transcripts/revive.jsonl",
-		"rotten":      "neither a crumb nor sid metadata",
+		"cc-1-2-3":  "/transcripts/live.jsonl",
+		"vsct":      "/transcripts/bunker.jsonl",
+		"vsct.%187": "/transcripts/bunker.jsonl",
+		"rotten":    "neither a crumb nor sid metadata",
 	} {
 		if err := os.WriteFile(
 			filepath.Join(sidDir, name),
@@ -572,9 +628,9 @@ func TestDoctorIgnoresBunkerCrumbsAndOpenLockDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if entries != 7 || invalid != 2 {
+	if entries != 6 || invalid != 2 {
 		t.Fatalf(
-			"crumbHealth() entries=%d invalid=%d, want 7 and 2 (rotten + rotten-directory)",
+			"crumbHealth() entries=%d invalid=%d, want 6 and 2 (rotten + rotten-directory)",
 			entries,
 			invalid,
 		)
@@ -589,7 +645,6 @@ func TestUsageErrors(t *testing.T) {
 		{"chat", "open"},
 		{"index", "--unknown"},
 		{"doctor", "extra"},
-		{"revive", "extra"},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(args, &stdout, &stderr); code != 2 {
@@ -771,6 +826,22 @@ func jailTest(t *testing.T) string {
 	}
 	if err := os.Symlink(managedClaude, filepath.Join(root, "home", ".local", "bin", "claude")); err != nil {
 		t.Fatal(err)
+	}
+	// The pfm-statusline and tmux-title-renudge host overlays are contracted
+	// pfm-install artifacts (issue #14 F1) the same way the Claude launcher
+	// is — a jail meant to represent a healthy install carries both, same
+	// managed-copy-then-symlink shape.
+	for _, overlay := range []string{"pfm-statusline", "tmux-title-renudge"} {
+		managedOverlay := filepath.Join(root, "home", ".local", "share", "pfm", "install", "bin", overlay)
+		if err := os.MkdirAll(filepath.Dir(managedOverlay), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(managedOverlay, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(managedOverlay, filepath.Join(root, "home", ".local", "bin", overlay)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	stageHarnessPromptBaseline(t, jailedHome)
 	testPath := []string{filepath.Dir(canonical)}

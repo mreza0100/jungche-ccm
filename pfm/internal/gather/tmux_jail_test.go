@@ -328,7 +328,7 @@ func TestJailedTmuxProbeAndGather(t *testing.T) {
 	jail.startServer(t, ccSocket, "cc-session", "claude-old", "claude-pane")
 	jail.startServer(t, cxSocket, "cx-session", "codex-old", "codex-pane")
 	jail.startServer(t, "vsct-test", "vsct-session", "ignored", "ignored")
-	jail.startServer(t, "revive-test", "revive-session", "ignored", "ignored")
+	jail.startServer(t, "misc-test", "misc-session", "ignored", "ignored")
 
 	now := time.Now()
 	oldCorpse := "cc-707-808-909"

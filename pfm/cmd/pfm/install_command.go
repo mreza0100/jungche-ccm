@@ -142,6 +142,7 @@ func newInstallerOptions(
 		options.MCPPort = runtime.Config.MCP.HTTP.Port
 		options.MCPConfigPath = runtime.Config.Path
 		options.ClaudeBinary = runtime.Config.Claude.Binary
+		options.NameSyncInterval = runtime.Config.NameSync.Interval
 		options.ClaudePrompted = make(map[int]bool, len(runtime.Config.Accounts))
 		options.CodexYolo = make(map[int]bool, len(runtime.Config.CodexAccounts))
 		for _, account := range runtime.Config.Accounts {

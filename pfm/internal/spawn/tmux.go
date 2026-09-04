@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
 )
@@ -18,6 +19,11 @@ import (
 type CommandTmux struct {
 	Binary  string
 	TmuxDir string
+	// Titles is the resolved tmux.titles policy. NIL is the default (pfm owns
+	// the terminal title), never "off": a client built without a machine
+	// config keeps today's behaviour instead of silently handing the title to
+	// the host.
+	Titles *pfmconfig.TmuxTitles
 }
 
 // preflightBinary proves the executable word a pane is about to run resolves
@@ -52,9 +58,14 @@ func preflightBinary(binary string) error {
 	return nil
 }
 
-// NewSession creates the detached session and gives it the title options a
-// fleet chat is expected to carry, so a headless pane's terminal title reads
-// like an attached one.
+// NewSession creates the detached session and gives it the options a fleet
+// chat is expected to carry.
+//
+// The title options are applied only when tmux.titles is enabled, so a headless
+// pane's terminal title reads like an attached one WITHOUT seizing the title
+// from a host that set its own before tmux started; automatic-rename is always
+// off, because the window name is the fleet's DNS record and pfm is its only
+// writer.
 func (tmux CommandTmux) NewSession(
 	ctx context.Context,
 	spec SessionSpec,
@@ -85,11 +96,11 @@ func (tmux CommandTmux) NewSession(
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("create chat server: %w: %s", err, output)
 	}
-	for _, options := range [][]string{
-		{"set-option", "-g", "set-titles", "on"},
-		{"set-option", "-g", "set-titles-string", "⬢ #{window_name} · #{pane_title}"},
-		{"set-window-option", "-g", "automatic-rename", "off"},
-	} {
+	serverOptions := append(
+		pfmconfig.TmuxTitlesOrDefault(tmux.Titles).Options(),
+		[]string{"set-window-option", "-g", "automatic-rename", "off"},
+	)
+	for _, options := range serverOptions {
 		if output, err := tmux.command(
 			ctx,
 			spec.Socket,

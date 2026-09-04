@@ -49,10 +49,16 @@ func (installer *engine) wireLaunchAgent(ctx context.Context) error {
 		return fmt.Errorf("read embedded launch agent: %w", err)
 	}
 	// launchd has no %h, so the home is substituted here rather than expanded
-	// at load time.
-	wanted := []byte(strings.ReplaceAll(
+	// at load time. The poll comes from the machine config's nameSync.interval
+	// through the same renderer the systemd timer uses, so the two schedulers
+	// cannot drift.
+	wanted, err := renderNameSyncLaunchAgent([]byte(strings.ReplaceAll(
 		string(template), "__PFM_HOME__", installer.options.Home,
-	))
+	)), installer.options)
+	if err != nil {
+		return fmt.Errorf("render launch agent: %w", err)
+	}
+	installer.say("  %s", nameSyncScheduleSummary(installer.options))
 
 	if sameFile(path, wanted, 0o644) {
 		installer.ok(path)

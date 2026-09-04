@@ -79,6 +79,12 @@ type Options struct {
 	ClaudeBinary   string
 	ClaudePrompted map[int]bool
 	CodexYolo      map[int]bool
+	// NameSyncInterval is the machine config's nameSync.interval. It renders
+	// into BOTH schedulers — the launchd job's StartInterval and the systemd
+	// timer's OnUnitInactiveSec — from this ONE value, so a host that switches
+	// managers cannot find two different polls. Zero means the shipped
+	// default (config.DefaultNameSyncInterval).
+	NameSyncInterval time.Duration
 	// VSCode explicitly opts the first install into managing a PFM terminal
 	// profile. Once written, the ownership ledger keeps later ordinary installs
 	// and updates reconciled without requiring the flag again.

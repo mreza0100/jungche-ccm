@@ -20,7 +20,7 @@ func updateSettings(
 	pfmBinary := home + "/.local/bin/pfm"
 	expected := claudeHookTemplates(home)
 	clearCommand := commandByName(expected, "clear-kill")
-	statusCommand := pfmBinary + " statusline"
+	overlayStatusCommand := StatusLineOverlayCommand(home)
 	usageCommand := commandByName(expected, "usage")
 	exploreDenyCommand := commandByName(expected, "explore-deny")
 	epicInjectCommand := commandByName(expected, "epic-inject")
@@ -54,25 +54,37 @@ func updateSettings(
 		changed = true
 	}
 
+	// pfm's own `pfm statusline` historically read token usage from stale
+	// internal state; overlayStatusCommand (~/.local/bin/pfm-statusline,
+	// wired by wireHostOverlays) recomputes true occupancy and passes the
+	// line through unmodified on any internal error, so it can never render
+	// worse than the raw command. Every form this installer or its
+	// predecessors have ever pointed statusLine.command at — empty, the
+	// legacy shell script, or RawStatusLineCommand's bare/absolute
+	// `pfm statusline` (the same two forms `pfm doctor` names by exact
+	// string, so a host it flags red and a host `pfm install` repairs are
+	// always in agreement) — converges on the overlay; a genuinely custom
+	// command (an operator's own statusline) is left exactly as it is.
 	status, _ := document["statusLine"].(map[string]any)
 	currentStatus, _ := status["command"].(string)
 	if uninstall {
-		if currentStatus == statusCommand {
+		if currentStatus == overlayStatusCommand || RawStatusLineCommand(home, currentStatus) {
 			delete(document, "statusLine")
 			changed = true
 		}
 	} else if currentStatus == "" {
 		document["statusLine"] = map[string]any{
 			"type":                 "command",
-			"command":              statusCommand,
+			"command":              overlayStatusCommand,
 			"padding":              float64(0),
 			"refreshInterval":      float64(3),
 			"hideVimModeIndicator": true,
 		}
 		changed = true
-	} else if currentStatus != statusCommand && strings.Contains(currentStatus, "statusline-command.sh") {
+	} else if currentStatus != overlayStatusCommand &&
+		(strings.Contains(currentStatus, "statusline-command.sh") || RawStatusLineCommand(home, currentStatus)) {
 		status["type"] = "command"
-		status["command"] = statusCommand
+		status["command"] = overlayStatusCommand
 		changed = true
 	}
 

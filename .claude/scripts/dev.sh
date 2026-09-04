@@ -46,11 +46,17 @@ RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; DIM=$'\033[2m'; OFF=$'\0
 ok()   { printf '%s  PASS%s  %s\n' "$GREEN" "$OFF" "$*"; }
 bad()  { printf '%s  FAIL%s  %s\n' "$RED" "$OFF" "$*"; }
 warn() { printf '%s  WARN%s  %s\n' "$YELLOW" "$OFF" "$*"; }
+gap()  { printf '%s  GAP %s  %s\n' "$YELLOW" "$OFF" "$*"; }
 info() { printf '%s        %s%s\n' "$DIM" "$*" "$OFF"; }
 head_() { printf '\n%s──%s %s\n' "$DIM" "$OFF" "$*"; }
 
 FAILURES=0
 fail_step() { bad "$*"; FAILURES=$((FAILURES + 1)); }
+# gap_step: a project the aggregate sweep never reached is a coverage gap, not
+# an ordinary failure — "GAP" names that distinction so it cannot be misread
+# as "a test broke" among a scroll of FAILs. Still non-zero: a skipped or
+# filtered suite is a named gap in the report, never a pass.
+gap_step() { gap "$*"; FAILURES=$((FAILURES + 1)); }
 
 need_tool() { # need_tool <bin> <project>
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -60,10 +66,32 @@ need_tool() { # need_tool <bin> <project>
 }
 
 node_installed() { # node_installed <dir> <project>
-  if [[ ! -f "$1/node_modules/.package-lock.json" ]]; then
-    fail_step "$2: NOT-INSTALLED — no node_modules; run '$(basename "$0") install $2'"
-    return 1
+  [[ -f "$1/node_modules/.package-lock.json" ]] && return 0
+  # A clean checkout with no node_modules is the common case, not a broken
+  # one — try an install before failing, but ONLY offline: `npm ci --offline`
+  # refuses instantly if the local cache cannot satisfy the lockfile, so this
+  # never becomes the silent mid-run network call the repo's other install
+  # hooks are deliberately kept out of. A cold cache falls straight through
+  # to the honest NOT-INSTALLED below.
+  if [[ -f "$1/package-lock.json" ]]; then
+    info "$2: no node_modules — trying an offline install from the local npm cache before failing"
+    if npm --prefix "$1" ci --offline >/dev/null 2>&1; then
+      ok "$2: installed from the local npm cache (offline, no network)"
+      return 0
+    fi
   fi
+  local msg="$2: NOT-INSTALLED — no node_modules; run '$(basename "$0") install $2'"
+  # SWEEP_ALL is set only for the all-projects aggregate (`dev.sh test`, no
+  # project arg): there, a project the sweep never reached is a coverage
+  # gap the report must name AS a gap, not fold into the FAIL scroll a
+  # single broken project also produces. A targeted `dev.sh test walker`
+  # keeps the plain FAIL — the project named is the only one in scope.
+  if [[ "${SWEEP_ALL:-0}" == 1 ]]; then
+    gap_step "$msg"
+  else
+    fail_step "$msg"
+  fi
+  return 1
 }
 
 run() { # run <label> -- <cmd...>
@@ -383,11 +411,13 @@ EOF
 
 CMD="${1:-status}"
 TARGET="${2:-all}"
+SWEEP_ALL=0
 
 case "$CMD" in
   status) cmd_status "$TARGET" ;;
   install|build|test|typecheck|verify|all)
     if [[ "$TARGET" == "all" ]]; then
+      SWEEP_ALL=1
       for p in "${PROJECTS[@]}"; do head_ "$p :: $CMD"; dispatch "$p" "$CMD"; done
     else
       proj_dir "$TARGET" >/dev/null 2>&1 || { echo "unknown project: $TARGET" >&2; usage; }

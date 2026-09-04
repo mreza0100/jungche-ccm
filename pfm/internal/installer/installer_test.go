@@ -383,9 +383,18 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 			t.Fatalf("retired file remains at %s: %v", retired, err)
 		}
 	}
+	// F1: the pfm-statusline and tmux-title-renudge host overlays are
+	// installer-owned end to end — materialized under the managed root and
+	// symlinked at their contracted ~/.local/bin names, same as every other
+	// embedded asset and the Claude launcher.
+	assertLink(t, filepath.Join(home, ".local", "bin", "pfm-statusline"), filepath.Join(managed, "bin", "pfm-statusline"))
+	assertLink(t, filepath.Join(home, ".local", "bin", "tmux-title-renudge"), filepath.Join(managed, "bin", "tmux-title-renudge"))
+	if info, err := os.Stat(filepath.Join(managed, "bin", "pfm-statusline")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("managed pfm-statusline mode=%v err=%v, want 0755", info, err)
+	}
 	settings := readFixture(t, filepath.Join(config, "settings.json"))
 	for _, wanted := range []string{
-		home + "/.local/bin/pfm statusline",
+		home + "/.local/bin/pfm-statusline",
 		home + "/.local/bin/pfm usage-hook",
 		home + "/.local/bin/pfm internal clear-kill",
 		home + "/.local/bin/pfm internal launcher-repair",
@@ -393,6 +402,9 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		if !strings.Contains(settings, wanted) {
 			t.Fatalf("settings missing %q:\n%s", wanted, settings)
 		}
+	}
+	if strings.Contains(settings, home+"/.local/bin/pfm statusline\"") {
+		t.Fatalf("settings still point statusLine at the raw command, not the overlay:\n%s", settings)
 	}
 	for _, retired := range []string{"chat bb", "pfm bb", "bb-hook.sh"} {
 		if strings.Contains(settings, retired) {
@@ -468,6 +480,11 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	if _, err := os.Lstat(managed); !os.IsNotExist(err) {
 		t.Fatalf("uninstall left managed asset root: %v", err)
+	}
+	for _, overlay := range []string{"pfm-statusline", "tmux-title-renudge"} {
+		if _, err := os.Lstat(filepath.Join(home, ".local", "bin", overlay)); !os.IsNotExist(err) {
+			t.Fatalf("uninstall left the %s host overlay link: %v", overlay, err)
+		}
 	}
 	if _, err := os.Lstat(filepath.Join(config, "skills", "handoff", "SKILL.md")); !os.IsNotExist(err) {
 		t.Fatalf("uninstall left the /handoff skill link: %v", err)
@@ -994,6 +1011,76 @@ func TestRetireOrphanCodexAgentsDeletesExactlyTheKnownStrays(t *testing.T) {
 	}
 }
 
+// TestRetireRenamedGlobalAgentsDeletesOnlyTheInstallersOwnFrrLeftover pins
+// issue #14 F5: the frr->rr global-agent rename (3976b53) left a stale
+// {config}/agents/frr.md RunGlobalAgents no longer visits. A symlink at that
+// path is always the installer's own — nothing else in this registry ever
+// creates one — so it retires unconditionally, dangling target or not; a
+// regular file retires only when its YAML frontmatter `name:` still reads
+// "frr", the same field RunGlobalAgents keys identity on, so a user's own
+// same-named agent (different frontmatter, or none at all) is never touched.
+func TestRetireRenamedGlobalAgentsDeletesOnlyTheInstallersOwnFrrLeftover(t *testing.T) {
+	t.Run("a symlink at the retired path retires unconditionally, even dangling", func(t *testing.T) {
+		home := t.TempDir()
+		link := filepath.Join(home, ".claude", "agents", "frr.md")
+		if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(home, ".professor", "templates", "global", "agents", "frr.md"), link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Run(context.Background(), Options{Mode: ModeApply, Home: home, Runner: &fakeRunner{}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(link); !os.IsNotExist(err) {
+			t.Fatalf("retired frr.md symlink survived: %v", err)
+		}
+	})
+
+	t.Run("a regular file whose frontmatter name is frr retires", func(t *testing.T) {
+		home := t.TempDir()
+		frr := filepath.Join(home, ".claude", "agents", "frr.md")
+		writeFixture(t, frr, "---\nname: frr\ndescription: pre-rename research agent\n---\nbody\n")
+		if _, err := Run(context.Background(), Options{Mode: ModeApply, Home: home, Runner: &fakeRunner{}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(frr); !os.IsNotExist(err) {
+			t.Fatalf("retired frr.md regular file survived: %v", err)
+		}
+	})
+
+	t.Run("a same-named user-authored agent with different frontmatter survives", func(t *testing.T) {
+		home := t.TempDir()
+		frr := filepath.Join(home, ".claude", "agents", "frr.md")
+		writeFixture(t, frr, "---\nname: my-own-frr\ndescription: unrelated agent I happen to have named frr\n---\nbody\n")
+		if _, err := Run(context.Background(), Options{Mode: ModeApply, Home: home, Runner: &fakeRunner{}}); err != nil {
+			t.Fatal(err)
+		}
+		if got := readFixture(t, frr); !strings.Contains(got, "my-own-frr") {
+			t.Fatalf("installer touched a user-authored agent that shares the retired filename: %q", got)
+		}
+	})
+
+	t.Run("a regular file with no frontmatter at all survives", func(t *testing.T) {
+		home := t.TempDir()
+		frr := filepath.Join(home, ".claude", "agents", "frr.md")
+		writeFixture(t, frr, "just prose, no frontmatter\n")
+		if _, err := Run(context.Background(), Options{Mode: ModeApply, Home: home, Runner: &fakeRunner{}}); err != nil {
+			t.Fatal(err)
+		}
+		if got := readFixture(t, frr); got != "just prose, no frontmatter\n" {
+			t.Fatalf("installer touched a frontmatter-less file: %q", got)
+		}
+	})
+
+	t.Run("absent frr.md is a silent no-op", func(t *testing.T) {
+		home := t.TempDir()
+		if _, err := Run(context.Background(), Options{Mode: ModeApply, Home: home, Runner: &fakeRunner{}}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 // TestGlobalSourceRepoRootPrefersExplicitOptionOverDefault pins the
 // resolution order globalSourceRepoRoot promises: an explicit --source-repo
 // wins over the documented {Home}/.professor default, even when a same-named
@@ -1319,12 +1406,11 @@ func TestEarlyFleetCallsNamesWhatRunsBeforeTheLaunchersExist(t *testing.T) {
 		want:    nil,
 	}, {
 		name: "every launcher, after every separator that starts a command",
-		content: "cc1\nfoo; cc2\nfoo && cx\nfoo || cc-ls\n(cc-open)\nfoo | cc-revive\n" +
-			"cc-swap 1\nvsct-revive\n" + sourced + "\n",
+		content: "cc1\nfoo; cc2\nfoo && cx\nfoo || cc-ls\n(cc-open)\n" +
+			"cc-swap 1\n" + sourced + "\n",
 		want: []string{
 			"line 1: cc1", "line 2: foo; cc2", "line 3: foo && cx", "line 4: foo || cc-ls",
-			"line 5: (cc-open)", "line 6: foo | cc-revive", "line 7: cc-swap 1",
-			"line 8: vsct-revive",
+			"line 5: (cc-open)", "line 6: cc-swap 1",
 		},
 	}, {
 		name:    "an empty rc file reports nothing",

@@ -3,6 +3,7 @@ package installer
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -215,6 +216,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireClaudeLauncher(); err != nil {
 		return err
 	}
+	if err := installer.wireHostOverlays(); err != nil {
+		return err
+	}
 	if err := installer.migrateOldState(); err != nil {
 		return err
 	}
@@ -222,6 +226,9 @@ func (installer *engine) install(ctx context.Context) error {
 		return err
 	}
 	if err := installer.retirePredecessors(); err != nil {
+		return err
+	}
+	if err := installer.retireRenamedGlobalAgents(); err != nil {
 		return err
 	}
 	if err := installer.retireBBInstall(); err != nil {
@@ -698,6 +705,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.unwireClaudeLauncher(); err != nil {
 		return err
 	}
+	if err := installer.unwireHostOverlays(); err != nil {
+		return err
+	}
 	if err := installer.unwireCommands(assets); err != nil {
 		return err
 	}
@@ -1011,6 +1021,8 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 			content, err = renderClaudeLauncherAsset(content, installer.options)
 		} else if asset.path == "reload.command.md" {
 			content, err = renderReloadCommandAsset(content)
+		} else if asset.path == "systemd/"+nameSyncTimerUnit {
+			content, err = renderNameSyncTimerAsset(content, installer.options)
 		}
 		if err != nil {
 			return false, fmt.Errorf("render embedded asset %s: %w", asset.path, err)
@@ -1160,6 +1172,138 @@ func (installer *engine) retireGlob(pattern, reason string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// hostOverlayScripts names the assets/bin/* scripts pfm install owns end to
+// end as HOST overlays — materialized like every other embedded asset by
+// stageAssets, then symlinked at their contracted ~/.local/bin/NAME so a
+// human or a cron unit can invoke them by that one name:
+//   - pfm-statusline: the context-gauge overlay over `pfm statusline`
+//     wireSettings/updateSettings point statusLine.command at.
+//   - tmux-title-renudge: the OSC-title re-emitter the pfm-name-sync
+//     systemd/launchd trio fires on a timer.
+//
+// Unlike the Claude launcher, an overlay has no displaced native binary to
+// record and restore — the previous destination (a wrong symlink or a stale
+// regular file) is simply superseded, the same idempotent replace-or-leave
+// ensureLink already gives every command and skill link.
+var hostOverlayScripts = []string{"pfm-statusline", "tmux-title-renudge"}
+
+func managedHostOverlay(home, name string) string {
+	return filepath.Join(home, ".local", "share", "pfm", "install", "bin", name)
+}
+
+func canonicalHostOverlay(home, name string) string {
+	return filepath.Join(home, ".local", "bin", name)
+}
+
+// StatusLineOverlayCommand is the statusLine.command value pfm install owns:
+// the canonical ~/.local/bin/pfm-statusline overlay symlink. updateSettings
+// writes it and doctor compares a live settings.json against this exact
+// string — the one exported name both sides key their agreement on.
+func StatusLineOverlayCommand(home string) string {
+	return canonicalHostOverlay(home, "pfm-statusline")
+}
+
+// RawStatusLineCommand reports whether a statusLine.command value is
+// exactly the un-overlaid `pfm statusline` — bare (relying on PATH) or the
+// absolute pfm binary path followed by " statusline" — the one shape that
+// renders identically to a healthy overlay while silently missing the
+// context-gauge fix (issue #14 F1). updateSettings rewrites this shape to
+// the overlay on apply; doctor names it by the same test on read.
+func RawStatusLineCommand(home, command string) bool {
+	return command == "pfm statusline" || command == home+"/.local/bin/pfm statusline"
+}
+
+// ReadStatusLineCommand reads a Claude settings.json's statusLine.command,
+// empty when the file is absent, unreadable, malformed, or carries no
+// statusLine.command — so doctor can check a live host's actual wiring
+// without duplicating updateSettings' JSON shape.
+func ReadStatusLineCommand(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return ""
+	}
+	status, _ := document["statusLine"].(map[string]any)
+	command, _ := status["command"].(string)
+	return command
+}
+
+// HostOverlayState mirrors LauncherState for the two host-overlay scripts.
+type HostOverlayState string
+
+const (
+	HostOverlayOK        HostOverlayState = "ok"
+	HostOverlayMissing   HostOverlayState = "missing"
+	HostOverlayDisplaced HostOverlayState = "displaced"
+)
+
+// HostOverlayStatus is one contracted overlay's canonical-symlink state.
+type HostOverlayStatus struct {
+	Name   string
+	State  HostOverlayState
+	Target string
+}
+
+// InspectHostOverlays reports the canonical ~/.local/bin/NAME symlink state
+// of every installer-owned host overlay script, in the OK/missing/displaced
+// vocabulary InspectClaudeLauncher uses: an absent link is missing; a link
+// (or a non-symlink file) that does not resolve to the managed copy is
+// displaced; only a link that resolves to exactly the managed copy is ok.
+func InspectHostOverlays(home string) []HostOverlayStatus {
+	statuses := make([]HostOverlayStatus, 0, len(hostOverlayScripts))
+	for _, name := range hostOverlayScripts {
+		canonical := canonicalHostOverlay(home, name)
+		managed := managedHostOverlay(home, name)
+		target, linked := resolvedLink(canonical)
+		switch {
+		case !linked:
+			state := HostOverlayMissing
+			if _, err := os.Lstat(canonical); err == nil {
+				state = HostOverlayDisplaced
+			}
+			statuses = append(statuses, HostOverlayStatus{Name: name, State: state, Target: canonical})
+		case target != filepath.Clean(managed):
+			statuses = append(statuses, HostOverlayStatus{Name: name, State: HostOverlayDisplaced, Target: target})
+		default:
+			statuses = append(statuses, HostOverlayStatus{Name: name, State: HostOverlayOK, Target: target})
+		}
+	}
+	return statuses
+}
+
+// wireHostOverlays links the two contracted ~/.local/bin overlay scripts to
+// their managed copies. stageAssets already wrote the managed copies
+// themselves (they are ordinary embedded assets); this is the one step
+// stageAssets does not do on its own, same division of labor as
+// wireClaudeLauncher over the managed Claude binary.
+func (installer *engine) wireHostOverlays() error {
+	installer.say("host overlays -> %s", filepath.Join(installer.options.Home, ".local", "bin"))
+	for _, name := range hostOverlayScripts {
+		if _, err := installer.ensureLink(
+			managedHostOverlay(installer.options.Home, name),
+			canonicalHostOverlay(installer.options.Home, name),
+		); err != nil {
+			return err
+		}
+	}
+	installer.say("")
+	return nil
+}
+
+func (installer *engine) unwireHostOverlays() error {
+	installer.say("host overlays -> %s", filepath.Join(installer.options.Home, ".local", "bin"))
+	for _, name := range hostOverlayScripts {
+		if err := installer.unlinkOne(canonicalHostOverlay(installer.options.Home, name)); err != nil {
+			return err
+		}
+	}
+	installer.say("")
 	return nil
 }
 
@@ -1994,4 +2138,78 @@ func (installer *engine) retirePredecessors() error {
 		}
 	}
 	return installer.retireGlob(carrier+".n.*", "retired carrier scratch")
+}
+
+// retiredGlobalAgents names every global Claude agent identity a template
+// rename has retired: the OLD name, left behind as {config}/agents/OLD.md
+// once RunGlobalAgents stops visiting it (it walks the CURRENT source
+// roster, so a renamed-away identity is simply never revisited, never
+// cleaned up on its own). frr -> rr (3976b53, "/ptm→/pfm, frr→rr, /rr→/deep-rr")
+// is the only rename `git log -- templates/global/agents` holds; a future
+// rename adds its OLD name here rather than inventing a second mechanism.
+var retiredGlobalAgents = []string{"frr"}
+
+// retireRenamedGlobalAgents deletes a stale pre-rename identity from the
+// global Claude agent registry — but only when the file is unambiguously
+// the installer's own leftover, never a user's own agent that happens to
+// reuse the retired filename:
+//   - a symlink at the retired path is always installer-authored (nothing
+//     else in this registry ever creates one), so it retires outright,
+//     including a dangling one whose old template target is long gone;
+//   - a regular file retires only when its YAML frontmatter `name:` field
+//     still reads the retired name — the exact field RunGlobalAgents itself
+//     keys the compiled TOML and the registry identity on, so a user who
+//     repurposed the filename for their own agent (and so changed its
+//     frontmatter name) is left alone, untouched and unreported.
+func (installer *engine) retireRenamedGlobalAgents() error {
+	config := installer.options.ConfigDir
+	for _, retired := range retiredGlobalAgents {
+		path := filepath.Join(config, "agents", retired+".md")
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect retired global agent %s: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			frontmatterName, readErr := agentFrontmatterName(path)
+			if readErr != nil {
+				return fmt.Errorf("read retired global agent %s: %w", path, readErr)
+			}
+			if frontmatterName != retired {
+				installer.skip(path + " is not the retired " + retired + " agent (frontmatter name=" + frontmatterName + ") — left alone")
+				continue
+			}
+		}
+		if err := installer.retire(path, "renamed global agent ("+retired+" -> current roster)"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// agentFrontmatterName reads the `name:` field out of an agent Markdown
+// file's leading YAML frontmatter block, empty when the file has none or
+// the field is absent — the same shape codexgen compiles agent identity
+// from.
+func agentFrontmatterName(path string) (string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return "", nil
+	}
+	for _, line := range lines[1:] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "---" {
+			break
+		}
+		if name, found := strings.CutPrefix(trimmed, "name:"); found {
+			return strings.TrimSpace(name), nil
+		}
+	}
+	return "", nil
 }

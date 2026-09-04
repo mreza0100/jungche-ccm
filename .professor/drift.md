@@ -235,9 +235,10 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   permanently, by the user's accepted ruling ("that's not our responsibility"). The values are a name, an
   email, and paths — unlike a credential they cannot be rotated, so treat them as permanently disclosed and
   design accordingly.
-  **Local fallout (resolved 2026-08-26, see the next entry):** the 21 pre-existing worktrees sat on
-  pre-rewrite commits and share no ancestry with the new `main`. "Each needs rebasing" overstated it —
-  18 of the 21 were already merged into the pre-rewrite tip and needed nothing but deletion.
+  **Local fallout: closed.** No branch or worktree on this host carries pre-rewrite (`f96c660`) history —
+  verified against both `git branch --list --contains f96c660` and `git worktree list`; the only ref that
+  does is the deliberate recovery handle `pre-rewrite-main-f96c660`, kept unmerged on purpose. The cleanup
+  that closed it is the next entry.
 
 - **KEEP-LOCAL: all 21 stale worktrees purged (2026-08-26).** Ancestry was recomputed against the
   PRE-rewrite tip `f96c660`, not against today's `main` — the history rewrite changed every SHA, so a
@@ -327,15 +328,21 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   two-scope shape only and points at the tree + `refresh-map.json` for rosters (2026-08-29). The card
   documents this repo's own refresh pass and never ships.
 
-- **KEEP-LOCAL: host statusline + tmux-title scripts live in `scripts/`, symlinked from `~/.local/bin/`**
-  (2026-08-29, user-ordered). `scripts/pfm-statusline` — context-gauge overlay over `pfm statusline`
-  (recomputes true occupancy from the transcript; meltdown ladder; `1h∞`); its gauge regex now walks
-  glyph runs interleaved with ANSI escapes — `makeBar` emits color+filled+dim+empty, so an escape sits
+- **KEEP-LOCAL: host statusline + tmux-title overlays are `pfm install`-owned**
+  (2026-08-29, user-ordered; installer ownership 2026-09-04, issue #14 F1).
+  `pfm/internal/installer/assets/bin/pfm-statusline` — context-gauge overlay over `pfm statusline`
+  (recomputes true occupancy from the transcript; meltdown ladder; `1h∞`); its gauge regex walks glyph
+  runs interleaved with ANSI escapes — `makeBar` emits color+filled+dim+empty, so an escape sits
   MID-BAR at any nonzero percent, and the old single-run pattern matched only the empty half (the
-  double-bar defect). `scripts/tmux-title-renudge` — OSC-title re-emitter the systemd trio
-  (`~/.config/systemd/user/tmux-title-renudge.{path,timer,service}`, hand-rolled, un-tracked) fires at
-  `%h/.local/bin/tmux-title-renudge`; the symlink preserves that contract. Neither ships to adopters.
-  Follow-up candidate: fold both into `pfm/internal/installer/assets/` so `pfm install` owns the wiring.
+  double-bar defect). `pfm/internal/installer/assets/bin/tmux-title-renudge` — OSC-title re-emitter
+  the systemd trio (`~/.config/systemd/user/tmux-title-renudge.{path,timer,service}`, hand-rolled,
+  un-tracked) fires at `%h/.local/bin/tmux-title-renudge`. `pfm install` materialises both into
+  `~/.local/share/pfm/install/bin/` (0755) and symlinks `~/.local/bin/pfm-statusline` /
+  `~/.local/bin/tmux-title-renudge` to the managed copies — idempotent, unwired on uninstall;
+  `settings.go` points an empty, legacy, or bare `pfm statusline` `statusLine.command` at the
+  overlay and preserves any other custom command; `pfm doctor` FAILS when a symlink is missing or
+  displaced or a `statusLine.command` still names the raw `pfm statusline`. Neither ships to
+  adopters — a per-host overlay, not a template asset.
 
 - 2026-08-29: this host runs `claude.systemPrompt = "professor"` (~/.config/pfm/config.json); the RND
   sandbox `.professor/RND/harness-prompt/1-load-bearing/` keeps the capture/drift tooling (sink.py,

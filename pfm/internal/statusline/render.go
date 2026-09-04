@@ -17,6 +17,7 @@ import (
 
 	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/sky"
 	"hostops/pfm/internal/usagehook"
 )
@@ -68,11 +69,8 @@ type input struct {
 	Worktree struct {
 		Name string `json:"name"`
 	} `json:"worktree"`
-	RateLimits  rateLimits `json:"rate_limits"`
-	OutputStyle struct {
-		Name string `json:"name"`
-	} `json:"output_style"`
-	Effort struct {
+	RateLimits rateLimits `json:"rate_limits"`
+	Effort     struct {
 		Level string `json:"level"`
 	} `json:"effort"`
 	Thinking struct {
@@ -190,6 +188,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	data.RateLimits.Windows = resolvedLimits
 	data.RateLimits.Scoped = nil
 	writeBreadcrumb(runtime, data.TranscriptPath)
+	convergeWindowName(ctx, runtime, data)
 
 	harvestRateLimits(runtime, now, account, data)
 
@@ -249,11 +248,11 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	if wide && contextTokens > 0 {
 		l2 += sep + dim + "🧮" + formatTokens(contextTokens) + reset
 	}
-	// Only the width gate belongs here. Whether the transcript is readable is
+	// Never width-gated: a 97-column VS Code pane once lost the timer to the
+	// same gate as the token count, and a missing cache timer is indistinguishable
+	// from an expired one nobody rendered. Whether the transcript is readable is
 	// the segment's own question to answer, and it answers it visibly.
-	if wide {
-		l2 += cacheWindowSegment(runtime, now, data.TranscriptPath)
-	}
+	l2 += cacheWindowSegment(runtime, now, data.TranscriptPath)
 	if data.Cost.TotalCostUSD > 0 && runtime.Engine != pfmengine.Codex {
 		color := dim
 		if data.Cost.TotalCostUSD >= 10 {
@@ -568,6 +567,115 @@ func fleetCounts(runtime Runtime) map[pfmengine.ID]int {
 		count(entry.Name())
 	}
 	return counts
+}
+
+// windowConvergeTimeout bounds the whole convergence. The statusline renders
+// every 3 seconds and a render must never wait on tmux; a server that does not
+// answer inside this budget simply keeps its name until the next label change
+// or the name-sync backstop.
+const windowConvergeTimeout = 750 * time.Millisecond
+
+// convergeWindowName applies a claude /rename to the chat's tmux WINDOW name
+// the moment its own statusline renders the new 🔖 label.
+//
+// The chain /rename -> 🔖 label -> window name -> terminal tab used to have
+// exactly one scheduler behind it: the 15-minute name-sync poll. Codex renames
+// fired instantly (a path unit watches session_index.jsonl) and claude renames
+// did not, so one runtime looked broken to the person using it. The label is
+// known here continuously; only its application was on a timer.
+//
+// It is the SAME operation name-sync performs — gather.RenameWindow on
+// gather.WindowNameFor(label) — so the two can never disagree about the name,
+// and the timer remains the backstop for everything this path cannot see (a
+// chat whose statusline is not rendering, a name a second writer took back).
+//
+// Cost discipline: a converged chat forks NOTHING. The last applied label is
+// cached per session beside the cache-window anchor, and a render whose label
+// still matches the cache returns before touching tmux at all.
+func convergeWindowName(ctx context.Context, runtime Runtime, data input) {
+	// Claude only: a codex window follows its thread's indexed name, applied
+	// by name-sync's own half, and a subagent's statusline is not the window's
+	// identity — the main chat owns that name.
+	if runtime.Engine != pfmengine.Claude || data.Agent.Name != "" {
+		return
+	}
+	label := gather.WindowNameFor(data.SessionName)
+	if label == "" {
+		return
+	}
+	socket, ok := pfmSocket(runtime)
+	if !ok {
+		return
+	}
+	pane := runtime.getenv("TMUX_PANE")
+	if pane == "" {
+		return
+	}
+	key := data.SessionID
+	if key == "" {
+		key = socket
+	}
+	cachePath := filepath.Join(runtime.CacheDir, "cc-sl-window-"+key)
+	if cached, err := os.ReadFile(cachePath); err == nil && string(cached) == label {
+		return
+	}
+	commandContext, cancel := context.WithTimeout(ctx, windowConvergeTimeout)
+	defer cancel()
+	socketPath := filepath.Join(runtime.TmuxDir, socket)
+	// window_panes gates the rename the same way gather's claude half does: a
+	// window hosting two /chat:branch siblings cannot carry both labels, so it
+	// keeps the name it has rather than take whichever sibling rendered last.
+	read, err := runtime.Command.Output(
+		commandContext, "tmux", "-S", socketPath,
+		"display-message", "-t", pane, "-p", "#{window_panes} #{window_name}",
+	)
+	if err != nil {
+		return
+	}
+	// A SPACE separator, split at the first one: display-message renders a
+	// control byte as its octal escape (a \x1f separator arrives as the four
+	// literal characters \037), and a pane count never contains a space while
+	// a window name may.
+	panes, current, found := strings.Cut(strings.TrimRight(string(read), "\n"), " ")
+	if !found || panes != "1" {
+		return
+	}
+	if current != label {
+		rename := gather.WindowRename{
+			Socket: socket, WindowID: pane, CurrentName: current, TargetName: label,
+		}
+		client := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.TmuxDir)}
+		if err := client.RenameWindow(commandContext, rename); err != nil {
+			return
+		}
+	}
+	// Written only after the window provably carries the label, so a failed
+	// rename is retried on the next render instead of being cached as done.
+	_ = atomicWrite(cachePath, []byte(label), 0o600)
+}
+
+// pfmSocket resolves the fleet socket this render is running inside, or
+// reports that it is not in one. It applies the same probe-socket allowance
+// fleetCounts does so a jailed fixture can exercise the path.
+func pfmSocket(runtime Runtime) (string, bool) {
+	tmux := runtime.getenv("TMUX")
+	if tmux == "" {
+		return "", false
+	}
+	socketPath := strings.SplitN(tmux, ",", 2)[0]
+	if filepath.Clean(filepath.Dir(socketPath)) != filepath.Clean(runtime.TmuxDir) {
+		return "", false
+	}
+	socket := filepath.Base(socketPath)
+	if id, ok := pfmengine.FromSocket(socket); ok && id == pfmengine.Claude {
+		return socket, true
+	}
+	if runtime.getenv("PFM_TEST_PROBE_SOCKETS") == "1" {
+		if id, ok := pfmengine.FromSocket(strings.TrimPrefix(socket, "probe-")); ok && id == pfmengine.Claude {
+			return socket, true
+		}
+	}
+	return "", false
 }
 
 func writeBreadcrumb(runtime Runtime, transcriptPath string) {

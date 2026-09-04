@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # pfm-statusline — context-gauge overlay over `pfm statusline`.
-# ORIGINAL lives at scripts/pfm-statusline in the professor repo; ~/.local/bin/pfm-statusline
-# is a symlink to it (globalization protocol: original here, link on the host).
+# ORIGINAL lives at pfm/internal/installer/assets/bin/pfm-statusline, embedded into the pfm
+# binary; `pfm install` materialises it at ~/.local/share/pfm/install/bin/pfm-statusline and
+# symlinks ~/.local/bin/pfm-statusline to that managed copy — the installer owns the wiring
+# end to end, never a hand symlink.
 #
 # Why it exists: pfm's gauge historically read token usage from stale internal state (rendered
 # 0%). This wrapper recomputes true occupancy from the transcript's last main-chain usage

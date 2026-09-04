@@ -27,6 +27,11 @@ DEV     := $(REPO)/.claude/scripts/dev.sh
 BIN     := $(HOME)/.local/bin/pfm
 LOCAL   := pfm.dev
 UNIT    := pfm-mcp.service
+# Stamped into every build below so `pfm --version` names the release it came
+# from instead of the bare "dev" a plain `go build` leaves behind (issue #14
+# F6). $(REPO)/VERSION, not a bare "VERSION" — this file runs from pfm/.
+VERSION := $(shell cat $(REPO)/VERSION 2>/dev/null)
+LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
 .PHONY: help build fmt fmt-check vet test iso gate install host-install \
         mcp-restart mcp-status stale kill-stale clean
@@ -43,7 +48,7 @@ help: ## List every target
 # ---------------------------------------------------------------- build ----
 
 build: ## Compile to ./pfm.dev (a local artifact, never the shipped path)
-	go build -o $(LOCAL) ./cmd/pfm
+	go build $(LDFLAGS) -o $(LOCAL) ./cmd/pfm
 
 fmt: ## Rewrite formatting in place
 	gofmt -w .
@@ -78,7 +83,7 @@ install: host-install mcp-restart stale ## Build, replace the host binary, resta
 
 host-install: ## Replace ~/.local/bin/pfm, keeping the previous build
 	@tmp="$$(mktemp -t pfm.XXXXXX)"; \
-	go build -o "$$tmp" ./cmd/pfm; \
+	go build $(LDFLAGS) -o "$$tmp" ./cmd/pfm; \
 	if [ -x "$(BIN)" ]; then cp -f "$(BIN)" "$(BIN).prev"; fi; \
 	mkdir -p "$$(dirname "$(BIN)")"; \
 	mv -f "$$tmp" "$(BIN)"; \

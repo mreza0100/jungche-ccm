@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
@@ -148,11 +149,14 @@ func (tmux CommandTmux) CreateCodexServer(
 	).CombinedOutput(); err != nil {
 		return fmt.Errorf("create Codex server: %w: %s", err, output)
 	}
-	for _, arguments := range [][]string{
-		{"set-option", "-g", "set-titles", "on"},
-		{"set-option", "-g", "set-titles-string", "⬢ #{window_name} · #{pane_title}"},
-		{"set-window-option", "-g", "automatic-rename", "off"},
-	} {
+	// The title options are applied only when tmux.titles is enabled — a host
+	// that emits its own OSC title before tmux starts keeps it. automatic-rename
+	// is always off: the window name is the fleet's DNS record.
+	serverOptions := append(
+		pfmconfig.TmuxTitlesOrDefault(server.Titles).Options(),
+		[]string{"set-window-option", "-g", "automatic-rename", "off"},
+	)
+	for _, arguments := range serverOptions {
 		if output, err := tmux.command(
 			ctx,
 			server.Socket,

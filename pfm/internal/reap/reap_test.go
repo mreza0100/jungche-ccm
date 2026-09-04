@@ -352,7 +352,7 @@ func TestReapSocketSelectionDelegatesCanonicalClassifier(t *testing.T) {
 		{name: "cx-fixture", want: true},
 		{name: "ox-fixture", want: true},
 		{name: "vsct-fixture", want: false},
-		{name: "revive-fixture", want: false},
+		{name: "mystery-fixture", want: false},
 		{name: "probe-fixture", want: false},
 	} {
 		if got := isReapSocketName(testCase.name); got != testCase.want {

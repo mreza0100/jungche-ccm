@@ -38,7 +38,11 @@ func assetFiles() ([]assetFile, error) {
 			return nil
 		}
 		mode := fs.FileMode(0o644)
-		if path.Ext(relative) == ".sh" || relative == "bin/claude" {
+		// Everything staged under assets/bin/ is a POSIX launcher or overlay
+		// script materialized straight onto disk and exec'd — bin/claude,
+		// bin/pfm-statusline, bin/tmux-title-renudge — so the whole
+		// directory is executable, not one hand-picked name at a time.
+		if path.Ext(relative) == ".sh" || strings.HasPrefix(relative, "bin/") {
 			mode = 0o755
 		}
 		files = append(files, assetFile{path: relative, mode: mode})

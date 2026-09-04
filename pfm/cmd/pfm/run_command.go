@@ -126,8 +126,10 @@ func runRun(
 	if os.Getenv(spawnTraceEnv) != "" {
 		trace = stderr
 	}
+	titles := runtime.Config.Tmux.Titles
 	result, err := spawn.Run(context.Background(), spawn.CommandTmux{
 		TmuxDir: resolved.TmuxDir,
+		Titles:  &titles,
 	}, spawn.Request{
 		Trace:               trace,
 		Engine:              engineName,

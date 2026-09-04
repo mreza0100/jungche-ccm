@@ -590,6 +590,103 @@ func TestShimAssetEmitsConfiguredClaudeAndCodexPosture(t *testing.T) {
 	}
 }
 
+// TestStatusLineRewriteOwnsTheOverlayAndPreservesCustomCommands pins issue
+// #14 F1.c on updateSettings alone: every form pfm install or a predecessor
+// has ever pointed statusLine.command at — empty, the legacy shell script,
+// the bare `pfm statusline` a hand re-point often reaches for, and the
+// absolute pfm-binary form the installer itself wrote before the overlay
+// existed — converges on the pfm-statusline overlay, while a genuinely
+// custom command is left untouched.
+func TestStatusLineRewriteOwnsTheOverlayAndPreservesCustomCommands(t *testing.T) {
+	home := filepath.Join("neutral", "home")
+	overlay := StatusLineOverlayCommand(home)
+	absoluteRaw := home + "/.local/bin/pfm statusline"
+
+	for _, testCase := range []struct {
+		name string
+		raw  string
+	}{
+		{"empty settings.json gets the overlay fresh", `{}`},
+		{"legacy shell script rewrites to the overlay", `{"statusLine":{"type":"command","command":"bash ~/.claude/statusline-command.sh"}}`},
+		{"bare pfm statusline rewrites to the overlay", `{"statusLine":{"type":"command","command":"pfm statusline"}}`},
+		{"absolute pfm statusline rewrites to the overlay", fmt.Sprintf(`{"statusLine":{"type":"command","command":%q}}`, absoluteRaw)},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			updated, changed, _, err := updateSettings([]byte(testCase.raw), home, false, nil)
+			if err != nil || !changed {
+				t.Fatalf("updateSettings changed=%v err=%v", changed, err)
+			}
+			var document map[string]any
+			if err := json.Unmarshal(updated, &document); err != nil {
+				t.Fatal(err)
+			}
+			status, _ := document["statusLine"].(map[string]any)
+			if got, _ := status["command"].(string); got != overlay {
+				t.Fatalf("statusLine.command=%q, want overlay %q:\n%s", got, overlay, updated)
+			}
+			if got, _ := status["type"].(string); got != "command" {
+				t.Fatalf("statusLine.type=%q, want %q:\n%s", got, "command", updated)
+			}
+		})
+	}
+
+	t.Run("second apply of the overlay is a no-op", func(t *testing.T) {
+		// A near-empty document always reports changed=true on its first pass
+		// (hooks and cleanupPeriodDays get added alongside statusLine), so the
+		// no-op claim is only meaningful against a document already fully
+		// wired once — exactly what a real second `pfm install` sees.
+		raw := fmt.Sprintf(`{"statusLine":{"type":"command","command":%q,"padding":0}}`, overlay)
+		firstPass, _, owned, err := updateSettings([]byte(raw), home, false, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, changed, _, err := updateSettings(firstPass, home, false, owned)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed {
+			t.Fatalf("second apply over a fully-wired settings.json reported changed=true:\n%s", firstPass)
+		}
+	})
+
+	t.Run("a genuinely custom statusLine command is preserved", func(t *testing.T) {
+		raw := `{"statusLine":{"type":"command","command":"~/bin/my-own-statusline.sh"}}`
+		updated, _, _, err := updateSettings([]byte(raw), home, false, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document map[string]any
+		if err := json.Unmarshal(updated, &document); err != nil {
+			t.Fatal(err)
+		}
+		status, _ := document["statusLine"].(map[string]any)
+		if got, _ := status["command"].(string); got != "~/bin/my-own-statusline.sh" {
+			t.Fatalf("custom statusLine command was rewritten to %q:\n%s", got, updated)
+		}
+	})
+
+	t.Run("uninstall removes only an overlay or raw pfm-owned statusLine", func(t *testing.T) {
+		for _, command := range []string{overlay, absoluteRaw, "pfm statusline"} {
+			raw := fmt.Sprintf(`{"statusLine":{"type":"command","command":%q}}`, command)
+			removed, changed, _, err := updateSettings([]byte(raw), home, true, nil)
+			if err != nil || !changed {
+				t.Fatalf("uninstall of owned command %q changed=%v err=%v", command, changed, err)
+			}
+			if strings.Contains(string(removed), "statusLine") {
+				t.Fatalf("uninstall left statusLine behind for owned command %q:\n%s", command, removed)
+			}
+		}
+		raw := `{"statusLine":{"type":"command","command":"~/bin/my-own-statusline.sh"}}`
+		removed, changed, _, err := updateSettings([]byte(raw), home, true, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed || !strings.Contains(string(removed), "my-own-statusline.sh") {
+			t.Fatalf("uninstall touched a custom statusLine command: changed=%v\n%s", changed, removed)
+		}
+	})
+}
+
 func hookMatcherCount(t *testing.T, raw, event, command, matcher string) int {
 	t.Helper()
 	var document map[string]any

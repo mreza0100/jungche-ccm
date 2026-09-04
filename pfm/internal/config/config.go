@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	pfmengine "hostops/pfm/internal/engine"
 )
@@ -134,6 +135,82 @@ func recordCompactNudgeSources(sources map[string]Source, prefix string, raw *ra
 	}
 }
 
+// TmuxTitles is the tmux.titles policy: whether pfm owns the OUTER terminal's
+// title on a server it creates.
+//
+// Enabled sets `set-titles on` plus pfm's own set-titles-string, so a terminal
+// tab reads the chat's window name. Disabled sets NEITHER option and leaves
+// whatever the host put there — a host that emits its own OSC title on the
+// outer pty before tmux starts (and keeps `set-titles off` so tmux cannot
+// clobber it) keeps its tab badges. The default is enabled, which is what
+// every install did before this key existed.
+type TmuxTitles struct {
+	Enabled bool
+}
+
+// DefaultTmuxTitles is the policy when the file says nothing: pfm owns the
+// title.
+func DefaultTmuxTitles() TmuxTitles {
+	return TmuxTitles{Enabled: true}
+}
+
+// TmuxTitlesOrDefault resolves an OPTIONAL policy. A nil pointer is the
+// default (pfm owns the title), never "off": a tmux client constructed without
+// a machine config must keep today's behaviour rather than silently hand the
+// terminal title to the host.
+func TmuxTitlesOrDefault(titles *TmuxTitles) TmuxTitles {
+	if titles == nil {
+		return DefaultTmuxTitles()
+	}
+	return *titles
+}
+
+// TmuxTitlesString is the format pfm gives tmux when it owns the title. It is
+// stated once here because three surfaces apply it — the Claude spawn path,
+// the Codex spawn path, and the shell shim — and three spellings of one string
+// is how the tab of one engine stops matching the tab of the other.
+const TmuxTitlesString = "⬢ #{window_name} · #{pane_title}"
+
+// Options returns the tmux `set-option` argument vectors that put this policy
+// on a server. A disabled policy returns none: pfm applies neither option.
+func (titles TmuxTitles) Options() [][]string {
+	if !titles.Enabled {
+		return nil
+	}
+	return [][]string{
+		{"set-option", "-g", "set-titles", "on"},
+		{"set-option", "-g", "set-titles-string", TmuxTitlesString},
+	}
+}
+
+// Tmux is the fleet-wide tmux posture. It is not per-account: a terminal title
+// belongs to the terminal, not to whichever account happens to be in the pane.
+type Tmux struct {
+	Titles TmuxTitles
+}
+
+// NameSync is the window-name convergence schedule. Interval is rendered into
+// BOTH schedulers at install time — the launchd job's StartInterval and the
+// systemd timer's OnUnitInactiveSec — from this ONE value, so the two can
+// never drift apart on a host that runs either.
+type NameSync struct {
+	Interval time.Duration
+}
+
+// DefaultNameSyncInterval is the poll the fleet shipped with: a claude
+// /rename's backstop between picker runs.
+const DefaultNameSyncInterval = 15 * time.Minute
+
+// MinNameSyncInterval floors the poll. name-sync gathers the whole fleet and
+// captures every claude pane; below a minute the poll costs more than the
+// drift it converges.
+const MinNameSyncInterval = time.Minute
+
+// DefaultNameSync is the schedule when the file says nothing.
+func DefaultNameSync() NameSync {
+	return NameSync{Interval: DefaultNameSyncInterval}
+}
+
 // Claude is retained as an alias for callers that used the v1 public shape.
 type Claude = ClaudePrefs
 
@@ -214,6 +291,8 @@ type Config struct {
 	Claude           Claude
 	Codex            Codex
 	OpenCode         OpenCode
+	Tmux             Tmux
+	NameSync         NameSync
 	MCPServers       map[string]MCPServer
 	MCP              MCPConfig
 	Ask              AskConfig
@@ -237,8 +316,22 @@ type rawConfig struct {
 	Claude   *rawClaude    `json:"claude,omitempty"`
 	Codex    *rawCodex     `json:"codex,omitempty"`
 	OpenCode *rawOpenCode  `json:"opencode,omitempty"`
+	Tmux     *rawTmux      `json:"tmux,omitempty"`
+	NameSync *rawNameSync  `json:"nameSync,omitempty"`
 	MCP      *rawMCP       `json:"mcp,omitempty"`
 	Ask      *rawAsk       `json:"ask,omitempty"`
+}
+
+type rawTmux struct {
+	Titles *rawTmuxTitles `json:"titles,omitempty"`
+}
+
+type rawTmuxTitles struct {
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type rawNameSync struct {
+	Interval *string `json:"interval,omitempty"`
 }
 
 type rawAccount struct {
@@ -407,8 +500,10 @@ func defaultsWithMCPServers(
 		engineConfigKey(pfmengine.Codex, "binary"):          SourceDefault,
 		engineConfigKey(pfmengine.Codex, "homes"):           SourceDefault,
 		engineConfigKey(pfmengine.Opencode, "binary"):       SourceDefault,
-		"mcp.http.port": SourceDefault,
-		"ask.engine":    SourceDefault,
+		"mcp.http.port":       SourceDefault,
+		"ask.engine":          SourceDefault,
+		"tmux.titles.enabled": SourceDefault,
+		"nameSync.interval":   SourceDefault,
 	}
 	for _, id := range pfmengine.All() {
 		name := pfmengine.MustLookup(id).LongName
@@ -431,6 +526,8 @@ func defaultsWithMCPServers(
 		Claude:           Claude{PermissionMode: PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary, Cache1H: true, CompactNudge: DefaultCompactNudge()},
 		Codex:            Codex{Yolo: true, Binary: pfmengine.MustLookup(pfmengine.Codex).Binary},
 		OpenCode:         OpenCode{Binary: pfmengine.MustLookup(pfmengine.Opencode).Binary},
+		Tmux:             Tmux{Titles: DefaultTmuxTitles()},
+		NameSync:         DefaultNameSync(),
 		MCPServers:       servers,
 		MCP:              MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
 		Ask: AskConfig{
@@ -765,6 +862,19 @@ func loadWithMCPServers(
 		}
 	}
 
+	if raw.Tmux != nil && raw.Tmux.Titles != nil && raw.Tmux.Titles.Enabled != nil {
+		result.Tmux.Titles.Enabled = *raw.Tmux.Titles.Enabled
+		result.Sources["tmux.titles.enabled"] = SourceFile
+	}
+	if raw.NameSync != nil && raw.NameSync.Interval != nil {
+		interval, err := parseNameSyncInterval(*raw.NameSync.Interval, result.Path)
+		if err != nil {
+			return Config{}, err
+		}
+		result.NameSync.Interval = interval
+		result.Sources["nameSync.interval"] = SourceFile
+	}
+
 	if raw.MCP != nil {
 		for name, server := range raw.MCP.Servers {
 			if _, known := registered[name]; !known {
@@ -830,6 +940,21 @@ func loadWithMCPServers(
 	}
 	result.MCPServers = cloneMCPServers(result.MCP.Servers)
 	return result, nil
+}
+
+// parseNameSyncInterval validates nameSync.interval the way compactNudge's
+// percentages are validated: a bad value is a refused config, never a silently
+// substituted default, because the value it renders into is a scheduler nobody
+// reads again after install.
+func parseNameSyncInterval(value, path string) (time.Duration, error) {
+	interval, err := time.ParseDuration(strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("config %s: nameSync.interval must be a Go duration such as %q, got %q", path, DefaultNameSyncInterval.String(), value)
+	}
+	if interval < MinNameSyncInterval {
+		return 0, fmt.Errorf("config %s: nameSync.interval must be at least %s, got %s", path, MinNameSyncInterval, interval)
+	}
+	return interval, nil
 }
 
 func decodeStrict(content []byte, target any) error {
@@ -1468,6 +1593,10 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 			},
 		},
 		codexName: codexValue,
+		"tmux": map[string]any{
+			"titles": map[string]any{"enabled": config.Tmux.Titles.Enabled},
+		},
+		"nameSync": map[string]any{"interval": config.NameSync.Interval.String()},
 		"mcp": map[string]any{
 			"servers": servers,
 			"http":    map[string]any{"port": config.MCP.HTTP.Port},

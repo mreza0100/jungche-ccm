@@ -146,16 +146,42 @@ func (c *Canvas) Bezier(x0, y0, cx, cy, x1, y1 float64, from, to RGB, fade float
 		if dashed && (i/5)%2 == 1 {
 			continue
 		}
-		mt := 1 - t
-		px := mt*mt*x0 + 2*mt*t*cx + t*t*x1
-		py := mt*mt*y0 + 2*mt*t*cy + t*t*y1
-		c.Dot(int(px), int(py), scaleRGB(lerpRGB(from, to, t), fade))
+		c.Dot(
+			int(bezierAt(x0, cx, x1, t)),
+			int(bezierAt(y0, cy, y1, t)),
+			scaleRGB(lerpRGB(from, to, t), fade),
+		)
 	}
 }
 
 func BezierPoint(x0, y0, cx, cy, x1, y1, t float64) (float64, float64) {
+	return bezierAt(x0, cx, x1, t), bezierAt(y0, cy, y1, t)
+}
+
+// bezierAt evaluates ONE axis of the quadratic Bezier at t — the single
+// canonical form both Bezier and BezierPoint sample, so a rail and the comet
+// riding it can never drift apart.
+//
+// The three float64() conversions are load-bearing, not decoration. The Go
+// spec (Floating-point operators) lets an implementation contract `a*b + c`
+// into one fused multiply-add rounded ONCE, and every FMA architecture takes
+// it: for this exact expression the arm64 compiler emits FMADDD twice
+// (verified from `GOARCH=arm64 go build -gcflags=-S ./internal/ui`), while
+// amd64 has no contraction rule at all. An explicit conversion to float64
+// rounds the product to float64 precision and forbids the fusion, so the
+// value is the same on every CPU.
+//
+// It matters because the result is truncated to a pixel. The cosmos focus
+// golden draws a dead-straight rail down pixel column 78 whose 22 samples are
+// all mathematically exactly 78; with the products rounded separately, two of
+// them land on 77.999999999999986 and int() drops those to column 77 — that
+// pair of dots IS the ⢈ (U+2888) glyph the golden holds. Fused, sample 9
+// rounds to exactly 78, the dot leaves that cell, and the glyph becomes ⠈
+// (U+2808): one byte, 0xa2 → 0xa0. Unpinned, these goldens pin the CPU that
+// generated them instead of the code.
+func bezierAt(p0, control, p1, t float64) float64 {
 	mt := 1 - t
-	return mt*mt*x0 + 2*mt*t*cx + t*t*x1, mt*mt*y0 + 2*mt*t*cy + t*t*y1
+	return float64(mt*mt*p0) + float64(2*mt*t*control) + float64(t*t*p1)
 }
 
 func quantRGB(c RGB, step uint16) RGB {

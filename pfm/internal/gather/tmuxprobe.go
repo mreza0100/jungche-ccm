@@ -283,8 +283,19 @@ func (tmux CommandTmux) CapturePane(
 	return string(output), nil
 }
 
-// RenameWindow applies one indexed Codex window-name convergence inside the
-// same jailed tmux namespace used by ListPanes.
+// RenameWindow applies one window-name convergence inside the same jailed tmux
+// namespace used by ListPanes, and latches the window against the one writer
+// that can take the name back.
+//
+// tmux has two renaming mechanisms and only one of them survives a
+// rename-window. `automatic-rename` needs no latch: rename-window turns it off
+// for that window itself. `allow-rename` does — with it on, a program in the
+// pane renames the WINDOW with the screen title escape (\ek…\e\\), and a shell
+// or harness that writes its title on every prompt takes the name back
+// seconds after pfm set it. (An OSC title write, \e]2;…\a, is harmless: it
+// sets pane_title, never the window name.) The latch is WINDOW-scoped on
+// purpose — it protects the windows pfm addresses the fleet by, and leaves the
+// operator's own windows and their global setting alone.
 func (tmux CommandTmux) RenameWindow(
 	ctx context.Context,
 	rename WindowRename,
@@ -302,6 +313,12 @@ func (tmux CommandTmux) RenameWindow(
 		"-t",
 		rename.WindowID,
 		rename.TargetName,
+		";",
+		"set-window-option",
+		"-t",
+		rename.WindowID,
+		"allow-rename",
+		"off",
 	)
 	command.Env = append(
 		os.Environ(),
@@ -461,7 +478,7 @@ func probeTmux(
 // reaper's sweep must agree on which sockets are chats, or one of them acts on
 // a socket the other cannot see.
 func IsChatSocketName(name string) bool {
-	if strings.HasPrefix(name, "vsct") || strings.HasPrefix(name, "revive") {
+	if strings.HasPrefix(name, "vsct") {
 		return false
 	}
 	// Real tmux integration tests are forbidden from minting a live-looking

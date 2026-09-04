@@ -45,6 +45,22 @@ func TestDoctorFreshTargetHomeIsClean(t *testing.T) {
 	if err := os.Symlink(managedClaude, filepath.Join(canonicalDir, "claude")); err != nil {
 		t.Fatal(err)
 	}
+	// The pfm-statusline and tmux-title-renudge host overlays are contracted
+	// pfm-install artifacts (issue #14 F1); a fixture representing a healthy
+	// target HOME carries both, same managed-copy-then-symlink shape as the
+	// Claude launcher above.
+	for _, overlay := range []string{"pfm-statusline", "tmux-title-renudge"} {
+		managedOverlay := filepath.Join(home, ".local", "share", "pfm", "install", "bin", overlay)
+		if err := os.MkdirAll(filepath.Dir(managedOverlay), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(managedOverlay, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(managedOverlay, filepath.Join(canonicalDir, overlay)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	stageHarnessPromptBaseline(t, home)
 
 	t.Setenv("HOME", home)

@@ -124,7 +124,7 @@ func isFleetSourceLine(line string) bool {
 // backtracking search would find first, so `cc` ahead of `cc-ls` would match
 // the prefix, fail the trailing separator, and miss the line.
 var fleetCommandCall = regexp.MustCompile(
-	`(^|[;&|(){}])[ \t]*(vsct-revive|cc-revive|cc-swap|cc-open|cc-ls|cc1|cc2|cc|cx)([ \t;&|)}]|$)`,
+	`(^|[;&|(){}])[ \t]*(cc-swap|cc-open|cc-ls|cc1|cc2|cc|cx)([ \t;&|)}]|$)`,
 )
 
 // earlyFleetCalls returns the ~/.zshrc lines that CALL a fleet command above the

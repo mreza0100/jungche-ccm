@@ -447,16 +447,22 @@ func TestCacheWindowSaysSoWhenTheTranscriptCannotBeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, testcase := range []struct {
-		name string
-		path string
-		want string
+		name    string
+		path    string
+		columns int
+		want    string
 	}{
 		{name: "a readable transcript anchors the window", path: live, want: "💾5m✓3m:0s"},
 		{name: "a path with no file behind it", path: filepath.Join(root, "gone.jsonl"), want: "💾5m!"},
 		{name: "no path at all", path: "", want: "💾5m!"},
 		{name: "a path that is a directory", path: root, want: "💾5m!"},
+		{name: "a narrow pane keeps the timer", path: live, columns: 97, want: "💾5m✓3m:0s"},
 	} {
 		t.Run(testcase.name, func(t *testing.T) {
+			columns := testcase.columns
+			if columns == 0 {
+				columns = 120
+			}
 			cacheDir := filepath.Join(t.TempDir(), "cache")
 			if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 				t.Fatal(err)
@@ -475,7 +481,7 @@ func TestCacheWindowSaysSoWhenTheTranscriptCannotBeRead(t *testing.T) {
 				CacheDir: cacheDir,
 				TmuxDir:  filepath.Join(root, "tmux"),
 				ProcRoot: filepath.Join(root, "proc"),
-				Columns:  120,
+				Columns:  columns,
 				UID:      1000,
 				Env:      map[string]string{"FORCE_PROMPT_CACHING_5M": "1"},
 				Command:  quietRunner{},

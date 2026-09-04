@@ -323,10 +323,12 @@ func Synthesize(request Request) (Plan, error) {
 		}
 		plan.Run = continuityBanner(request.Row) +
 			codexCommandFor(machine, request.PrimaryAccount, "resume", request.Row.ID)
+		titles := machine.Tmux.Titles
 		plan.CodexServer = &CodexServer{
 			Socket: request.FreshSocket,
 			CWD:    request.Row.CWD,
 			Run:    plan.Run,
+			Titles: &titles,
 		}
 		plan.Line = attachLine(
 			request.FreshSocket,

@@ -657,52 +657,6 @@ func formatCounters(counters fleetindex.Counters) string {
 	)
 }
 
-func runRevive(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
-	flags := newFlagSet("revive", "usage: pfm revive", stderr)
-	if code, ok := parseFlags(flags, args); !ok {
-		return code
-	}
-	if flags.NArg() != 0 {
-		flags.Usage()
-		return 2
-	}
-	database, err := store.Open(store.WithWarningWriter(stderr))
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm revive: %v\n", err)
-		return 1
-	}
-	defer database.Close()
-	scan, err := scanFleet(
-		context.Background(),
-		database,
-		scanRequest{View: compose.AllView, Runtime: &runtime},
-		stderr,
-	)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm revive: %v\n", err)
-		return 1
-	}
-	rows := make([]compose.Row, 0)
-	for _, row := range scan.Output.Rows {
-		if row.Kind == compose.ResumeClaude || row.Kind == compose.ResumeCodex {
-			rows = append(rows, row)
-		}
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stdout, "pfm revive: no resumable chats")
-		return 0
-	}
-	snapshot := scan.Snapshot
-	snapshot.Rows = rows
-	snapshot.View = compose.AllView
-	_, err = (ui.PlainPicker{Writer: stdout}).Pick(context.Background(), snapshot)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm revive: %v\n", err)
-		return 1
-	}
-	return 0
-}
-
 // pruneOrphanedKills reports, and only with confirm deletes, the kills doctor
 // counts as orphaned_killed. A kill cannot be recovered once deleted, so the
 // dry run is the default and the count is always printed.

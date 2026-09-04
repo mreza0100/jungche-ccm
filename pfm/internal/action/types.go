@@ -45,6 +45,11 @@ type CodexServer struct {
 	Socket string
 	CWD    string
 	Run    string
+	// Titles is the resolved tmux.titles policy Synthesize read off the
+	// machine config. NIL is the default (pfm owns the terminal title), never
+	// "off": a plan built without a config keeps today's behaviour instead of
+	// silently handing the title to the host.
+	Titles *pfmconfig.TmuxTitles
 }
 
 // Plan contains the pure run string and the one eval line. Line never carries

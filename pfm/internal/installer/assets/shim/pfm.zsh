@@ -37,7 +37,6 @@ cc-ls() {
 }
 
 cc-open() { _pfm_eval open "$@"; }
-cc-revive() { "$HOME/.local/bin/pfm" revive "$@"; }
 
 # The launch/account functions below are the shell owner of fresh interactive
 # launches; the Go action protocol emits lines that call them.
@@ -184,10 +183,26 @@ cx() {
 # plumbing in place before any client draws: the VS Code tab follows '⬢ <window> · <pane title>'
 # (codex owns pane_title — project + busy spinner; cc-ls converges the window name to the codex
 # thread_name, so a rename shows up in the tab like Claude's /rename does).
+#
+# tmux.titles layer: pfm decides whether it owns the OUTER terminal's title, the shim only
+# relays its line protocol (`<option> <value…>`, name first, value the rest of the line). A host
+# that emits its own OSC title before tmux starts sets tmux.titles.enabled=false and keeps it —
+# pfm then applies NO title option here. Fail-CLOSED on any nonzero exit: a policy we could not
+# read leaves the host's title alone rather than seizing it. automatic-rename is never gated —
+# the window name is the fleet's DNS record and pfm is its only writer.
 _cx_server() {
   local sock="$1" cwd="$2" run="$3"
   TMUX= tmux -L "$sock" new-session -d -s "$sock" -c "$cwd" -n Codex "$run" || return 1
-  tmux -L "$sock" set -g set-titles on \; set -g set-titles-string '⬢ #{window_name} · #{pane_title}' \; setw -g automatic-rename off
+  local _tt_out _tt_line
+  if _tt_out="$("$HOME/.local/bin/pfm" internal tmux-titles 2>&1)"; then
+    while IFS= read -r _tt_line; do
+      [[ -z "$_tt_line" ]] && continue
+      tmux -L "$sock" set -g "${_tt_line%% *}" "${_tt_line#* }"
+    done <<< "$_tt_out"
+  else
+    [[ -n "$_tt_out" ]] && print -u2 "pfm shim: ${_tt_out%%$'\n'*}"
+  fi
+  tmux -L "$sock" setw -g automatic-rename off
   return 0
 }
 
@@ -332,37 +347,6 @@ _cc_selfswitch() {
     print -u2 -- "cc: already inside this chat's tmux — refusing to nest it inside itself; switch windows yourself (prefix + w)"
   fi
   return 0
-}
-
-# vsct-revive remains zsh: it owns the non-chat bunker dashboard, outside the
-# pfm chat database.
-vsct-revive() {
-  local -a projs=("$@"); (( $# )) || projs=("${PWD:t}")
-  projs=("${projs[@]//[.:]/_}")   # tmux stored '.' and ':' as '_' when the bunker was born
-  local srv="revive-vsct" out="rv-${(j:+:)projs}"
-  local s att n=0 pid kids p hit
-  tmux -L "$srv" kill-session -t "=$out" 2>/dev/null    # rebuild the dashboard each run
-  for s in ${(f)"$(tmux -L vsct list-sessions -F $'#{session_name}\t#{session_attached}' 2>/dev/null)"}; do
-    att="${s##*$'\t'}"; s="${s%%$'\t'*}"   # tab-delimited — a session name can contain spaces
-    hit=0; for p in "${projs[@]}"; do [[ "$s" == ${p}-* ]] && { hit=1; break; }; done
-    (( hit )) && [[ "$att" == 0 ]] || continue
-    pid="$(tmux -L vsct list-panes -s -t "=$s" -F '#{pane_pid}' 2>/dev/null)"
-    if [[ -n "$pid" && "$pid" != *$'\n'* ]]; then       # husk check — same TWO shapes as vsct.sh:
-      # exec'd (pane process IS the cc/cx viewport client) or legacy (shell + sole client child)
-      ps -o args= -p "$pid" 2>/dev/null | grep -qE '^tmux -L c[cx]-[^ ]+ (attach|new-session)' && continue
-      kids="$(ps -o args= --ppid "$pid" 2>/dev/null)"
-      [[ "$(print -r -- "$kids" | grep -c .)" == 1 ]] \
-        && print -r -- "$kids" | grep -qE '^tmux -L c[cx]-[^ ]+ (attach|new-session)' && continue
-    fi
-    if (( n == 0 )); then TMUX= tmux -L "$srv" new-session -d -s "$out" -n "$s" "TMUX= tmux -L vsct attach -t '=$s'"
-    else                  TMUX= tmux -L "$srv" new-window  -t "=$out" -n "$s" "TMUX= tmux -L vsct attach -t '=$s'"
-    fi
-    n=$((n+1))
-  done
-  if (( n == 0 )); then echo "vsct-revive: no orphaned ${(j:/:)projs} bunkers — everything is already on screen"; return 0; fi
-  echo "vsct-revive: $n bunker(s) restored as windows — click the top bar to pick (from a bunker: ⌃B ⌃B w) · open a terminal to adopt one back into its own tab"
-  if [[ -t 0 ]]; then TMUX= tmux -L "$srv" attach -t "=$out"   # nested attach — see cc-revive
-  else echo "attach with: TMUX= tmux -L $srv attach -t '=$out'"; fi
 }
 
 # ── auto-open: a new terminal lands straight in a chat ────────────────────

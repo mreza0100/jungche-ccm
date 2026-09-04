@@ -1,9 +1,13 @@
 [Unit]
+# The BACKSTOP only: a claude /rename converges from the chat's own statusline
+# within a render, and a codex rename fires the .path unit instantly.
 Description=Periodic pfm name-sync (claude /rename drift between picker runs)
 
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=15min
+# Rendered at install time from the machine config's nameSync.interval — the
+# same value the launchd agent's StartInterval carries.
+OnUnitInactiveSec=__PFM_NAME_SYNC_INTERVAL__
 Unit=pfm-name-sync.service
 
 [Install]
