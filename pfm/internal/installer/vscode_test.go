@@ -422,7 +422,7 @@ const realMalformedVSCodeSettings = `{
       "icon": "terminal"
     },
     "vsct": {
-      "path": "/home/reza/work/host-ops/devbox/scripts/vsct.sh",
+      "path": "/opt/ops/scripts/vsct.sh",
       "icon": "server-process",
       "env": {
         "VSCODE_AUTO_CC": "1"
