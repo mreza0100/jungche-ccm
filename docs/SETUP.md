@@ -467,7 +467,7 @@ If **yes**, walk the procedure (full detail + every gotcha in `docs/references/m
 
 1. **Create ONE PRIVATE vault repo** (e.g. `<gh-user>/<you>-memory`) on GitHub, and `git init` a local clone at the vault path — `$HOME/work/<vault-dir>` (the `{MEMORY_VAULT_DIR}` config point) or wherever `$CLAUDE_MEMORY_REPO` points. One vault holds every project's memory.
 2. **Configure headless auth** — `gh auth setup-git` (registers `gh` as the credential helper; token in the OS keychain, HTTPS not SSH). Verify with `GIT_TERMINAL_PROMPT=0 git ls-remote origin HEAD` — it returns instantly, no prompt.
-3. **Install the scripts + hooks.** Copy `templates/project/scripts/{cc-memory-wire,cc-memory-consolidate,memory-sync}.sh` to `~/.claude/scripts/` (substitute `{MEMORY_VAULT_DIR}`). These are user-level — they target `~/.claude/...` across every project, so they ship into `~/.claude/scripts/`, NOT a project's `.claude/`. Then add the `SessionStart` + `SessionEnd` hooks to global `~/.claude/settings.json`:
+3. **Install the scripts + hooks.** Copy `templates/project/scripts/{memory-wire,memory-consolidate,memory-sync}.sh` to `~/.claude/scripts/` (substitute `{MEMORY_VAULT_DIR}`). These are user-level — they target `~/.claude/...` across every project, so they ship into `~/.claude/scripts/`, NOT a project's `.claude/`. Then add the `SessionStart` + `SessionEnd` hooks to global `~/.claude/settings.json`:
 
    ```json
    {
@@ -478,7 +478,7 @@ If **yes**, walk the procedure (full detail + every gotcha in `docs/references/m
            "hooks": [
              {
                "type": "command",
-               "command": "sh $HOME/.claude/scripts/cc-memory-wire.sh"
+               "command": "sh $HOME/.claude/scripts/memory-wire.sh"
              }
            ]
          }
@@ -501,10 +501,10 @@ If **yes**, walk the procedure (full detail + every gotcha in `docs/references/m
    **Permission-mode pitfall:** editing global `~/.claude/settings.json` is a persistent, code-running config change — under auto-permission mode with `skipAutoPermissionPrompt`, the classifier SILENTLY DENIES it without prompting. So have the USER run this idempotent one-liner themselves (it won't duplicate or clobber existing hooks):
 
    ```
-   python3 -c "import json,pathlib; p=pathlib.Path.home()/'.claude/settings.json'; d=json.loads(p.read_text()); h=d.setdefault('hooks',{}); h.setdefault('SessionStart',[]).append({'matcher':'','hooks':[{'type':'command','command':'sh \$HOME/.claude/scripts/cc-memory-wire.sh'}]}); h.setdefault('SessionEnd',[]).append({'matcher':'','hooks':[{'type':'command','command':'sh \$HOME/.claude/scripts/memory-sync.sh'}]}); p.write_text(json.dumps(d,indent=2)); print('memory hooks added')"
+   python3 -c "import json,pathlib; p=pathlib.Path.home()/'.claude/settings.json'; d=json.loads(p.read_text()); h=d.setdefault('hooks',{}); h.setdefault('SessionStart',[]).append({'matcher':'','hooks':[{'type':'command','command':'sh \$HOME/.claude/scripts/memory-wire.sh'}]}); h.setdefault('SessionEnd',[]).append({'matcher':'','hooks':[{'type':'command','command':'sh \$HOME/.claude/scripts/memory-sync.sh'}]}); p.write_text(json.dumps(d,indent=2)); print('memory hooks added')"
    ```
 
-4. **Run the consolidator once** — `sh ~/.claude/scripts/cc-memory-consolidate.sh`. It migrates every existing `~/work/<project>` memory dir into its vault subdir (copy → verify file-for-file → swap for a symlink), skipping any dir already linked (including a legacy single-project root brain). New projects need no manual step — the `SessionStart` hook wires them on first open.
+4. **Run the consolidator once** — `sh ~/.claude/scripts/memory-consolidate.sh`. It migrates every existing `~/work/<project>` memory dir into its vault subdir (copy → verify file-for-file → swap for a symlink), skipping any dir already linked (including a legacy single-project root brain). New projects need no manual step — the `SessionStart` hook wires them on first open.
 5. **Test with the test-payload trick.** A clean vault makes the sync a silent no-op — indistinguishable from "never fired" — so stage a deliberate pending change first (bait the hook). Exit cleanly with `/quit`, then confirm a new `pushed` line in `~/.claude/memory-sync.log` AND that the file reached the remote.
 
 Tell the adopter to exit with `/quit` or `/clear` for a guaranteed synchronous flush; a hard window-close still works but leans on the script's self-heal to catch up next session. Full architecture, the single config point, the root-guard, multi-writer safety, all tips, and the new-machine restore steps live in `docs/references/memory-backup.md`.

@@ -1,6 +1,6 @@
 #!/bin/sh
 # ---------------------------------------------------------------------------
-# cc-memory-wire.sh — Claude Code SessionStart hook.
+# memory-wire.sh — Claude Code SessionStart hook.
 # ONE git repo (the memory vault) holds EVERY project's memory, each in its own
 # subdir. On session start this: (1) pulls the shared vault current, (2) ensures
 # the CURRENT project's Claude memory dir is a symlink into <vault>/<project>/.

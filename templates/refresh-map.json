@@ -389,10 +389,10 @@
         ".claude/scripts/build-codex.mjs": "8eb03c4d8bc34b1765510ace96918418a279786cdce4d33ed1679d2e077acb9f"
       }
     },
-    "project/scripts/cc-memory-consolidate.sh": {
+    "project/scripts/memory-consolidate.sh": {
       "curated": true
     },
-    "project/scripts/cc-memory-wire.sh": {
+    "project/scripts/memory-wire.sh": {
       "curated": true
     },
     "project/scripts/checkpoint.sh": {
