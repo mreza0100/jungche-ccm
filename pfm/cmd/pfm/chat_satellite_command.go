@@ -747,10 +747,8 @@ func parentBranchRow(ctx context.Context, id string, runtimes ...commandRuntime)
 // parent chat exactly — a branch is a peer of its parent, not downstream work.
 //
 // initialCache1H is deliberately NOT used here. It reads the invoking process's
-// environment, and every shell a chat spawns carries the
-// "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0" that synth.go re-exports to force
-// caching off downstream; a fork launched from inside a 1h chat would read that
-// as 5m and be born on the wrong window.
+// environment rather than the parent's observed/configured posture. A fork
+// must inherit the parent, even when its caller uses another cache window.
 //
 // A non-live parent is the honest unknown: C1H is observed from the live
 // process environment, so false on a dead row means "not observed", never "5m".

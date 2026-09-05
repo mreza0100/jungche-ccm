@@ -151,8 +151,10 @@ func (installer *engine) mergeVSCodeSettings(path string, record vscodeOwnership
 		profiles = map[string]any{}
 	}
 	existingProfile, hasProfile := profiles[vscodeProfileName]
+	// An exact previously managed profile is an upgrade, not an operator edit.
+	upgradingProfile := alreadyOwned && record.ProfileOwned && isLegacyVSCodeProfile(existingProfile)
 	profileRelinquished := false
-	if alreadyOwned && record.ProfileOwned && hasProfile && !reflect.DeepEqual(existingProfile, canonical) {
+	if alreadyOwned && record.ProfileOwned && hasProfile && !reflect.DeepEqual(existingProfile, canonical) && !upgradingProfile {
 		// A user edit after installation wins. Relinquish this field instead of
 		// rewriting it during an unrelated update.
 		record.ProfileOwned = false
@@ -160,7 +162,7 @@ func (installer *engine) mergeVSCodeSettings(path string, record vscodeOwnership
 		profileRelinquished = true
 	}
 	if installer.options.VSCode || record.ProfileOwned {
-		if hasProfile && !reflect.DeepEqual(existingProfile, canonical) {
+		if hasProfile && !reflect.DeepEqual(existingProfile, canonical) && !upgradingProfile {
 			if !profileRelinquished {
 				return nil, record, false, fmt.Errorf("VS Code settings %s: profile %q already exists and is not PFM-owned", path, vscodeProfileName)
 			}
@@ -341,7 +343,7 @@ func (installer *engine) unwireVSCode(path string, existing []byte, ownership ma
 			}
 			profiles, _ := current[profileKey].(map[string]any)
 			profile, hasProfile := profiles[vscodeProfileName]
-			if reflect.DeepEqual(profile, vscodeProfile()) {
+			if reflect.DeepEqual(profile, vscodeProfile()) || isLegacyVSCodeProfile(profile) {
 				if record.ProfilesPropertyAdded && len(profiles) == 1 {
 					updated, err = removeJSONCProperty(updated, 0, profileKey)
 				} else {
@@ -534,11 +536,17 @@ func vscodeSettingKeys(platform string) (string, string) {
 	return "terminal.integrated.profiles." + platform, "terminal.integrated.defaultProfile." + platform
 }
 
+func isLegacyVSCodeProfile(profile any) bool {
+	legacy := vscodeProfile()
+	legacy["env"] = map[string]any{"CC_AUTO_OPEN": "pfm"}
+	return reflect.DeepEqual(profile, legacy)
+}
+
 func vscodeProfile() map[string]any {
 	return map[string]any{
 		"path": "/bin/zsh",
 		"args": []any{"-l"},
-		"env":  map[string]any{"CC_AUTO_OPEN": "pfm"},
+		"env":  map[string]any{"PFM_AUTO_OPEN": "pfm"},
 	}
 }
 

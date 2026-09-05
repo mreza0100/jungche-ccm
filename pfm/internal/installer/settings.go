@@ -3,6 +3,7 @@ package installer
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -263,6 +264,98 @@ func rewriteCommandFields(value any, rewrite func(string) string) bool {
 		}
 	}
 	return changed
+}
+
+// rewriteMemoryHelperHookPaths changes only complete, no-argument shell
+// command forms for a memory-wire helper whose old file was independently
+// proven installer-owned and paired with a ready destination. It deliberately
+// does not use rewriteCommandFields: command-looking values outside hooks and
+// compound shell commands are operator content.
+func rewriteMemoryHelperHookPaths(raw []byte, paths map[string]string, home string) ([]byte, bool, error) {
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, false, err
+	}
+	if document == nil {
+		return nil, false, fmt.Errorf("settings must be an object")
+	}
+	commands := make(map[string]string)
+	for oldPath, newPath := range paths {
+		addMemoryHelperCommandForms(commands, oldPath, newPath)
+		defaultOld := filepath.Join(home, ".claude", "scripts", "cc-memory-wire.sh")
+		if filepath.Clean(oldPath) == filepath.Clean(defaultOld) {
+			addMemoryHelperCommandForms(
+				commands,
+				"$HOME/.claude/scripts/cc-memory-wire.sh",
+				"$HOME/.claude/scripts/memory-wire.sh",
+			)
+		}
+	}
+
+	changed := false
+	events, ok := document["hooks"].(map[string]any)
+	if _, present := document["hooks"]; present && !ok {
+		return nil, false, fmt.Errorf("settings hooks must be an object")
+	}
+	for _, eventValue := range events {
+		entries, ok := eventValue.([]any)
+		if !ok {
+			return nil, false, fmt.Errorf("settings hook event must be an array")
+		}
+		for _, entryValue := range entries {
+			entry, ok := entryValue.(map[string]any)
+			if !ok {
+				return nil, false, fmt.Errorf("settings hook entry must be an object")
+			}
+			hooks, ok := entry["hooks"].([]any)
+			if !ok {
+				return nil, false, fmt.Errorf("settings hook entry hooks must be an array")
+			}
+			for _, hookValue := range hooks {
+				hook, ok := hookValue.(map[string]any)
+				if !ok {
+					return nil, false, fmt.Errorf("settings hook must be an object")
+				}
+				command, _ := hook["command"].(string)
+				if replacement, ok := commands[command]; ok && hook["type"] == "command" {
+					hook["command"] = replacement
+					changed = true
+				} else {
+					// Refusal is intentionally more conservative than rewriting:
+					// split quotes and alternate HOME spellings still reference the
+					// same owned helper, even though we do not parse shell programs.
+					unquoted := strings.NewReplacer(`"`, "", "'", "").Replace(command)
+					for oldPath := range paths {
+						referencesOld := strings.Contains(unquoted, oldPath)
+						if relative, err := filepath.Rel(home, oldPath); err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+							for _, prefix := range []string{"$HOME/", "${HOME}/", "~/"} {
+								referencesOld = referencesOld || strings.Contains(unquoted, prefix+filepath.ToSlash(relative))
+							}
+						}
+						if referencesOld {
+							return nil, false, fmt.Errorf("memory helper hook requires manual migration before retiring %s: %q", oldPath, command)
+						}
+					}
+				}
+			}
+		}
+	}
+	if !changed {
+		return raw, false, nil
+	}
+	updated, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return nil, false, fmt.Errorf("encode settings: %w", err)
+	}
+	return append(updated, '\n'), true, nil
+}
+
+func addMemoryHelperCommandForms(commands map[string]string, oldPath, newPath string) {
+	for _, shell := range []string{"", "sh ", "bash "} {
+		for _, quote := range []string{"", `"`, `'`} {
+			commands[shell+quote+oldPath+quote] = shell + quote + newPath + quote
+		}
+	}
 }
 
 // retiredHookCommands is the installer's single table of subcommands a

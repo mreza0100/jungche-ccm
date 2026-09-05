@@ -300,6 +300,9 @@ func (installer *engine) install(ctx context.Context) error {
 			installer.reloadUnits(ctx)
 		}
 	}
+	if err := installer.migrateMemoryHelpers(); err != nil {
+		return err
+	}
 	if err := installer.wireSettings(); err != nil {
 		return err
 	}
@@ -2070,8 +2073,8 @@ func (installer *engine) reportEarlyFleetCalls(content string) {
 		installer.say("          %s", line)
 	}
 	installer.say("          There, `cc` is /usr/bin/cc — the C compiler — not this fleet.")
-	installer.say("          Move those lines BELOW the source line. For a terminal profile that")
-	installer.say("          opens a chat on launch, delete them instead and set CC_AUTO_OPEN=1 in")
+	installer.say("          Replace retired cc* calls with pfm BELOW the source line. For a terminal profile that")
+	installer.say("          opens the picker on launch, delete them instead and set PFM_AUTO_OPEN=pfm in")
 	installer.say("          the profile's env: the shim runs that hook itself, last, once the")
 	installer.say("          launchers are defined.")
 }
@@ -2146,11 +2149,12 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 }
 
 func (installer *engine) retirePredecessors() error {
+	if err := installer.retireLegacyCommands(); err != nil {
+		return err
+	}
 	for _, config := range installer.claudeConfigDirs() {
 		for _, name := range []string{
-			"cc-kill.sh", "cx-kill.sh", "bb-hook.sh", "cc-archive.sh", "cc-reap.sh",
-			"cc-name-sync.sh", "cx-heal.sh", "cc-portable.sh", "cc-db.sh", "cx-recover.sh",
-			"cc-agent-open.sh", "cc-swap-chat.sh",
+			"cx-kill.sh", "bb-hook.sh", "cx-heal.sh", "cx-recover.sh",
 		} {
 			if err := installer.retire(filepath.Join(config, "bin", name), "native pfm command"); err != nil {
 				return err
@@ -2184,6 +2188,64 @@ func (installer *engine) retirePredecessors() error {
 		}
 	}
 	return installer.retireGlob(carrier+".n.*", "retired carrier scratch")
+}
+
+// Retire executable predecessors across the configured account roster while
+// leaving account credentials, transcript directories, and live sockets alone.
+func (installer *engine) retireLegacyCommands() error {
+	for _, name := range []string{"cc-fleet", "cc-ls", "cc-open", "cc-swap", "cc-revive", "cc-clean"} {
+		if err := installer.retireLegacyCommand(filepath.Join(installer.options.Home, ".local", "bin", name)); err != nil {
+			return err
+		}
+	}
+	configDirs := installer.options.ConfigDirs
+	if configDirs == nil {
+		configDirs = []string{installer.options.ConfigDir}
+	}
+	for _, configDir := range configDirs {
+		if strings.TrimSpace(configDir) == "" {
+			continue
+		}
+		for _, name := range []string{
+			"cc-launch.sh", "cc-lib.sh", "cc-reseed.sh", "cc-account-swap.sh", "cc-account-swap-all.sh",
+			"cc-ls.sh", "cc-open.sh", "cc-revive.sh", "cc-clean.sh", "cc-usage-hook.sh", "cc-fleet.zsh",
+			"cc-kill.sh", "cc-archive.sh", "cc-reap.sh", "cc-name-sync.sh", "cc-portable.sh", "cc-db.sh",
+			"cc-agent-open.sh", "cc-swap-chat.sh",
+		} {
+			if err := installer.retireLegacyCommand(filepath.Join(configDir, "bin", name)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Retired command names are reserved, but their files may have been customized.
+// Preserve regular files outside PATH before removing their old executable name.
+func (installer *engine) retireLegacyCommand(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect retired command %s: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return installer.retire(path, "retired command link; target preserved")
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("refuse to retire non-regular command %s", path)
+	}
+	backup := availableBackup(filepath.Join(installer.options.Home, ".local", "state", "pfm", "retired-commands", filepath.Base(path)), installer.stamp)
+	return installer.change("retire "+path+" (backup: "+backup+")", func() error {
+		if err := copyBackup(path, backup); err != nil {
+			return fmt.Errorf("backup retired command %s: %w", path, err)
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove retired command %s after backup %s: %w", path, backup, err)
+		}
+		return nil
+	})
 }
 
 // retiredGlobalAgents names every global Claude agent identity a template

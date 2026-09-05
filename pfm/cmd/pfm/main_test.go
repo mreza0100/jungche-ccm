@@ -717,7 +717,7 @@ func TestActionDispatchPipeGoldenAndTTYExec(t *testing.T) {
 		t.Fatalf("terminal tmux exec = %#v", calls)
 	}
 
-	const shellLine = "(cd -- '/work/project' && CC_ARM_1H=0 cc1)"
+	const shellLine = "(cd -- '/work/project' && CODEX_HOME='/work/codex' cx)"
 	if err := dispatchAction(&stdout, shellLine); !errors.Is(err, execReturned) {
 		t.Fatalf("terminal shell error = %v", err)
 	}

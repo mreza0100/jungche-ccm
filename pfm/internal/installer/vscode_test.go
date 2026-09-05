@@ -51,7 +51,7 @@ func TestVSCodeTerminalProfileIsPreviewedMergedIdempotentAndReversed(t *testing.
 		"// existing profiles belong to the operator",
 		`"zsh": {"path": "/bin/zsh"}`,
 		`"PFM":`,
-		`"CC_AUTO_OPEN": "pfm"`,
+		`"PFM_AUTO_OPEN": "pfm"`,
 		`"terminal.integrated.defaultProfile.linux": "PFM"`,
 		// The terminal-persistence keys: tmux is the chat's survival layer,
 		// the tab only a view — persistence reconnects the view across a
@@ -95,7 +95,7 @@ func TestVSCodeTerminalProfileIsPreviewedMergedIdempotentAndReversed(t *testing.
 			t.Errorf("restored settings missing %q:\n%s", want, restored)
 		}
 	}
-	if strings.Contains(restored, `"PFM"`) || strings.Contains(restored, "CC_AUTO_OPEN") {
+	if strings.Contains(restored, `"PFM"`) || strings.Contains(restored, "PFM_AUTO_OPEN") {
 		t.Fatalf("uninstall retained the PFM profile:\n%s", restored)
 	}
 	for _, gone := range []string{
@@ -254,8 +254,8 @@ func TestVSCodeUninstallRemovesASettingsFilePFMCreated(t *testing.T) {
 
 func TestVSCodeProfileUsesTheShimPickerValueExplicitly(t *testing.T) {
 	shim := readFixture(t, filepath.Join("assets", "shim", "pfm.zsh"))
-	if !strings.Contains(shim, "pfm|picker|ls)") {
-		t.Fatal("the installed CC_AUTO_OPEN=pfm value is not explicitly routed to the PFM picker")
+	if !strings.Contains(shim, `cmd="$HOME/.local/bin/pfm"`) {
+		t.Fatal("the installed PFM_AUTO_OPEN=pfm value is not routed to the absolute PFM picker")
 	}
 }
 
@@ -450,7 +450,7 @@ const realMalformedVSCodeSettings = `{
         "-l"
       ],
       "env": {
-        "CC_AUTO_OPEN": "pfm"
+		"PFM_AUTO_OPEN": "pfm"
       },
       "path": "/bin/zsh"
     },
@@ -505,7 +505,7 @@ func TestVSCodeMergeToleratesTheRealMalformedTrailingCommaFile(t *testing.T) {
 	}
 	for _, want := range []string{
 		`"PFM":`,
-		`"CC_AUTO_OPEN": "pfm"`,
+		`"PFM_AUTO_OPEN": "pfm"`,
 		`"terminal.integrated.defaultProfile.linux": "PFM"`,
 		`"terminal.integrated.enablePersistentSessions": true`,
 		`"terminal.integrated.persistentSessionReviveProcess": "never"`,
@@ -540,7 +540,7 @@ func TestVSCodeMergeWritesStrictJSONIntoTheMalformedProfilesObject(t *testing.T)
         "-l"
       ],
       "env": {
-        "CC_AUTO_OPEN": "pfm"
+		"PFM_AUTO_OPEN": "pfm"
       },
       "path": "/bin/zsh"
     },
@@ -568,7 +568,7 @@ func TestVSCodeMergeWritesStrictJSONIntoTheMalformedProfilesObject(t *testing.T)
 	}
 	for _, want := range []string{
 		`"PFM":`,
-		`"CC_AUTO_OPEN": "pfm"`,
+		`"PFM_AUTO_OPEN": "pfm"`,
 		`"bash": {`,
 		`"devbox (zsh)": {`,
 	} {

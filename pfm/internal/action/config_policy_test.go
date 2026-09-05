@@ -115,15 +115,7 @@ func TestHeadlessRunUsesConfiguredClaudeAndCodexPolicy(t *testing.T) {
 	}
 }
 
-// TestSynthesizePickerNewRowsIgnoreConfiguredLaunch pins K1 (pfm/CLAUDE.md §
-// Code Standards): a ✦-new row always calls the user's own `cc`/`cx` shell
-// function, even on a machine whose config file pins accounts, a permission
-// mode, or a binary override. Those overrides remain live for resume/agent/
-// headless routes (see TestSynthesizeUsesConfiguredClaudeAccountAndPromptPolicy
-// and TestHeadlessRunUsesConfiguredClaudeAndCodexPolicy above) — only the
-// fresh-launch routes must stay blind to them, because the shell function is
-// what stands up the per-chat tmux server the fleet later finds.
-func TestSynthesizePickerNewRowsIgnoreConfiguredLaunch(t *testing.T) {
+func TestSynthesizePickerNewRowsUseNativeClaudeAndShellCodexLaunches(t *testing.T) {
 	home := t.TempDir()
 	machine := configuredMachinePolicy(home)
 
@@ -135,16 +127,16 @@ func TestSynthesizePickerNewRowsIgnoreConfiguredLaunch(t *testing.T) {
 		PrimaryAccount: 42,
 		Home:           home,
 		Config:         machine,
+		FreshSocket:    "cc-configured-new-42",
 	})
 	if err != nil {
 		t.Fatalf("Synthesize(NewClaude) error = %v", err)
 	}
-	wantClaude := "(cd -- '/work/project' && CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 cc42)"
-	if claudePlan.Line != wantClaude {
-		t.Fatalf("new Claude picker line = %q, want %q", claudePlan.Line, wantClaude)
+	if claudePlan.Line != newSessionLine("cc-configured-new-42", "/work/project", claudePlan.Run, false) {
+		t.Fatalf("new Claude picker line = %q, run = %q", claudePlan.Line, claudePlan.Run)
 	}
-	if strings.Contains(claudePlan.Line, "claude") {
-		t.Fatalf("new Claude picker line names the configured binary instead of calling cc42: %q", claudePlan.Line)
+	if !strings.Contains(claudePlan.Run, Quote(machine.Claude.Binary)) || strings.Contains(claudePlan.Run, "skip-permissions") {
+		t.Fatalf("new Claude picker run ignored configured prompt policy: %q", claudePlan.Run)
 	}
 
 	codexPlan, err := Synthesize(Request{

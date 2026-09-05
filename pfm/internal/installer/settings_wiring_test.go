@@ -566,32 +566,34 @@ func TestSettingsInstallRemovesRetiredChatGroupHookOnApply(t *testing.T) {
 	}
 }
 
-func TestShimAssetEmitsConfiguredClaudeAndCodexPosture(t *testing.T) {
+func TestShimAssetEmitsConfiguredCodexPostureOnly(t *testing.T) {
 	raw, err := readAsset("shim/pfm.zsh")
 	if err != nil {
 		t.Fatal(err)
 	}
 	renderedBytes, err := renderShimAsset(raw, Options{
-		ClaudePrompted: map[int]bool{1: false, 2: true},
-		CodexYolo:      map[int]bool{1: true, 2: false},
+		CodexYolo: map[int]bool{1: true, 2: false},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	rendered := string(renderedBytes)
 	for _, want := range []string{
-		"[1]=0",
-		"[2]=1",
 		"PFM_CODEX_YOLO",
+		"[1]=1",
 		"[2]=0",
-		"autonomy_flags=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered shim missing %q:\n%s", want, rendered)
 		}
 	}
-	if strings.Contains(rendered, "CC_AUTONOMY_FLAGS") || strings.Contains(rendered, "codex --dangerously-bypass-approvals-and-sandbox") {
-		t.Fatalf("rendered shim retained unconditional posture flags:\n%s", rendered)
+	for _, retired := range []string{"typeset -gA PFM_CLAUDE_PROMPTED", "_cc_run() {", "CC_AUTONOMY_FLAGS="} {
+		if strings.Contains(rendered, retired) {
+			t.Fatalf("rendered shim retained retired Claude posture surface %q:\n%s", retired, rendered)
+		}
+	}
+	if strings.Contains(rendered, "codex --dangerously-bypass-approvals-and-sandbox") {
+		t.Fatalf("rendered shim retained unconditional Codex posture flags:\n%s", rendered)
 	}
 }
 

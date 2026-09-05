@@ -344,7 +344,7 @@ func runInstallE2E(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, want := range []string{"// e2e operator setting", `"PFM"`, `"CC_AUTO_OPEN": "pfm"`, fmt.Sprintf("%q: \"PFM\"", defaultKey)} {
+		for _, want := range []string{"// e2e operator setting", `"PFM"`, `"PFM_AUTO_OPEN": "pfm"`, fmt.Sprintf("%q: \"PFM\"", defaultKey)} {
 			if !strings.Contains(string(merged), want) {
 				t.Fatalf("VS Code settings missing %q after install:\n%s", want, merged)
 			}
@@ -356,7 +356,7 @@ func runInstallE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !strings.Contains(string(restored), fmt.Sprintf("%q: \"zsh\"", defaultKey)) ||
-			strings.Contains(string(restored), `"PFM"`) || strings.Contains(string(restored), "CC_AUTO_OPEN") {
+			strings.Contains(string(restored), `"PFM"`) || strings.Contains(string(restored), "PFM_AUTO_OPEN") {
 			t.Fatalf("VS Code settings were not selectively restored:\n%s", restored)
 		}
 	})
@@ -480,6 +480,7 @@ func prepareSourceRepoWithGit(t *testing.T, root, workTree, gitDir string) strin
 	runGitFixture(t, fixture, "init", "-q")
 	runGitFixture(t, fixture, "config", "user.email", "fixture.invalid")
 	runGitFixture(t, fixture, "config", "user.name", "fixture-identity")
+	runGitFixture(t, fixture, "config", "core.hooksPath", ".githooks")
 	runGitFixture(t, fixture, "add", "-A")
 	runGitFixture(t, fixture, "add", "-f", filepath.ToSlash(e2eFixtureSkill))
 	runGitFixture(t, fixture, "commit", "-qm", "fixture previous release")
@@ -818,9 +819,9 @@ func (h *e2eHarness) requireSkippedHarvestDoctor(result commandResult) {
 		"doctor: dep uv path= broken",
 		"doctor: dep harvestpy path= broken",
 		"doctor: harvestpy skipped",
-		"doctor: pre-push gate=UNWIRED expected=.githooks actual=(unset)",
+		"doctor: pre-push gate=armed core.hooksPath=.githooks",
 		"doctor: harness-prompt: matches baseline",
-		"doctor: warnings=3",
+		"doctor: warnings=2",
 	} {
 		if !strings.Contains(output, want) {
 			h.t.Fatalf("doctor after --skip-harvest omitted %q; stdout=%q stderr=%q", want, result.stdout, result.stderr)
@@ -1019,22 +1020,39 @@ func (h *e2eHarness) assertTmuxConfig(home string) {
 func (h *e2eHarness) assertInit(project, source string) {
 	h.t.Helper()
 	templates := filepath.Join(source, "templates", "project")
+	shaResult := runGit(source, "rev-parse", "--short", "HEAD")
+	if shaResult.err != nil {
+		h.t.Fatalf("resolve init source SHA: %v", shaResult.err)
+	}
+	sha := strings.TrimSpace(shaResult.stdout)
 	for _, mapping := range []struct{ source, target string }{
 		{"CLAUDE.md", "CLAUDE.md"},
 		{"settings.json", ".claude/settings.json"},
 	} {
-		h.assertInitFile(filepath.Join(templates, mapping.source), filepath.Join(project, mapping.target), mapping.target)
+		h.assertInitFile(
+			filepath.Join(templates, mapping.source), filepath.Join(project, mapping.target),
+			mapping.target, filepath.ToSlash(filepath.Join("project", mapping.source)), sha,
+		)
 	}
-	for _, directory := range []string{"commands", "agents", "skills"} {
-		sourceDir := filepath.Join(templates, directory)
-		targetDir := filepath.Join(project, ".claude", directory)
-		h.assertInitPath(targetDir, filepath.Join(".claude", directory))
+	for _, mapping := range []struct{ source, target, skip string }{
+		{"commands", ".claude/commands", ""},
+		{"agents", ".claude/agents", "per-project"},
+		{"scripts", ".claude/scripts", ""},
+		{"skills", ".claude/skills", ""},
+		{"workflows", ".claude/workflows", ""},
+		{"codex", ".codex", ""},
+		{"docs-commands", "docs/commands", ""},
+		{"docs-agents", "docs/agents", ""},
+	} {
+		sourceDir := filepath.Join(templates, mapping.source)
+		targetDir := filepath.Join(project, mapping.target)
+		h.assertInitPath(targetDir, mapping.target)
 		if err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 			if entry.IsDir() {
-				if directory == "agents" && entry.Name() == "per-project" {
+				if mapping.skip != "" && path == filepath.Join(sourceDir, mapping.skip) {
 					return filepath.SkipDir
 				}
 				return nil
@@ -1044,16 +1062,18 @@ func (h *e2eHarness) assertInit(project, source string) {
 				return relErr
 			}
 			target := filepath.Join(targetDir, relative)
-			h.assertInitFile(path, target, filepath.Join(".claude", directory, relative))
+			local := filepath.ToSlash(filepath.Join(mapping.target, relative))
+			template := filepath.ToSlash(filepath.Join("project", mapping.source, relative))
+			h.assertInitFile(path, target, local, template, sha)
 			return nil
 		}); err != nil {
-			h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", directory, err)
+			h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", mapping.source, err)
 		}
 	}
 	h.readJSON(filepath.Join(project, ".claude", "settings.json"))
 }
 
-func (h *e2eHarness) assertInitFile(source, target, relative string) {
+func (h *e2eHarness) assertInitFile(source, target, local, template, sha string) {
 	h.t.Helper()
 	want, err := os.ReadFile(source)
 	if err != nil {
@@ -1061,15 +1081,33 @@ func (h *e2eHarness) assertInitFile(source, target, relative string) {
 	}
 	got, err := os.ReadFile(target)
 	if err != nil {
-		h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", relative, err)
+		h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", local, err)
 	}
-	// Scaffold ownership provenance is generated; the installed body must
-	// otherwise remain byte-identical to its canonical template.
-	if parts := bytes.SplitN(got, []byte("\n"), 3); len(parts) == 3 && string(parts[0]) == "---" && bytes.HasPrefix(parts[1], []byte("# pfm-scaffold: ")) {
-		got = append([]byte("---\n"), parts[2]...)
+	marker := []byte(fmt.Sprintf("# pfm-scaffold: %s@%s — this file is YOURS; upstream deltas arrive via pfm update, reviewed and hand-applied\n", template, sha))
+	marked := false
+	if local != "CLAUDE.md" && local != "AGENTS.md" && strings.HasSuffix(local, ".md") && bytes.HasPrefix(want, []byte("---\n")) {
+		prefix := append([]byte("---\n"), marker...)
+		if !bytes.HasPrefix(got, prefix) {
+			h.t.Fatalf("init scaffold failed; differing paths: %s; exact frontmatter marker absent", local)
+		}
+		got = append([]byte("---\n"), got[len(prefix):]...)
+		marked = true
+	}
+	if strings.HasSuffix(local, ".sh") {
+		if newline := bytes.IndexByte(want, '\n'); newline >= 0 && bytes.HasPrefix(want, []byte("#!")) {
+			prefix := append(append([]byte(nil), want[:newline+1]...), marker...)
+			if !bytes.HasPrefix(got, prefix) {
+				h.t.Fatalf("init scaffold failed; differing paths: %s; exact shebang marker absent", local)
+			}
+			got = append(append([]byte(nil), want[:newline+1]...), got[len(prefix):]...)
+			marked = true
+		}
+	}
+	if !marked && bytes.Contains(got, []byte("# pfm-scaffold:")) {
+		h.t.Fatalf("init scaffold failed; differing paths: %s; unexpected scaffold marker", local)
 	}
 	if !bytes.Equal(got, want) {
-		h.t.Fatalf("init scaffold failed; differing paths: %s; bytes do not match templates source", relative)
+		h.t.Fatalf("init scaffold failed; differing paths: %s; bytes do not match after exact marker removal", local)
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"hostops/pfm/internal/compose"
@@ -93,11 +92,8 @@ func LauncherRun(real string, args []string, configDir, home string, claude pfmc
 // the acting half; both are required. Chats run unattended overnight, so a
 // mid-task approval prompt is a stalled chat with nobody awake to clear it.
 //
-// The resume routes append them AFTER the transcript argument, exactly as
-// the interactive launcher does. The fresh-launch routes emit a `cc1`/`cc2`
-// call instead, and _cc_run already prepends the flags there — passing them
-// again would duplicate them in argv. Codex carries its own
-// bypass flag and never these.
+// Fresh and resumed Claude launches share ClaudeSpawn's policy. Codex carries
+// its own bypass flag and never these.
 const autonomyFlags = "--allow-dangerously-skip-permissions --dangerously-skip-permissions"
 
 // Synthesize produces a deterministic action plan without touching tmux,
@@ -155,19 +151,19 @@ func Synthesize(request Request) (Plan, error) {
 	plan := Plan{Route: route}
 	switch route {
 	case NewClaude:
-		if request.Row.CWD == "" {
-			return Plan{}, errors.New("new Claude action requires a project directory")
+		if request.Row.CWD == "" || request.FreshSocket == "" {
+			return Plan{}, errors.New("new Claude action requires cwd and fresh socket")
 		}
-		command := string(pfmengine.Claude) + strconv.Itoa(request.PrimaryAccount)
-		armed := "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 "
-		if request.Cache1H {
-			armed = "CC_ARM_1H=1 "
-		}
-		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
-			armed + command + ")"
+		var arguments []string
 		if request.Prompt != "" {
-			plan.Line = strings.TrimSuffix(plan.Line, ")") + " " + Quote(request.Prompt) + ")"
+			arguments = append(arguments, request.Prompt)
 		}
+		run, err := claudeCommand(PurposeInteractive, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...)
+		if err != nil {
+			return Plan{}, err
+		}
+		plan.Run = run
+		plan.Line = newSessionLine(request.FreshSocket, request.Row.CWD, plan.Run, request.Bunker)
 	case NewCodex:
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Codex action requires a project directory")

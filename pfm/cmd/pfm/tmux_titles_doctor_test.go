@@ -111,7 +111,7 @@ func TestTmuxTitlesDoctorReportsADisabledPolicy(t *testing.T) {
 	var stdout bytes.Buffer
 	printTmuxTitlesDoctor(
 		context.Background(), &stdout,
-		paths.Values{TmuxDir: filepath.Join(t.TempDir(), "tmux-1000")}, machine,
+		paths.Values{TmuxDir: filepath.Join(t.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))}, machine,
 	)
 	want := "doctor: tmux titles policy=host-owned (config tmux.titles.enabled=false file)"
 	if !strings.Contains(stdout.String(), want) {

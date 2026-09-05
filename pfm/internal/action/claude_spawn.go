@@ -106,7 +106,7 @@ type ClaudeSpawn struct {
 	// leaves it empty and the account decides.
 	explicitConfigDir string
 	// noAutonomy suppresses the autonomy flags for the argv-preserving
-	// launcher, whose caller (the shim's _cc_run) already carries them —
+	// launcher, whose native action caller already carries them —
 	// emitting them here would duplicate them in argv.
 	noAutonomy bool
 }

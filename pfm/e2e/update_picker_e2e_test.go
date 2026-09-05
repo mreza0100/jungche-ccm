@@ -119,7 +119,7 @@ func TestOlderPFMDiscoversUpdateThenPickerLaunchesGuidedEngine(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(binDir, "cx"), []byte(fakeCodex), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, engine := range []string{"cc1", "opencode"} {
+	for _, engine := range []string{"opencode"} {
 		stub := "#!/bin/sh\nprintf 'unexpected engine=" + engine + "\\n' > \"$PFM_UPDATE_LAUNCH_PROOF\"\nsleep 2\n"
 		if err := os.WriteFile(filepath.Join(binDir, engine), []byte(stub), 0o700); err != nil {
 			t.Fatal(err)
