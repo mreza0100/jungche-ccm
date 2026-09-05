@@ -111,9 +111,12 @@ The lookup never blocks or writes into the active picker frame.
 > sky itself. Stars take their colour from the hour's traffic and cool over the hours after
 > their last message, so a busy project burns blue-white. When chats talk to each other the sky
 > draws an edge between them, read from a durable comms ledger — so an edge is a fact rather
-> than a guess. The capture above is a quiet moment: four chats, no traffic, no edges. `↑↓` rings a chat
-> with a reticle and `enter` opens it; `s` focuses one project's system; `o` collapses the
-> hierarchy back to one shared ring. The chronoscope replays the last 24h (`[ ]` ±5m, `{ }` ±1h,
+> than a guess. The capture above is a busy sky: six projects with an orchestrator seated in
+> each, every orchestrator having spawned two workers of its own — 22 chats and 81 edges in the
+> window, the moons risen at their parents' angles, and the ticker at the bottom scrolling the
+> ledger message by message. `↑↓` rings a chat with a reticle and `enter` opens it; `s` focuses
+> one project's system; `o` collapses the hierarchy back to one shared ring. The chronoscope
+> replays the last 24h (`[ ]` ±5m, `{ }` ±1h,
 > `space` plays at 60×, `n` returns to now) — and a chat that is dead now still renders as the
 > ghost it was back then.
 
