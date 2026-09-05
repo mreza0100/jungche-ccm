@@ -109,8 +109,9 @@ The lookup never blocks or writes into the active picker frame.
 > Every chat is exactly one node; every project is a star its chats orbit, and a spawned chat
 > rises as a moon around its parent, born at the parent's angle — so lineage is visible in the
 > sky itself. Stars take their colour from the hour's traffic and cool over the hours after
-> their last message, so a busy project burns blue-white. Edges are drawn from a durable
-> chat-to-chat comms ledger, which makes an edge a fact rather than a guess. `↑↓` rings a chat
+> their last message, so a busy project burns blue-white. When chats talk to each other the sky
+> draws an edge between them, read from a durable comms ledger — so an edge is a fact rather
+> than a guess. The capture above is a quiet moment: four chats, no traffic, no edges. `↑↓` rings a chat
 > with a reticle and `enter` opens it; `s` focuses one project's system; `o` collapses the
 > hierarchy back to one shared ring. The chronoscope replays the last 24h (`[ ]` ±5m, `{ }` ±1h,
 > `space` plays at 60×, `n` returns to now) — and a chat that is dead now still renders as the
