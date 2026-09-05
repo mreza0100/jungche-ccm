@@ -41,6 +41,7 @@ Bullets MUST follow this shape:
 
 ## Releases
 
+- [v0.69.1](releases/v0.69.1.md) — Model-aware Claude harness drift checks
 - [v0.69.0](releases/v0.69.0.md) — Harness integration, account migration, and verified Codex pane identity.
 
 - [v0.68.0](releases/v0.68.0.md) — issue #14 self-hosted audit closed: installer-owned statusline overlay, tmux title and name-sync config gates, instant Claude rename, arch-pinned cosmos, stamped version; cache timer at any width; revive removed
