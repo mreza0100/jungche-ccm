@@ -168,7 +168,7 @@ cx() {
   # PER-ELEMENT quoting, then join — same fix as _cc_run (lines 89-93): "${(q)@}" joins the
   # array into ONE word FIRST and quotes that, so `cx --resume abc123` arrives as a single
   # escaped argv element ("--resume\ abc123") and codex rejects it as one unknown flag.
-  local run="env ${CC_SESSION_UNSET} -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex ${(j: :)${(@q)codex_flags}} ${(j: :)${(@q)@}}"
+  local run="env ${CC_SESSION_UNSET} -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} pfm internal codex-launch codex ${(j: :)${(@q)codex_flags}} ${(j: :)${(@q)@}}"
   _cx_server "$sock" "$PWD" "$run" || return
   if _cc_selfswitch "$sock"; then :                          # already inside it → switch, never nest
   elif _cc_in_bunker; then TMUX= exec tmux -L "$sock" attach # viewport dies with the tab

@@ -32,7 +32,7 @@ This project runs two AI runtimes as a team. Full protocol: `docs/commands/pfm/r
 
 ## Persona
 
-Voice and delivery law ride the fleet prompt (`prompts/professor.md`, injected via `pfm` `claude.systemPrompt = "professor"`); on the `production` prompt, supply your own. Every reply ends with a one-line **Verdict**.
+Voice and delivery law live in Professor's harness prompts: `templates/prompts/professor.md` for the Claude replacement and `templates/prompts/codex-appendix.md` for managed Codex launches. Claude's `production` mode uses its native prompt.
 
 ## Path vars:
 
@@ -76,13 +76,10 @@ Voice and delivery law ride the fleet prompt (`prompts/professor.md`, injected v
 <!-- KEEP the next rule only if the roster has a project that owns infra/orchestration; drop it for a roster with no such project. -->
 
 - All infra ops via `make -C {INFRA_PROJECT}`: never direct `{CONTAINER_RUNTIME} exec` / `{DB_CLI}` / `{CLOUD_CLI} {QUEUE}`
-- Execute explicit instructions as given: user delegation ("run it", "finish it") runs to completion; never narrow, drop, or swap scope, nor override with your own caution; raise a genuine concern up front
 
 <!-- KEEP the "`{AI_PROJECT}/knowledge/**` (route: `/km`)" clause only if the KM Tier-B opt-in is installed for this roster; otherwise drop it and the surrounding "and", keeping just the `.claude/`+`CLAUDE.md` clause. -->
 
 - Guarded files: PreToolUse hooks gate `.claude/**` + every `CLAUDE.md` (route: `/pfm`) and `{AI_PROJECT}/knowledge/**` (route: `/km`); the deny message carries the unlock steps
-- "God speed" = full autonomy: user away/unreachable; resolve every ambiguity/blocker yourself & finish and report your decision at the end; only failure = stop/ask
-- "What's up/How's it going": means I haven't read anything since my last prompt, give me a summary of what happened since then
 - Worktrees are costly: batch a session's related changes into one, and ask before creating one.
 
 ### Testing & Environment
@@ -98,4 +95,4 @@ Voice and delivery law ride the fleet prompt (`prompts/professor.md`, injected v
 
 ## Model Selection
 
-Tiers, effort, and delegation posture live in the fleet prompt's § Model Selection (`prompts/professor.md`) — never restated here. On the `production` prompt no tier law loads: enable the professor prompt, or restore a Model Selection section of your own.
+Tiers, effort, and delegation posture live in the applicable harness prompt's § Model Selection — never restated here.

@@ -1,11 +1,26 @@
 # prompts — the fleet's system-prompt layer
 
-Two artifacts, consumed by pfm's `claude.systemPrompt` config key and the `pfm doctor` drift check.
+Claude replacement, Codex appendix, and the Claude drift baseline.
 
 - `professor.md` — the Professor system prompt. `"systemPrompt": "professor"` makes every managed Claude
   launch inject it via `--system-prompt-file`, replacing the harness's built-in prose (tool schemas and
   CLAUDE.md are separate request lanes and are unaffected). Byte-identical to the embedded installer asset
   `prompts/professor-prompt.md`; a Go test enforces the pairing.
+- `codex-appendix.md` — appended to effective `developer_instructions` for every model in
+  Professor-managed Codex launches: `cx`, chat new/resume/fork, reload, Dream seats, and harvest ask.
+  `pfm internal codex-launch` resolves existing instructions through Codex's `config/read` API,
+  then passes the merged text as a final `-c developer_instructions=...` override. The model's
+  base instructions stay intact. Raw `codex` invocations remain native.
+  Runtime-only profile and ignore-user-config selectors use a temporary sibling config-reader
+  home; the real launch keeps its original account and arguments. No model turn is used.
+  These two selectors require file credential storage; keyring/auto storage fails explicitly
+  because a temporary home cannot preserve the native keyring lookup identity.
+  Native role/custom child instructions can replace the parent's appendix. Default/full-history
+  children inherit it; the appendix asks parents to brief coordination rules into children whose
+  overrides replace them. This is prompt guidance, not a tool-access restriction.
+  `pfm install` stages the byte-identical embedded asset and removes the old marked Professor
+  block from global config, preserving personal instructions and existing numeric wait settings.
+  Edit the template and matching installer asset, then rebuild and install to deploy.
 - `harness-original-v2.1.257.md` — the captured Claude Code v2.1.257 built-in system prompt (print-mode,
   dynamic sections excluded), the drift baseline. Captured via a localhost sink: point `ANTHROPIC_BASE_URL`
   at a listener that records the request body and answers a non-retryable 400 — the exact assembled prompt,

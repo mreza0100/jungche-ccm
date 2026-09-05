@@ -511,7 +511,7 @@ func codexRun(request Request) string {
 	if binary != pfmengine.MustLookup(pfmengine.Codex).Binary {
 		binary = action.Quote(binary)
 	}
-	parts = append(parts, binary)
+	parts = append(parts, "pfm", "internal", "codex-launch", binary)
 	if request.CodexYolo {
 		parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
 	} else {

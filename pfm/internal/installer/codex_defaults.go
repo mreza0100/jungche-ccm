@@ -18,7 +18,7 @@ const codexPolicyBegin = "<!-- BEGIN Professor subagent coordination -->"
 const codexPolicyEnd = "<!-- END Professor subagent coordination -->"
 
 // wireCodexDefaults keeps mutable trust/model/MCP configuration local. Only
-// missing settings and the marked instruction block come from the template.
+// missing settings come from the template; the retired global prompt block is removed.
 func (installer *engine) wireCodexDefaults() error {
 	sourceRepo, err := installer.globalSourceRepoRoot()
 	if err != nil {
@@ -81,7 +81,7 @@ func (installer *engine) wireCodexDefaults() error {
 
 // mergeCodexDefaults preserves comments and installer ownership fences. The
 // TOML parser locates complete declarations, including multiline strings;
-// only the developer value is replaced and absent feature keys are inserted.
+// the retired Professor developer block is removed and absent feature keys are inserted.
 func mergeCodexDefaults(raw, defaults string) (string, error) {
 	var config, source map[string]any
 	if _, err := toml.Decode(raw, &config); err != nil {
@@ -90,17 +90,11 @@ func mergeCodexDefaults(raw, defaults string) (string, error) {
 	if _, err := toml.Decode(defaults, &source); err != nil {
 		return "", fmt.Errorf("parse defaults: %w", err)
 	}
-	policy, ok := source["developer_instructions"].(string)
-	if !ok || strings.TrimSpace(policy) == "" {
-		return "", fmt.Errorf("defaults need nonempty developer_instructions")
-	}
 	current, ok := config["developer_instructions"].(string)
 	if !ok && config["developer_instructions"] != nil {
 		return "", fmt.Errorf("developer_instructions must be a string")
 	}
-	block := codexPolicyBegin + "\n" + strings.TrimSpace(policy) + "\n" + codexPolicyEnd
-	switch {
-	case strings.Contains(current, codexPolicyBegin) || strings.Contains(current, codexPolicyEnd):
+	if strings.Contains(current, codexPolicyBegin) || strings.Contains(current, codexPolicyEnd) {
 		if strings.Count(current, codexPolicyBegin) != 1 || strings.Count(current, codexPolicyEnd) != 1 {
 			return "", fmt.Errorf("ambiguous Professor instruction markers")
 		}
@@ -108,19 +102,16 @@ func mergeCodexDefaults(raw, defaults string) (string, error) {
 		if end < start {
 			return "", fmt.Errorf("reversed Professor instruction markers")
 		}
-		current = current[:start] + block + current[end+len(codexPolicyEnd):]
-	case strings.TrimSpace(current) == strings.TrimSpace(policy):
-		current = block // Adopt the exact standalone policy without duplicating it.
-	case strings.TrimSpace(current) == "":
-		current = block
-	default:
-		current = strings.TrimRight(current, "\n") + "\n\n" + block
+		current = current[:start] + current[end+len(codexPolicyEnd):]
 	}
 	updated := raw
-	if config["developer_instructions"] != current {
+	if config["developer_instructions"] != nil && config["developer_instructions"] != current {
 		value, err := encodeCodexValues(map[string]any{"developer_instructions": current})
 		if err != nil {
 			return "", err
+		}
+		if current == "" {
+			value = ""
 		}
 		start, end, found, err := codexDeclaration(raw, []string{"developer_instructions"}, false)
 		if err != nil {

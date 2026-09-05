@@ -52,6 +52,7 @@ func TestHarvestAskRunsBothConfiguredAdapters(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := t.TempDir()
+			installAskLauncherStub(t, home)
 			accountHome := filepath.Join(home, "account")
 			if err := os.MkdirAll(accountHome, 0o700); err != nil {
 				t.Fatal(err)
@@ -116,6 +117,7 @@ func TestHarvestAskRunsBothConfiguredAdapters(t *testing.T) {
 
 func TestHarvestAskPreservesFailureReceiptsAndCleansThemUp(t *testing.T) {
 	home := t.TempDir()
+	installAskLauncherStub(t, home)
 	accountHome := filepath.Join(home, "codex-home")
 	if err := os.MkdirAll(accountHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -192,6 +194,7 @@ func TestHarvestAskPreservesFailureReceiptsAndCleansThemUp(t *testing.T) {
 
 func TestHarvestAskValidatesBoundsBeforeEngineOrFetch(t *testing.T) {
 	home := t.TempDir()
+	installAskLauncherStub(t, home)
 	source := filepath.Join(home, "source.txt")
 	if err := os.WriteFile(source, []byte("fixture\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -222,6 +225,7 @@ func TestHarvestAskValidatesBoundsBeforeEngineOrFetch(t *testing.T) {
 
 func TestHarvestAskAcceptsFiftySourcesAndFlagsAfterPositionals(t *testing.T) {
 	home := t.TempDir()
+	installAskLauncherStub(t, home)
 	source := filepath.Join(home, "source.txt")
 	if err := os.WriteFile(source, []byte("boundary evidence\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -266,6 +270,7 @@ func TestHarvestAskAcceptsFiftySourcesAndFlagsAfterPositionals(t *testing.T) {
 
 func TestHarvestAskCleansFailureReceiptsWhenEngineFails(t *testing.T) {
 	home := t.TempDir()
+	installAskLauncherStub(t, home)
 	accountHome := filepath.Join(home, "codex-home")
 	if err := os.MkdirAll(accountHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -303,6 +308,7 @@ func TestHarvestAskCleansFailureReceiptsWhenEngineFails(t *testing.T) {
 
 func TestPlainHarvestJSONRemainsBackwardCompatible(t *testing.T) {
 	home := t.TempDir()
+	installAskLauncherStub(t, home)
 	source := filepath.Join(home, "plain.txt")
 	if err := os.WriteFile(source, []byte("plain harvest remains plain\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -317,4 +323,13 @@ func TestPlainHarvestJSONRemainsBackwardCompatible(t *testing.T) {
 			t.Errorf("plain JSON omitted %q:\n%s", want, stdout.String())
 		}
 	}
+}
+
+func installAskLauncherStub(t *testing.T, directory string) {
+	t.Helper()
+	script := "#!/bin/sh\n[ \"$1\" = internal ] && [ \"$2\" = codex-launch ] || exit 90\nshift 2\nexec \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(directory, "pfm"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

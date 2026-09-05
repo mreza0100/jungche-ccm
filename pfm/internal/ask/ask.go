@@ -186,7 +186,13 @@ func ResolveCodex(machine pfmconfig.Config) (Engine, error) {
 	if binary == "" {
 		binary = descriptor.Binary
 	}
-	return resolveProcess(descriptor, binary, machine.CodexAccounts[0].Home, codexArguments)
+	resolved, err := resolveProcess(descriptor, binary, machine.CodexAccounts[0].Home, codexArguments)
+	if err != nil {
+		return nil, err
+	}
+	process := resolved.(processEngine)
+	process.appendix = true
+	return process, nil
 }
 
 func resolveProcess(descriptor pfmengine.Descriptor, binary, home string, arguments func(AskInput) []string) (Engine, error) {
@@ -201,6 +207,7 @@ func resolveProcess(descriptor pfmengine.Descriptor, binary, home string, argume
 }
 
 type processEngine struct {
+	appendix     bool
 	name         string
 	path         string
 	homeVariable string
@@ -216,7 +223,16 @@ func (engine processEngine) Run(parent context.Context, input AskInput) (AskResu
 	ctx, cancel := context.WithTimeout(parent, engineTimeout)
 	defer cancel()
 	args := engine.argumentsFor(input)
-	command := exec.CommandContext(ctx, engine.path, args...)
+	binary := engine.path
+	if engine.appendix {
+		wrapper, resolveErr := deps.Resolve("pfm")
+		if resolveErr != nil {
+			return AskResult{}, fmt.Errorf("resolve Professor launcher: %w", resolveErr)
+		}
+		args = append([]string{"internal", "codex-launch", binary}, args...)
+		binary = wrapper
+	}
+	command := exec.CommandContext(ctx, binary, args...)
 	configureBoundedCommand(command)
 	command.Env = replaceEnvironment(os.Environ(), engine.homeVariable, engine.home)
 	command.Stdin = strings.NewReader(prompt)

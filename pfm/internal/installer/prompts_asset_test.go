@@ -10,16 +10,19 @@ import (
 // The shipped template and the embedded installer asset are the same file by
 // contract; this is the no-drift gate between them.
 func TestProfessorPromptAssetMatchesShippedTemplate(t *testing.T) {
-	embedded, err := readAsset("prompts/professor-prompt.md")
-	if err != nil {
-		t.Fatalf("read embedded professor prompt: %v", err)
-	}
-	template, err := os.ReadFile(filepath.Join("..", "..", "..", "templates", "prompts", "professor.md"))
-	if err != nil {
-		t.Fatalf("read shipped template: %v", err)
-	}
-	if !bytes.Equal(embedded, template) {
-		t.Fatal("embedded prompts/professor-prompt.md and templates/prompts/professor.md differ — edit one source and copy byte-exact")
+
+	for _, pair := range [][2]string{{"professor-prompt.md", "professor.md"}, {"codex-appendix.md", "codex-appendix.md"}} {
+		embedded, err := readAsset("prompts/" + pair[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		template, err := os.ReadFile(filepath.Join("..", "..", "..", "templates", "prompts", pair[1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(embedded, template) {
+			t.Fatalf("embedded %s differs from template %s", pair[0], pair[1])
+		}
 	}
 }
 

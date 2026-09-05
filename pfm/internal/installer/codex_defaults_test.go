@@ -14,9 +14,9 @@ import (
 func TestCodexDefaultsInstall(t *testing.T) {
 	home := t.TempDir()
 	source := filepath.Join(home, ".professor", "templates", "global", "codex", "config.toml")
-	writeFixture(t, source, "developer_instructions = 'Use the agent mailbox.'\n[features.multi_agent_v2]\nwait_agent_enabled = true\ndefault_wait_timeout_ms = 750000\n")
+	writeFixture(t, source, "[features.multi_agent_v2]\nwait_agent_enabled = true\ndefault_wait_timeout_ms = 750000\n")
 	config := filepath.Join(home, ".codex", "config.toml")
-	original := "# local preference\nmodel = 'custom'\ndeveloper_instructions = '''Keep my rules.\n[not.a.table]\n'''\n[features.multi_agent_v2]\ndefault_wait_timeout_ms = 900000\n# BEGIN pfm mcp\n[mcp_servers.chat]\nurl = 'http://localhost:1234'\n# END pfm mcp\n"
+	original := "# local preference\nmodel = 'custom'\ndeveloper_instructions = '''Keep my rules.\n[not.a.table]\n\n<!-- BEGIN Professor subagent coordination -->\nUse the agent mailbox.\n<!-- END Professor subagent coordination -->\n'''\n[features.multi_agent_v2]\ndefault_wait_timeout_ms = 900000\n# BEGIN pfm mcp\n[mcp_servers.chat]\nurl = 'http://localhost:1234'\n# END pfm mcp\n"
 	writeFixture(t, config, original)
 	options := Options{Mode: ModeDryRun, Home: home, Runner: &fakeRunner{}}
 	if _, err := Run(context.Background(), options); err != nil {
@@ -35,7 +35,7 @@ func TestCodexDefaultsInstall(t *testing.T) {
 		t.Fatal(err)
 	}
 	instructions := document["developer_instructions"].(string)
-	if !strings.Contains(instructions, "Use the agent mailbox.") || !strings.Contains(instructions, "Keep my rules.") {
+	if instructions != "Keep my rules.\n[not.a.table]\n\n\n" {
 		t.Fatalf("missing developer instructions: %q", instructions)
 	}
 	feature := document["features"].(map[string]any)["multi_agent_v2"].(map[string]any)
@@ -51,14 +51,6 @@ func TestCodexDefaultsInstall(t *testing.T) {
 	if got := readFixture(t, config); got != first {
 		t.Fatal("reinstall was not idempotent")
 	}
-	writeFixture(t, source, strings.ReplaceAll(readFixture(t, source), "Use the agent mailbox.", "Return through the agent mailbox."))
-	if _, err := Run(context.Background(), options); err != nil {
-		t.Fatal(err)
-	}
-	updated := readFixture(t, config)
-	if strings.Contains(updated, "Use the agent mailbox.") || !strings.Contains(updated, "Return through the agent mailbox.") {
-		t.Fatal("managed instructions did not update")
-	}
 	backups, err := filepath.Glob(config + ".pre-professor-*")
 	if err != nil || len(backups) == 0 {
 		t.Fatalf("missing backup: %v %v", backups, err)
@@ -68,21 +60,21 @@ func TestCodexDefaultsInstall(t *testing.T) {
 func TestCodexDefaultsFreshHomes(t *testing.T) {
 	home := t.TempDir()
 	source := filepath.Join(home, ".professor", "templates", "global", "codex", "config.toml")
-	writeFixture(t, source, "developer_instructions = 'Use mailbox.'\n[features.multi_agent_v2]\nwait_agent_enabled = true\n")
+	writeFixture(t, source, "[features.multi_agent_v2]\nwait_agent_enabled = true\n")
 	homes := []string{filepath.Join(home, "account-one"), filepath.Join(home, "account-two")}
 	if _, err := Run(context.Background(), Options{Mode: ModeApply, Home: home, CodexHomes: homes, Runner: &fakeRunner{}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, dir := range homes {
 		raw, err := os.ReadFile(filepath.Join(dir, "config.toml"))
-		if err != nil || !strings.Contains(string(raw), "Use mailbox.") {
+		if err != nil || !strings.Contains(string(raw), "wait_agent_enabled = true") || strings.Contains(string(raw), "developer_instructions") {
 			t.Fatalf("home %s: %s %v", dir, raw, err)
 		}
 	}
 }
 
 func TestCodexDefaultsMergeLayouts(t *testing.T) {
-	defaults := "developer_instructions = 'Use mailbox.'\n[features.multi_agent_v2]\nwait_agent_enabled = true\n"
+	defaults := "[features.multi_agent_v2]\nwait_agent_enabled = true\n"
 	for _, input := range []string{
 		"", "# keep this comment", "developer_instructions = 'Use mailbox.'",
 		"developer_instructions = 'Use mailbox.' # retain policy note\n",
@@ -106,8 +98,12 @@ func TestCodexDefaultsMergeLayouts(t *testing.T) {
 			if _, err := toml.Decode(merged, &doc); err != nil {
 				t.Fatal(err)
 			}
-			if strings.Count(doc["developer_instructions"].(string), "Use mailbox.") != 1 {
-				t.Fatal("duplicated policy")
+			var before map[string]any
+			if _, err := toml.Decode(input, &before); err != nil {
+				t.Fatal(err)
+			}
+			if doc["developer_instructions"] != before["developer_instructions"] {
+				t.Fatal("personal instructions changed")
 			}
 		})
 	}
@@ -125,7 +121,7 @@ func TestCodexDefaultsMergeLayouts(t *testing.T) {
 func TestCodexDefaultsPreservesConfigSymlink(t *testing.T) {
 	home := t.TempDir()
 	source := filepath.Join(home, ".professor", "templates", "global", "codex", "config.toml")
-	writeFixture(t, source, "developer_instructions = 'Use mailbox.'\n[features.multi_agent_v2]\nwait_agent_enabled = true\n")
+	writeFixture(t, source, "[features.multi_agent_v2]\nwait_agent_enabled = true\n")
 	target := filepath.Join(home, "personal.toml")
 	writeFixture(t, target, "model = 'personal'\n")
 	configHome := filepath.Join(home, ".codex")
@@ -141,13 +137,13 @@ func TestCodexDefaultsPreservesConfigSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertLink(t, config, target)
-	if !strings.Contains(readFixture(t, target), "Use mailbox.") {
+	if !strings.Contains(readFixture(t, target), "wait_agent_enabled = true") {
 		t.Fatal("symlink target did not receive policy")
 	}
 }
 
 func TestCodexDefaultsRejectsInconsistentTimeouts(t *testing.T) {
-	defaults := "developer_instructions = 'Use mailbox.'\n[features.multi_agent_v2]\nmin_wait_timeout_ms = 150000\ndefault_wait_timeout_ms = 750000\nmax_wait_timeout_ms = 1500000\n"
+	defaults := "[features.multi_agent_v2]\nmin_wait_timeout_ms = 150000\ndefault_wait_timeout_ms = 750000\nmax_wait_timeout_ms = 1500000\n"
 	for _, value := range []string{"30000", "-1", "3600001", "'wrong type'"} {
 		if _, err := mergeCodexDefaults("[features.multi_agent_v2]\nmax_wait_timeout_ms = "+value+"\n", defaults); err == nil {
 			t.Fatalf("accepted incompatible maximum %s", value)
@@ -158,7 +154,7 @@ func TestCodexDefaultsRejectsInconsistentTimeouts(t *testing.T) {
 func TestCodexDefaultsRefusesDanglingConfigSymlink(t *testing.T) {
 	home := t.TempDir()
 	source := filepath.Join(home, ".professor", "templates", "global", "codex", "config.toml")
-	writeFixture(t, source, "developer_instructions = 'Use mailbox.'\n[features.multi_agent_v2]\nwait_agent_enabled = true\n")
+	writeFixture(t, source, "[features.multi_agent_v2]\nwait_agent_enabled = true\n")
 	configHome := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(configHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -174,5 +170,23 @@ func TestCodexDefaultsRefusesDanglingConfigSymlink(t *testing.T) {
 	}
 	if got, err := os.Readlink(config); err != nil || got != target {
 		t.Fatalf("link changed: %s %v", got, err)
+	}
+}
+
+func TestCodexDefaultsRemovesOnlyManagedInstructions(t *testing.T) {
+	input := "developer_instructions = '<!-- BEGIN Professor subagent coordination -->old<!-- END Professor subagent coordination -->' # keep note\nmodel = 'personal'\n"
+	got, err := mergeCodexDefaults(input, "[features.multi_agent_v2]\nwait_agent_enabled = true\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if _, err := toml.Decode(got, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc["developer_instructions"]; ok {
+		t.Fatal("managed-only key retained")
+	}
+	if doc["model"] != "personal" || !strings.Contains(got, "# keep note") {
+		t.Fatal("unrelated config changed")
 	}
 }

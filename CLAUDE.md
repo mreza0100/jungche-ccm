@@ -73,10 +73,7 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 - **Never commit broken code** — tests pass before the commit.
 - **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (templates/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → authorized Git writer merges to `main` → the host mirror build (`make host-install` from `pfm/` + `pfm install --yes`). The installed wave commands (`/wave:refine`, `/wave:live`, `/wave:walker`, `/wave:walker-invariants`, `/wave:ccc`) are rewired to this cast — `dev` builds, `qa` tests, `$git` commits and merges; a task touching `.claude/**`, any `CLAUDE.md`, or `templates/**` routes to `/pfm`. Their `templates/project/commands/wave/` twins keep the adopter pipeline.
 - **Guarded files:** a PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pfm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
-- Execute explicit instructions as given: user delegation runs to completion — never narrow, drop, or swap scope; raise a genuine concern up front.
-- "God speed" = full autonomy: resolve every ambiguity yourself, finish, report the decisions at the end; only failure = stop/ask.
 - **Milestone = compact point:** at every milestone, checkpoint the plan to a `tmp/` file, then give yourself a compact before the next phase (a held turn arms an idle-fired self-inject instead).
-- "What's up / how's it going" = summarize everything since the last prompt.
 - **AskUserQuestion is the user's whole screen** — context travels inside the question text; each round simpler and more concrete, never a rephrase.
 - When in doubt, do the right thing — correct over convenient, even at re-architecting cost.
 
