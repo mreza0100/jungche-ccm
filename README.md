@@ -102,6 +102,20 @@ The lookup never blocks or writes into the active picker frame.
 > "nothing there", an error claims "we failed to look", and a panel that confuses the two
 > is a coincidence detector wearing a progress bar.
 
+`tab` once more reaches **cosmos** — the same fleet, drawn as a sky:
+
+![The pfm cosmos tab: the agent fleet drawn as a star map, each project a star and each chat a body orbiting it](docs/img/pfm-cosmos.png)
+
+> Every chat is exactly one node; every project is a star its chats orbit, and a spawned chat
+> rises as a moon around its parent, born at the parent's angle — so lineage is visible in the
+> sky itself. Stars take their colour from the hour's traffic and cool over the hours after
+> their last message, so a busy project burns blue-white. Edges are drawn from a durable
+> chat-to-chat comms ledger, which makes an edge a fact rather than a guess. `↑↓` rings a chat
+> with a reticle and `enter` opens it; `s` focuses one project's system; `o` collapses the
+> hierarchy back to one shared ring. The chronoscope replays the last 24h (`[ ]` ±5m, `{ }` ±1h,
+> `space` plays at 60×, `n` returns to now) — and a chat that is dead now still renders as the
+> ghost it was back then.
+
 ---
 
 ## The discipline layer (`templates/`)
