@@ -770,22 +770,24 @@ const harnessPromptFixtureCaptured = "pfm jail fixture harness prompt\n"
 // re-deriving or re-pinning the real embedded asset.
 func stageHarnessPromptBaseline(t *testing.T, home string) {
 	t.Helper()
-	sum := sha256.Sum256([]byte(harnessPromptFixtureCaptured))
-	pin := hex.EncodeToString(sum[:]) + "  harness-prompt-fixture.md\n"
-	path := filepath.Join(home, ".local", "share", "pfm", "install", "prompts", "harness-original.sha256")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
+	for _, model := range harnessPromptModels {
+		stageModelHarnessPromptBaseline(t, home, model, harnessPromptFixtureCaptured, "harness-prompt-fixture.md")
 	}
-	if err := os.WriteFile(path, []byte(pin), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "harness-prompt-fixture.md"), []byte(harnessPromptFixtureCaptured), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "harness-original.model"), []byte("claude-sonnet-5\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
+}
 
+func stageModelHarnessPromptBaseline(t *testing.T, home string, model harnessPromptModel, captured, name string) {
+	t.Helper()
+	sum := sha256.Sum256([]byte(captured))
+	pin := hex.EncodeToString(sum[:]) + "  " + name + "\n"
+	dir := filepath.Join(home, ".local", "share", "pfm", "install", "prompts")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for filename, data := range map[string]string{model.stem + ".sha256": pin, name: captured, model.stem + ".model": "claude-" + model.alias + "-5\n"} {
+		if err := os.WriteFile(filepath.Join(dir, filename), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func jailTest(t *testing.T) string {

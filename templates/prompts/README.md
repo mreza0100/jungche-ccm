@@ -26,22 +26,29 @@ Claude replacement, Codex appendix, and the Claude drift baseline.
   fresh/custom children need the coordination briefing specified in the appendix. These instructions
   guide tool selection; they do not remove chat MCP access. Edit the template and matching installer
   asset, then rebuild and install to deploy. Claude uses replacement; Codex uses this separate appendix.
-- `harness-original-v2.1.257.md` — the captured Claude Code v2.1.257 built-in system prompt (print-mode,
-  dynamic sections excluded), the drift baseline. Captured via a localhost sink: point `ANTHROPIC_BASE_URL`
-  at a listener that records the request body and answers a non-retryable 400 — the exact assembled prompt,
-  zero tokens spent. Rendered with `jq -r '.system | map(.text) | join("\n\n=== SYSTEM BLOCK ===\n\n")'`,
-  then the optional Environment model-name and knowledge-cutoff lines removed, and the billing header's build stamp masked (`sed 's/cc_version=[^; ]*;/cc_version=*;/'`) — every release
-  changes that stamp, so it is masked on both sides and DRIFT means the prose changed.
-- `harness-original.sha256` — the baseline's pinned hash (`sha256sum` of the masked file reproduces it).
-  `pfm doctor` captures the built-in Sonnet prompt, verifies the stored body/hash/model identity,
-  normalizes both prompts, and compares them. It reports the requested/resolved model, live CLI version,
-  and baseline filename. Match means this Sonnet baseline matches; it does not validate the active chat,
-  Fable, Opus, Codex, or the Professor replacement. A model mismatch is missing baseline coverage,
-  not behavioral drift. Failed capture, unavailable baseline, real differences, and match remain distinct.
+- `harness-original-v2.1.257.md` and `harness-opus-v2.1.261.md` are reviewed Sonnet and Opus
+  built-in prompt baselines, captured in print mode with dynamic sections excluded. Each has a
+  `.sha256` pin and `.model` provenance file under its `harness-original` or `harness-opus` stem;
+  the template and embedded installer assets stay byte-identical.
+- `pfm doctor` checks both stable aliases, `sonnet` and `opus`, against their respective baselines.
+  It records the requested alias, resolved model ID, CLI version, baseline filename, and original
+  model ID. Model names and versions are informational: changing those alone never reports drift.
+  A changed prompt behind an alias still requires review, even if the resolved model name also changed.
+- Normalization masks `cc_version` only in the leading billing system block and removes only complete known
+  model-identity and month/year knowledge-cutoff lines inside `# Environment`. Instructions appended
+  to those lines, similar text elsewhere, fenced examples, and model-specific behavioral sections remain checked.
+  Recognizing a text pattern alone is insufficient reason to discard it.
+- `DRIFT` means normalized instruction text changed: review the upstream additions, deletions, or
+  rewording before re-pinning. Failed capture and missing or inconsistent baseline files report
+  separate coverage warnings; they never count as drift or a match. Failure of one model's check
+  does not suppress the other. These checks do not validate the active chat, Fable, Codex, or the
+  Professor replacement.
 
-- `harness-original.model` — the resolved request model belonging to the baseline (`claude-sonnet-5`).
-  Re-pinning requires reviewing both prompt prose and model identity; do not compare another model to
-  this Sonnet baseline or remove model-specific instructions to force a match.
+Captures use a localhost sink with dummy credentials that rejects the API request with HTTP 400;
+no model inference occurs. Render system blocks with
+`jq -r '.system | map(.text) | join("\n\n=== SYSTEM BLOCK ===\n\n")'` before normalization.
+Re-pinning requires human review of instruction differences, followed by updating the prompt,
+SHA256, and model provenance together. Never automatically accept a newly captured prompt.
 
 `claude.systemPrompt` values: `production` (default — the CLI's own prompt, untouched), `lean` (the CLI's
 built-in minimal prompt via `CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`), `professor` (inject `professor.md`).

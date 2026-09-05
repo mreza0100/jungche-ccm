@@ -673,7 +673,7 @@ func (h *e2eHarness) newHome(binary string) string {
 	native := filepath.Join(home, ".local", "share", "claude", "versions", "fixture")
 	launcherEvidence := filepath.Join(home, "launcher-evidence")
 	body := "#!/bin/sh\n" +
-		"if [ \"${1-}\" = -p ]; then exec env PFM_E2E_CLAUDE_CAPTURE=1 " + shellQuoteFixture(testBinary) + " -test.run '^TestClaudeHarnessCaptureFixture$'; fi\n" +
+		"if [ \"${1-}\" = -p ]; then exec env PFM_E2E_CLAUDE_CAPTURE=1 " + shellQuoteFixture(testBinary) + " -test.run '^TestClaudeHarnessCaptureFixture$' -- \"$@\"; fi\n" +
 		"if [ \"${1-}\" = --version ]; then printf '2.1.238 (Claude Code)\\n'; exit 0; fi\n" +
 		"printf '%s\\n' \"${TMUX%%,*}\" > " + shellQuoteFixture(launcherEvidence) + "\n" +
 		"exit 0\n"

@@ -128,25 +128,10 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 	t.Cleanup(func() { harnessCaptureOverride = saved })
 
 	stageBaseline := func(t *testing.T, home, captured, name string) {
-		t.Helper()
-		sum := sha256.Sum256([]byte(captured))
-		pin := hex.EncodeToString(sum[:]) + "  " + name + "\n"
-		path := filepath.Join(home, ".local", "share", "pfm", "install", "prompts", "harness-original.sha256")
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(pin), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(filepath.Dir(path), name), []byte(captured), 0600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(filepath.Dir(path), "harness-original.model"), []byte("claude-sonnet-5\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
+		stageModelHarnessPromptBaseline(t, home, harnessPromptModels[0], captured, name)
 	}
-	refuseCapture := func(t *testing.T) func(context.Context, config.Config) (harnessCapture, error) {
-		return func(context.Context, config.Config) (harnessCapture, error) {
+	refuseCapture := func(t *testing.T) func(context.Context, config.Config, string) (harnessCapture, error) {
+		return func(context.Context, config.Config, string) (harnessCapture, error) {
 			t.Fatal("capture must not run before the baseline is readable and well-formed")
 			return harnessCapture{}, nil
 		}
@@ -185,7 +170,7 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 			name: "override content matching the staged baseline reports clean",
 			setup: func(t *testing.T, home string) {
 				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
-				harnessCaptureOverride = func(context.Context, config.Config) (harnessCapture, error) {
+				harnessCaptureOverride = func(context.Context, config.Config, string) (harnessCapture, error) {
 					return harnessCapture{Prompt: "captured-fixture\n", ResolvedModel: "claude-sonnet-5", CLIVersion: "fixture"}, nil
 				}
 			},
@@ -196,7 +181,7 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 			name: "override content diverging from the staged baseline reports DRIFT",
 			setup: func(t *testing.T, home string) {
 				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
-				harnessCaptureOverride = func(context.Context, config.Config) (harnessCapture, error) {
+				harnessCaptureOverride = func(context.Context, config.Config, string) (harnessCapture, error) {
 					return harnessCapture{Prompt: "a different live prompt\n", ResolvedModel: "claude-sonnet-5", CLIVersion: "fixture"}, nil
 				}
 			},
@@ -207,7 +192,7 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 			name: "override capture error reports CHECK FAILED, never DRIFT or matches",
 			setup: func(t *testing.T, home string) {
 				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
-				harnessCaptureOverride = func(context.Context, config.Config) (harnessCapture, error) {
+				harnessCaptureOverride = func(context.Context, config.Config, string) (harnessCapture, error) {
 					return harnessCapture{}, errors.New("no API request reached the capture sink")
 				}
 			},
@@ -221,7 +206,7 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 			home := t.TempDir()
 			testCase.setup(t, home)
 			var stdout bytes.Buffer
-			code := printHarnessPromptDoctor(context.Background(), &stdout, home, config.Config{})
+			code := printModelHarnessPromptDoctor(context.Background(), &stdout, home, config.Config{}, harnessPromptModels[0])
 			if warned := code != 0; warned != testCase.wantWarn {
 				t.Fatalf("code=%d warned=%v, want warned=%v\noutput=%s", code, warned, testCase.wantWarn, stdout.String())
 			}

@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -20,59 +19,6 @@ import (
 	config "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 )
-
-// printHarnessPromptDoctor re-captures the live Claude CLI's built-in system
-// prompt through a localhost sink — the request dies at the listener, so no
-// tokens are spent and nothing leaves the machine — and compares its sha256
-// to the staged baseline `pfm install` writes under the managed root. Three
-// distinct outcomes: match, DRIFT, and CHECK FAILED; a capture that failed to
-// run is never rendered as either of the other two.
-func printHarnessPromptDoctor(ctx context.Context, stdout io.Writer, home string, machine config.Config) int {
-	baselinePath := filepath.Join(home, ".local", "share", "pfm", "install", "prompts", "harness-original.sha256")
-	raw, err := os.ReadFile(baselinePath)
-	if err != nil {
-		fmt.Fprintf(stdout, "doctor: harness-prompt: baseline unreadable (%v) — run pfm install\n", err)
-		return 1
-	}
-	fields := strings.Fields(string(raw))
-	if len(fields) < 2 {
-		fmt.Fprintf(stdout, "doctor: harness-prompt: baseline malformed at %s — run pfm install\n", baselinePath)
-		return 1
-	}
-	decoded, decodeErr := hex.DecodeString(fields[0])
-	if decodeErr != nil || len(decoded) != sha256.Size || filepath.Base(fields[1]) != fields[1] {
-		fmt.Fprintln(stdout, "doctor: harness-prompt: baseline malformed — run pfm install")
-		return 1
-	}
-	modelRaw, modelErr := os.ReadFile(filepath.Join(filepath.Dir(baselinePath), "harness-original.model"))
-	baselineModel := strings.TrimSpace(string(modelRaw))
-	baseline, baselineErr := os.ReadFile(filepath.Join(filepath.Dir(baselinePath), fields[1]))
-	baselineSum := sha256.Sum256(baseline)
-	if modelErr != nil || baselineModel == "" || baselineErr != nil || hex.EncodeToString(baselineSum[:]) != fields[0] {
-		fmt.Fprintf(stdout, "doctor: harness-prompt: BASELINE UNAVAILABLE identity=%s model=%q — missing, unreadable or inconsistent baseline; run pfm install\n", fields[1], baselineModel)
-		return 1
-	}
-	captured, captureErr := configuredHarnessCapture(ctx, machine)
-	resolved, version := captured.ResolvedModel, captured.CLIVersion
-	if resolved == "" {
-		resolved = "unknown"
-	}
-	if version == "" {
-		version = "unknown"
-	}
-	fmt.Fprintf(stdout, "doctor: harness-prompt scope=claude-sonnet-only runtime=claude-code requested=sonnet resolved=%s cli=%q baseline=%s baseline_model=%s unchecked=active-chat,fable,opus,codex\n", resolved, version, fields[1], baselineModel)
-	if captureErr == nil && captured.ResolvedModel != baselineModel {
-		fmt.Fprintln(stdout, "doctor: harness-prompt: BASELINE UNAVAILABLE for resolved model — model mismatch; drift unknown")
-		return 1
-	}
-	canonicalBaseline := sha256.Sum256([]byte(normalizeHarnessPrompt(string(baseline))))
-	line, warn := harnessPromptVerdict(hex.EncodeToString(canonicalBaseline[:]), fields[1], captured.Prompt, captureErr)
-	fmt.Fprintln(stdout, line)
-	if warn {
-		return 1
-	}
-	return 0
-}
 
 // harnessCaptureOverride is nil in production; printHarnessPromptDoctor then
 // runs the real capture below. A jail has no genuine `claude` binary to spawn
@@ -87,13 +33,13 @@ type harnessCapture struct {
 	CLIVersion    string
 }
 
-var harnessCaptureOverride func(context.Context, config.Config) (harnessCapture, error)
+var harnessCaptureOverride func(context.Context, config.Config, string) (harnessCapture, error)
 
-func configuredHarnessCapture(ctx context.Context, machine config.Config) (harnessCapture, error) {
+func configuredHarnessCapture(ctx context.Context, machine config.Config, model string) (harnessCapture, error) {
 	if harnessCaptureOverride != nil {
-		return harnessCaptureOverride(ctx, machine)
+		return harnessCaptureOverride(ctx, machine, model)
 	}
-	return captureHarnessPrompt(ctx, machine)
+	return captureHarnessPrompt(ctx, machine, model)
 }
 
 // harnessBuildStamp is the CLI build stamp inside the billing-header system
@@ -101,18 +47,49 @@ func configuredHarnessCapture(ctx context.Context, machine config.Config) (harne
 // the stored baseline are masked before hashing — DRIFT means prose drift.
 var harnessBuildStamp = regexp.MustCompile(`cc_version=[^; ]*;`)
 
+// Only complete, known metadata lines are excluded. Trailing instructions and
+// metadata-like prose elsewhere remain visible to the comparison. Code fences
+// never establish metadata sections or carry removable metadata.
+var harnessModelIdentity = regexp.MustCompile(`^ - You are powered by the model named [A-Za-z0-9 _-]+(?:\.[0-9]+[A-Za-z0-9 _-]*)*\. The exact model ID is [A-Za-z0-9._:-]+\.$`)
+var harnessKnowledgeCutoff = regexp.MustCompile(`^ - Assistant knowledge cutoff is [A-Za-z]+ [0-9]{4}\.$`)
+
 // normalizeHarnessPrompt excludes only CLI identity metadata. Claude may omit
 // these two Environment lines even with dynamic sections excluded. Instructions
 // in that section, and matching text elsewhere, remain part of the drift hash.
 func normalizeHarnessPrompt(prompt string) string {
-	lines := strings.Split(harnessBuildStamp.ReplaceAllLiteralString(prompt, "cc_version=*;"), "\n")
+	lines := strings.Split(prompt, "\n")
 	kept := lines[:0]
 	inEnvironment := false
-	for _, line := range lines {
-		if strings.HasPrefix(line, "# ") || line == "=== SYSTEM BLOCK ===" {
+	var fence byte
+	fenceWidth := 0
+	for index, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		width := 0
+		if len(line)-len(trimmed) <= 3 && len(trimmed) > 0 && (trimmed[0] == '`' || trimmed[0] == '~') {
+			for width < len(trimmed) && trimmed[width] == trimmed[0] {
+				width++
+			}
+		}
+		if fenceWidth > 0 {
+			kept = append(kept, line)
+			if width >= fenceWidth && trimmed[0] == fence && strings.TrimSpace(trimmed[width:]) == "" {
+				fenceWidth = 0
+			}
+			continue
+		}
+		if width >= 3 {
+			fence = trimmed[0]
+			fenceWidth = width
+			kept = append(kept, line)
+			continue
+		}
+		if index == 0 && len(lines) > 2 && lines[1] == "" && lines[2] == "=== SYSTEM BLOCK ===" && strings.HasPrefix(line, "x-anthropic-billing-header: ") {
+			line = harnessBuildStamp.ReplaceAllLiteralString(line, "cc_version=*;")
+		}
+		if strings.HasPrefix(line, "#") || line == "=== SYSTEM BLOCK ===" {
 			inEnvironment = line == "# Environment"
 		}
-		if inEnvironment && (strings.HasPrefix(line, " - You are powered by the model named ") || strings.HasPrefix(line, " - Assistant knowledge cutoff is ")) {
+		if inEnvironment && (harnessModelIdentity.MatchString(line) || harnessKnowledgeCutoff.MatchString(line)) {
 			continue
 		}
 		kept = append(kept, line)
@@ -131,7 +108,7 @@ func harnessPromptVerdict(baselineSHA, baselineName, captured string, captureErr
 	if live == baselineSHA {
 		return "doctor: harness-prompt: matches baseline " + baselineName, false
 	}
-	return fmt.Sprintf("doctor: harness-prompt: DRIFT live=%s baseline=%s (%s) — checked Sonnet prompt differs; recapture, review, re-pin", live[:16], baselineSHA[:16], baselineName), true
+	return fmt.Sprintf("doctor: harness-prompt: DRIFT live=%s baseline=%s (%s) — harness instructions changed; review before re-pinning", live[:16], baselineSHA[:16], baselineName), true
 }
 
 // captureHarnessPrompt DELIBERATELY BYPASSES action.ClaudeSpawn, the one spawn
@@ -146,7 +123,7 @@ func harnessPromptVerdict(baselineSHA, baselineName, captured string, captureErr
 // It spawns `claude -p` pointed at an ephemeral localhost listener that
 // records the request body and refuses it with a non-retryable 400 (a 500
 // would put the CLI into its retry loop).
-func captureHarnessPrompt(ctx context.Context, machine config.Config) (harnessCapture, error) {
+func captureHarnessPrompt(ctx context.Context, machine config.Config, model string) (harnessCapture, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return harnessCapture{}, fmt.Errorf("open capture sink: %w", err)
@@ -172,7 +149,7 @@ func captureHarnessPrompt(ctx context.Context, machine config.Config) (harnessCa
 	runCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	command := exec.CommandContext(runCtx, binary,
-		"-p", "x", "--model", "sonnet", "--output-format", "json",
+		"-p", "x", "--model", model, "--output-format", "json",
 		"--strict-mcp-config", "--mcp-config", `{"mcpServers":{}}`,
 		"--max-turns", "1", "--exclude-dynamic-system-prompt-sections",
 	)

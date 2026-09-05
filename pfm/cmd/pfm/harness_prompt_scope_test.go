@@ -22,7 +22,7 @@ func TestHarnessDoctorDistinguishesModelCoverageAndCaptureFailures(t *testing.T)
 	}{
 		{name: "match", model: "claude-sonnet-5", prompt: harnessPromptFixtureCaptured, want: "matches baseline"},
 		{name: "behavior change", model: "claude-sonnet-5", prompt: "different instructions\n", want: "DRIFT", warning: true},
-		{name: "different model same bytes", model: "claude-fable-5-1", prompt: harnessPromptFixtureCaptured, want: "BASELINE UNAVAILABLE for resolved model", warning: true},
+		{name: "renamed model same bytes", model: "claude-renamed-6", prompt: harnessPromptFixtureCaptured, want: "matches baseline"},
 		{name: "capture failure", want: "CHECK FAILED", err: errors.New("sink unavailable"), warning: true},
 		{name: "missing baseline model", missing: "harness-original.model", want: "BASELINE UNAVAILABLE", warning: true},
 		{name: "missing baseline body", missing: "harness-prompt-fixture.md", want: "BASELINE UNAVAILABLE", warning: true},
@@ -36,12 +36,12 @@ func TestHarnessDoctorDistinguishesModelCoverageAndCaptureFailures(t *testing.T)
 				}
 			}
 			called := false
-			harnessCaptureOverride = func(context.Context, config.Config) (harnessCapture, error) {
+			harnessCaptureOverride = func(context.Context, config.Config, string) (harnessCapture, error) {
 				called = true
 				return harnessCapture{Prompt: tc.prompt, ResolvedModel: tc.model, CLIVersion: "2.1.fixture"}, tc.err
 			}
 			var output bytes.Buffer
-			code := printHarnessPromptDoctor(context.Background(), &output, home, config.Config{})
+			code := printModelHarnessPromptDoctor(context.Background(), &output, home, config.Config{}, harnessPromptModels[0])
 			if (code != 0) != tc.warning || !strings.Contains(output.String(), tc.want) {
 				t.Fatalf("code=%d output=%s", code, &output)
 			}
@@ -49,7 +49,7 @@ func TestHarnessDoctorDistinguishesModelCoverageAndCaptureFailures(t *testing.T)
 				t.Fatal("capture ran without a complete baseline")
 			}
 			if called {
-				for _, field := range []string{"runtime=claude-code", "scope=claude-sonnet-only", "requested=sonnet", "cli=\"2.1.fixture\"", "baseline_model=claude-sonnet-5", "unchecked=active-chat,fable,opus,codex"} {
+				for _, field := range []string{"runtime=claude-code", "scope=claude-model-baseline", "requested=sonnet", "cli=\"2.1.fixture\"", "baseline_model=claude-sonnet-5", "unchecked=active-chat,fable,codex"} {
 					if !strings.Contains(output.String(), field) {
 						t.Errorf("missing %s: %s", field, &output)
 					}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"hostops/pfm/internal/config"
@@ -21,32 +22,51 @@ func TestHarnessPromptNativeRepeatedCapture(t *testing.T) {
 	}
 	machine := config.Config{}
 	machine.Claude.Binary = binary
-	var previous harnessCapture
-	for attempt := 0; attempt < 3; attempt++ {
-		captured, err := captureHarnessPrompt(context.Background(), machine)
+	for _, model := range harnessPromptModels {
+		baselineDir := filepath.Join("..", "..", "internal", "installer", "assets", "prompts")
+		pin, err := os.ReadFile(filepath.Join(baselineDir, model.stem+".sha256"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if captured.ResolvedModel == "" || captured.CLIVersion == "" {
-			t.Fatalf("capture lacks identity: %+v", captured)
+		fields := strings.Fields(string(pin))
+		if len(fields) != 2 {
+			t.Fatal("invalid native baseline pin")
 		}
-		if attempt > 0 && (captured.ResolvedModel != previous.ResolvedModel || normalizeHarnessPrompt(captured.Prompt) != normalizeHarnessPrompt(previous.Prompt)) {
-			t.Fatal("repeated native captures changed beyond normalized metadata")
+		baseline, err := os.ReadFile(filepath.Join(baselineDir, fields[1]))
+		if err != nil {
+			t.Fatal(err)
 		}
-		sum := sha256.Sum256([]byte(normalizeHarnessPrompt(captured.Prompt)))
-		t.Logf("capture=%d requested=sonnet resolved=%s cli=%s normalized_sha256=%s", attempt+1, captured.ResolvedModel, captured.CLIVersion, hex.EncodeToString(sum[:]))
-		if dir := os.Getenv("PFM_HARNESS_CAPTURE_DIR"); dir != "" {
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			raw, err := json.Marshal(captured)
+
+		var previous harnessCapture
+		for attempt := 0; attempt < 3; attempt++ {
+			captured, err := captureHarnessPrompt(context.Background(), machine, model.alias)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "sonnet-capture.json"), raw, 0600); err != nil {
-				t.Fatal(err)
+			if normalizeHarnessPrompt(captured.Prompt) != normalizeHarnessPrompt(string(baseline)) {
+				t.Fatalf("%s built-in instructions differ from reviewed baseline", model.alias)
 			}
+			if captured.ResolvedModel == "" || captured.CLIVersion == "" {
+				t.Fatalf("capture lacks identity: %+v", captured)
+			}
+			if attempt > 0 && (captured.ResolvedModel != previous.ResolvedModel || normalizeHarnessPrompt(captured.Prompt) != normalizeHarnessPrompt(previous.Prompt)) {
+				t.Fatal("repeated native captures changed beyond normalized metadata")
+			}
+			sum := sha256.Sum256([]byte(normalizeHarnessPrompt(captured.Prompt)))
+			t.Logf("capture=%d requested=%s resolved=%s cli=%s normalized_sha256=%s", attempt+1, model.alias, captured.ResolvedModel, captured.CLIVersion, hex.EncodeToString(sum[:]))
+			if dir := os.Getenv("PFM_HARNESS_CAPTURE_DIR"); dir != "" {
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				raw, err := json.Marshal(captured)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, model.alias+"-capture.json"), raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			previous = captured
 		}
-		previous = captured
 	}
 }

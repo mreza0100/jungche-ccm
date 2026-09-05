@@ -26,8 +26,22 @@ func TestClaudeHarnessCaptureFixture(t *testing.T) {
 	if err != nil || endpoint.Scheme != "http" || endpoint.Hostname() != "127.0.0.1" || endpoint.Port() == "" {
 		t.Fatal("capture fixture refuses a non-loopback endpoint")
 	}
+	alias := ""
+	for index, arg := range os.Args {
+		if arg == "--model" && index+1 < len(os.Args) {
+			alias = os.Args[index+1]
+		}
+	}
+	stem := "harness-original"
+	switch alias {
+	case "sonnet":
+	case "opus":
+		stem = "harness-opus"
+	default:
+		t.Fatalf("unexpected capture model %q", alias)
+	}
 	dir := filepath.Join(home, ".local/share/pfm/install/prompts")
-	pin, err := os.ReadFile(filepath.Join(dir, "harness-original.sha256"))
+	pin, err := os.ReadFile(filepath.Join(dir, stem+".sha256"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +53,7 @@ func TestClaudeHarnessCaptureFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := os.ReadFile(filepath.Join(dir, "harness-original.model"))
+	model, err := os.ReadFile(filepath.Join(dir, stem+".model"))
 	if err != nil {
 		t.Fatal(err)
 	}
