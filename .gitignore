@@ -19,8 +19,8 @@ engines/wave-walker/engine/runtime-smoke-input.json
 # prevent — and each carries its own upstream LICENSE with its author's name,
 # which the leak gate correctly refuses for this repo.
 .claude/skills/
-# Local Codex artifacts compiled from the Claude sources by pfm codex build.
-.codex/skills/
+# Codex command wrappers are tracked so clean checkouts pass mirror checks.
+# Source-fetched skill trees remain ignored at their Claude source above.
 # OpenCode mirror (build-opencode.mjs): skill symlinks stay untracked like
 # .codex/skills/; the goals/ tree is the goal plugin's live session state.
 .opencode/skills/

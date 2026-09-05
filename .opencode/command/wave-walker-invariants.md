@@ -21,7 +21,7 @@ engines/wave-walker/engine/dist/active-workflow.js
 
 Repo-relative on purpose. The blueprint's own template writes a machine-absolute path here because an adopter's engine lives in a separate clone; this repo IS that clone, so the bundle sits in-tree and an absolute `/home/...` path would both hardcode one machine and breach `scripts/leak-check.sh`, which fails the push on any machine-absolute path in a tracked file.
 
-`active-workflow.js` is a symlink to the built `workflow.js`; `npm run build` in `engines/wave-walker/engine` overwrites it, and the bundle opens with a `GENERATED FILE — DO NOT EDIT` banner.
+`npm run build` emits side-by-side Claude and Codex candidates under `dist/cross-workflow/`; `npm run verify` checks them and the pinned legacy bundle. `dist/active-workflow.js` selects the Claude production artifact. Change that pointer only through `npm run activate:candidate` after the equivalence gate described in the engine design; rebuilding alone does not activate a candidate.
 
 **When this path is wrong the Workflow launch fails loudly** with a script-not-found error before any seat is dispatched — never a silent empty walk, and never a verdict. A walk that returns no findings has walked; a walk that could not load its engine says so.
 

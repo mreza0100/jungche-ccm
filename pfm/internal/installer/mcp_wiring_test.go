@@ -74,7 +74,7 @@ func TestMCPInstallCreatesClientJSONWithoutClaimingABackup(t *testing.T) {
 	if _, err := Run(context.Background(), options); err != nil {
 		t.Fatalf("apply on a fresh home: %v\n%s", err, applied.String())
 	}
-	clientPath := filepath.Join(home, ".mcp.json")
+	clientPath := filepath.Join(home, ".claude.json")
 	out := applied.String()
 	if !strings.Contains(out, "create "+clientPath) {
 		t.Fatalf("apply output never says it created %s:\n%s", clientPath, out)
@@ -145,7 +145,7 @@ func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T)
 		t.Fatalf("credential file exists in an unauthenticated MCP install: %v", err)
 	}
 	var clients map[string]any
-	clientJSON := readFixture(t, filepath.Join(home, ".mcp.json"))
+	clientJSON := readFixture(t, filepath.Join(home, ".claude.json"))
 	if err := json.Unmarshal([]byte(clientJSON), &clients); err != nil {
 		t.Fatal(err)
 	}
@@ -178,10 +178,16 @@ func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T)
 	if config := readFixture(t, configPath); strings.Contains(config, "authToken") {
 		t.Fatalf("PFM config retained MCP authentication: %s", config)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".config", "systemd", "user", mcpUnitName)); err != nil {
+	unitPath := filepath.Join(home, ".config", "systemd", "user", mcpUnitName)
+	activation := "systemctl --user restart " + mcpUnitName
+	if schedulerIsLaunchd {
+		unitPath = filepath.Join(home, "Library", "LaunchAgents", mcpLaunchdLabel+".plist")
+		activation = "launchctl bootstrap gui/"
+	}
+	if _, err := os.Stat(unitPath); err != nil {
 		t.Fatalf("MCP systemd unit missing: %v", err)
 	}
-	if calls := strings.Join(runner.calls, "\n"); !strings.Contains(calls, "systemctl --user restart "+mcpUnitName) {
+	if calls := strings.Join(runner.calls, "\n"); !strings.Contains(calls, activation) {
 		t.Fatalf("MCP daemon was not restarted after complete client wiring:\n%s", calls)
 	}
 
@@ -235,7 +241,7 @@ func TestMCPInstallRemovesLegacyCredentialAndAuthHeadersEverywhere(t *testing.T)
 	for _, path := range []string{
 		configPath,
 		credentialPath,
-		filepath.Join(home, ".mcp.json"),
+		filepath.Join(home, ".claude.json"),
 		filepath.Join(home, ".codex", "config.toml"),
 		filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName),
 	} {
@@ -254,7 +260,7 @@ func TestMCPInstallRemovesLegacyCredentialAndAuthHeadersEverywhere(t *testing.T)
 	}
 	for _, path := range []string{
 		configPath,
-		filepath.Join(home, ".mcp.json"),
+		filepath.Join(home, ".claude.json"),
 		filepath.Join(home, ".codex", "config.toml"),
 	} {
 		raw := readFixture(t, path)
@@ -271,7 +277,7 @@ func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
 	canonical := filepath.Join(home, ".claude")
 	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
 	manual := `{"mcpServers":{"harvester":{"type":"stdio","command":"manual-harvester"}}}`
-	writeFixture(t, filepath.Join(home, ".mcp.json"), manual)
+	writeFixture(t, filepath.Join(home, ".claude.json"), manual)
 	options := Options{
 		Mode: ModeApply, Home: home, ConfigDir: canonical,
 		ConfigDirs: []string{canonical},
@@ -286,15 +292,16 @@ func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
 	if err := json.Unmarshal([]byte(readFixture(t, ownershipPath)), &ownership); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(ownership.Clients, ",") != "chat" {
-		t.Fatalf("owned clients=%v, want only the client PFM actually wired", ownership.Clients)
+	owned := ownership.Registrations[filepath.Join(home, ".claude.json")]
+	if len(owned) != 1 || owned["chat"] == nil {
+		t.Fatalf("owned registrations=%v, want chat only", owned)
 	}
 	codexConfig := readFixture(t, filepath.Join(home, ".codex", "config.toml"))
 	if !strings.Contains(codexConfig, "[mcp_servers.chat]") {
 		t.Fatalf("Codex registration omitted owned chat client: %s", codexConfig)
 	}
-	if strings.Contains(codexConfig, "[mcp_servers.harvester]") {
-		t.Fatalf("Codex registration claimed manually conflicting Harvester client: %s", codexConfig)
+	if !strings.Contains(codexConfig, "[mcp_servers.harvester]") {
+		t.Fatalf("an unrelated Claude conflict prevented Codex wiring: %s", codexConfig)
 	}
 
 	if _, err := Run(context.Background(), Options{
@@ -305,7 +312,7 @@ func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	var document map[string]any
-	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".mcp.json"))), &document); err != nil {
+	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".claude.json"))), &document); err != nil {
 		t.Fatal(err)
 	}
 	servers, _ := document["mcpServers"].(map[string]any)
@@ -343,7 +350,7 @@ func TestMCPInstallMigratesAnOwnedHTTPChatClientToStdio(t *testing.T) {
 		t.Fatalf("pfm's own previous HTTP chat registration was treated as a manual conflict:\n%s", applied.String())
 	}
 	var document map[string]any
-	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".mcp.json"))), &document); err != nil {
+	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".claude.json"))), &document); err != nil {
 		t.Fatal(err)
 	}
 	servers, _ := document["mcpServers"].(map[string]any)
@@ -364,7 +371,7 @@ func TestMCPInstallPreservesAForeignChatClientRegistration(t *testing.T) {
 	canonical := filepath.Join(home, ".claude")
 	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
 	foreign := `{"mcpServers":{"chat":{"type":"stdio","command":"pfm","args":["mcp","chat","serve"]}}}`
-	writeFixture(t, filepath.Join(home, ".mcp.json"), foreign)
+	writeFixture(t, filepath.Join(home, ".claude.json"), foreign)
 	options := Options{
 		Mode: ModeApply, Home: home, ConfigDir: canonical,
 		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
@@ -378,16 +385,11 @@ func TestMCPInstallPreservesAForeignChatClientRegistration(t *testing.T) {
 	if !strings.Contains(applied.String(), "preserve conflicting manual MCP client chat") {
 		t.Fatalf("a bare \"pfm\" chat command was not treated as a manual conflict:\n%s", applied.String())
 	}
-	if got := readFixture(t, filepath.Join(home, ".mcp.json")); got != foreign {
+	if got := readFixture(t, filepath.Join(home, ".claude.json")); got != foreign {
 		t.Fatalf(".mcp.json chat entry changed=%s, want untouched %s", got, foreign)
 	}
-	var ownership mcpOwnership
-	ownershipPath := filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName)
-	if err := json.Unmarshal([]byte(readFixture(t, ownershipPath)), &ownership); err != nil {
-		t.Fatal(err)
-	}
-	if len(ownership.Clients) != 0 {
-		t.Fatalf("owned clients=%v, want none — the only enabled server was a preserved manual conflict", ownership.Clients)
+	if _, err := os.Stat(filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName)); !os.IsNotExist(err) {
+		t.Fatalf("manual registration was claimed: %v", err)
 	}
 }
 
@@ -401,10 +403,15 @@ func TestMCPInstallRecognizesAnOwnedStdioChatClientWithoutRewriteOrConflict(t *t
 	home := t.TempDir()
 	canonical := filepath.Join(home, ".claude")
 	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
-	clientPath := filepath.Join(home, ".mcp.json")
+	clientPath := filepath.Join(home, ".claude.json")
 	owned := `{"mcpServers":{"chat":{"type":"stdio","command":"` + home + `/.local/bin/pfm","args":["mcp","chat","serve"]}}}`
 	writeFixture(t, clientPath, owned)
-	writeFixture(t, filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName), `{"clients":["chat"]}`)
+	var existing map[string]map[string]any
+	if err := json.Unmarshal([]byte(owned), &existing); err != nil {
+		t.Fatal(err)
+	}
+	ledger, _ := json.Marshal(mcpOwnership{Registrations: map[string]map[string]any{clientPath: existing["mcpServers"]}})
+	writeFixture(t, filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName), string(ledger))
 	options := Options{
 		Mode: ModeApply, Home: home, ConfigDir: canonical,
 		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
@@ -455,7 +462,7 @@ func TestMCPInstallCodexChatStaysOnHTTPDespiteClaudeStdio(t *testing.T) {
 	if strings.Contains(codexConfig, "command") || strings.Contains(codexConfig, "stdio") {
 		t.Fatalf("Codex chat registration picked up the Claude-only stdio shape:\n%s", codexConfig)
 	}
-	clientJSON := readFixture(t, filepath.Join(home, ".mcp.json"))
+	clientJSON := readFixture(t, filepath.Join(home, ".claude.json"))
 	if !strings.Contains(clientJSON, `"type": "stdio"`) {
 		t.Fatalf("Claude chat registration is not stdio, so this test cannot pin the asymmetry:\n%s", clientJSON)
 	}
@@ -463,11 +470,11 @@ func TestMCPInstallCodexChatStaysOnHTTPDespiteClaudeStdio(t *testing.T) {
 
 func TestInspectHarvesterClientCutoverNamesHealthyLegacyAndUnreadableStates(t *testing.T) {
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(home, ".mcp.json"), `{"mcpServers":{"harvester":{"type":"http","url":"http://127.0.0.1:8377/mcp/harvester"}}}`)
+	writeFixture(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{"harvester":{"type":"http","url":"http://127.0.0.1:8377/mcp/harvester"}}}`)
 	writeFixture(t, filepath.Join(home, ".codex", "config.toml"), "[mcp_servers.harvester]\ncommand = \"uv\"\nargs = [\"--directory\", \"/fixture/harvester\", \"run\", \"harvester\"]\n")
 
-	reports := InspectHarvesterClientCutover(home, 8377)
-	if len(reports) != 2 || reports[0].Client != "claude" || reports[0].State != MCPClientPFM || reports[0].Error != nil {
+	reports := InspectHarvesterClientCutover(home, 8377, nil, nil)
+	if len(reports) != 3 || reports[0].Client != "claude" || reports[0].State != MCPClientPFM || reports[0].Error != nil {
 		t.Fatalf("Claude cutover report=%#v, want healthy PFM route", reports)
 	}
 	if reports[1].Client != "codex" || reports[1].State != MCPClientLegacyStandalone || reports[1].Error != nil {
@@ -475,7 +482,7 @@ func TestInspectHarvesterClientCutoverNamesHealthyLegacyAndUnreadableStates(t *t
 	}
 
 	writeFixture(t, filepath.Join(home, ".codex", "config.toml"), "broken = [\n")
-	reports = InspectHarvesterClientCutover(home, 8377)
+	reports = InspectHarvesterClientCutover(home, 8377, nil, nil)
 	if reports[1].State != MCPClientUnreadable || reports[1].Error == nil || !strings.Contains(reports[1].Error.Error(), "config.toml") {
 		t.Fatalf("Codex unreadable report=%#v, want path-bearing parse error", reports[1])
 	}

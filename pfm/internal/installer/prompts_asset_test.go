@@ -11,7 +11,7 @@ import (
 // contract; this is the no-drift gate between them.
 func TestProfessorPromptAssetMatchesShippedTemplate(t *testing.T) {
 
-	for _, pair := range [][2]string{{"professor-prompt.md", "professor.md"}, {"codex-appendix.md", "codex-appendix.md"}} {
+	for _, pair := range [][2]string{{"professor-prompt.md", "professor.md"}, {"codex-appendix.md", "codex-appendix.md"}, {"harness-original.model", "harness-original.model"}} {
 		embedded, err := readAsset("prompts/" + pair[0])
 		if err != nil {
 			t.Fatal(err)

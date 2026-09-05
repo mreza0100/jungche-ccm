@@ -27,16 +27,11 @@ Canonical tool: `$HOME/.local/bin/pfm chat`.
 
 `$HOME/.local/bin/pfm whoami` → your own address; include it in pings so verdicts route back.
 
-## Builder ping discipline (both channels, every time)
+## Coordination
 
-1. `$HOME/.local/bin/pfm chat inject {orchestrator} '{ping}'` — the fast path. Under the default
-   workspace-write sandbox this FAILS (unix-socket connects are kernel-blocked);
-   that is expected, and it is exactly why step 2 is not optional.
-2. Append the one-line event to `tmp/wave-sensor/events.log` — the guaranteed
-   wake (the orchestrator's waiter polls ~10s). An inject can fail; the spool
-   cannot — never skip it.
+Native subagents communicate through `collaboration.send_message` to the parent agent path; the parent waits with `wait_agent`. Separate terminal chats use the chat MCP or `pfm chat inject` with the exact target supplied by the orchestrator. Agent paths such as `/root/...` are mailbox addresses, never terminal-chat targets. A delivery failure is reported to the caller with the failed target; no event spool is consumed by the harness.
 
 ## Boundaries
 
-- `--then` exists solely to queue a steer behind a `/compact` you were told to send; every `/compact` inject REQUIRES it.
+- Use `pfm chat self-compact` for compaction; `chat inject` rejects `/compact`. Check `pfm chat inject --help` for supported delivery flags.
 - Never capture or scrape another pane to infer state — ping and ask; the orchestrator rules from reports.

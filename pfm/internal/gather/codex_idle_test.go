@@ -1,12 +1,15 @@
 package gather
 
 import (
+	"path/filepath"
 	"testing"
 )
 
 func TestRefreshCodexHeldRolloutsDropsStaleClaimsAndTracksRotation(t *testing.T) {
-	const oldPath = "/jail/codex/sessions/rollout-old.jsonl"
-	const newPath = "/jail/codex/sessions/rollout-new.jsonl"
+	root := t.TempDir()
+	oldPath := filepath.Join(root, "sessions", "rollout-old.jsonl")
+	newPath := filepath.Join(root, "sessions", "rollout-new.jsonl")
+	writeRolloutMeta(t, newPath, "user", "")
 	previous := []LiveCodex{{PID: 400, RolloutPath: oldPath, ThreadID: "old", RolloutHeld: true}, {PID: 999, RolloutPath: oldPath, RolloutHeld: true}}
 	for _, test := range []struct {
 		name  string
@@ -19,7 +22,7 @@ func TestRefreshCodexHeldRolloutsDropsStaleClaimsAndTracksRotation(t *testing.T)
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			proc := &fakeProcFS{processes: map[int]fakeProcess{400: {cmdline: []string{"codex"}, fdLinks: test.links}}}
-			got, err := RefreshCodexHeldRollouts(proc, previous, []string{"/jail/codex"})
+			got, err := RefreshCodexHeldRollouts(proc, previous, []string{root})
 			if err != nil || len(got) != 1 {
 				t.Fatalf("refresh=%#v err=%v", got, err)
 			}

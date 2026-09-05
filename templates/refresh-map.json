@@ -440,11 +440,6 @@
         ".claude/scripts/km-guard.sh": "695dbfc5952209a4b7df6262421440e09a74c4f7402c42e6f24e07a74ba989ad"
       }
     },
-    "project/scripts/limits-hook.sh": {
-      "sources": {
-        ".claude/scripts/limits-hook.sh": "4d7e1acf75c9b9cb335233d3863887ddf853f20b3f6076accccd290aa303bbc6"
-      }
-    },
     "project/scripts/memory-sync.sh": {
       "curated": true
     },

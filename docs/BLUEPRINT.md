@@ -25,24 +25,24 @@ Every command, agent, and rule sorts into one of three tiers:
 
 | Tier                         | Description                                                             | What ships                                                             | What gets parameterized                                                                           |
 | ---------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **A — Universal archetypes** | Personalities that work in any domain. The voice IS the value.          | Full character, voice, structure, signature traits, archetype identity | Domain-specific REFERENCES inside the character (JC's example stack traces)     |
+| **A — Universal archetypes** | Personalities that work in any domain. The voice IS the value.          | Full character, voice, structure, signature traits, archetype identity | Domain-specific REFERENCES inside the character (JC's example stack traces)                       |
 | **B — Domain archetypes**    | Roles every serious project needs, but content is heavily domain-shaped | Archetype skeleton: identity, voice, charter, mode list, doc structure | Regulation name, knowledge domain, user persona, market segment — filled at install via interview |
 | **C — Pure mechanics**       | Infrastructure agents and pipeline plumbing                             | Mechanics only — no character needed                                   | Tech-specific commands (test runner, package manager, build tool)                                 |
 
 ### The cast (Tier A — universal)
 
-- **The Professor** — Grandfatherly polymath with 15+ PhDs, one in whatever area the work touches. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command.
+- **The Professor** — Grandfatherly polymath with 15+ PhDs, one in whatever area the work touches. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in `templates/prompts/professor.md`, selected by the Claude launch policy.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
-- **/pfm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling. `ptm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope; `/context-meter` audits the framework's own context budget.
-- **/wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /dev, /git, /documenter** — pipeline mechanics with light Professor voice in their reports. `/reload` is the same tier but installs host-level (`~/.claude/commands/`, opt-in) from the self-contained `pfm` binary; chat control is the opt-in chat MCP server the same binary registers.
+- **/pfm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling. `pfm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope; `/context-meter` audits the framework's own context budget.
+- **/wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /dev, /git, /documenter** — pipeline mechanics; the harness supplies the Professor voice. `/reload` is the same tier but installs host-level (`~/.claude/commands/`, opt-in) from the self-contained `pfm` binary; chat control is the opt-in chat MCP server the same binary registers.
 
-> Each Tier A persona ships as ONE version: `professor.md` (the session style) and `jc.md` (the `/jc` overlay) — lean voice plus the behavioral contract (concise delivery, the Verdict, the Analysis Protocol).
+> Each Tier A persona ships as ONE version: `professor.md` (the harness replacement) and `jc.md` (the `/jc` task contract) — lean voice plus the behavioral contract (concise delivery, the Verdict, the Analysis Protocol).
 
 **Bundled commands (ship with the blueprint):**
 
 - **the framework bus** — the framework repo's release flow publishes the blueprint; project installs are scaffolded once and adopt later template deltas by reviewed diff.
 - **/wave:refine** — wave task refinement into a zero-gap spec.
-- **/wave:walker** — merge-gating end-to-end functional + hygiene walk, run against the merge candidate before the merge it can condemn.
+- **/wave:walker** — end-to-end functional and hygiene walk. The reviewer report gates the merge; a walker is an additional audit when the train protocol requests it.
 - **/wave:ccc** — the Control & Command Center: the standing command seat over a running train. Full audit from ground truth on arrival, then holds command until the train closes — verifies claims against the tree, rules scope-allocation escalations, dispatches through the orchestrator.
 - **/p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). Ships as a portable command (`templates/project/commands/p/360.md`) — not source-fetched.
 - **/rnd** — goal-driven iterative research-and-develop loop.
@@ -51,9 +51,9 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/audit:code-hygiene** / **/audit:security** / **/audit:ai-output** — code-hygiene, security, and AI-output audit scopes, each carrying their own 360-sweep pre-step. Code-hygiene additionally has a Sweep Mode (`code-hygiene sweep`) that promotes a report-only run to actively removing confirmed-dead code and unused dependencies, end-to-end behind QA.
 - **/qa:live** — live end-to-end QA of the running app on the dev stack: no mocks, no seeded data, judgment-based rather than regression assertions.
 
-**Source-fetched skills (installed at setup from canonical public repos via `templates/project/skills/sources.json`, never vendored):**
+**Machine-global skills (`templates/global/skills/sources.json` declares source-fetched skills and in-tree links):**
 
-- **rr** — Research-and-Report protocol.
+- **deep-rr** — in-tree research protocol under `engines/deep-rr/`, linked by host installation.
 - **ghostwriter** — captures a writer's mechanical fingerprint and generates in that voice.
 - **vision-factory** — forge, validate, and stress-test a startup vision.
 
@@ -229,7 +229,7 @@ Meta path: `/pfm {request}` → edits the agent definitions at the source.
 
 ```
 your-project/
-├── CLAUDE.md                          ← root rules + Professor persona (the nervous system's brain)
+├── CLAUDE.md                          ← root project rules; the harness supplies the Professor persona
 ├── AGENTS.md                          ← (OPTIONAL) COMPILED from local CLAUDE.md by `pfm codex build` (Codex reads this by convention)
 ├── .professor/
 │   ├── VERSION                        ← installed blueprint version (e.g., vX.Y.Z)
@@ -239,10 +239,10 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, mono-documenter, gitter, tracer, scheduler, architect, {role}-{project} wrappers)
-│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /pfm:{update,release}, /context-meter, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:360, /rnd, /tokens + opt-in Tier B (`/reload` is NOT here — `pfm install` installs it host-level)
-│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
+│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /pfm and framework release tools, /context-meter, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:360, /rnd, /tokens + opt-in Tier B (`/reload` is NOT here — `pfm install` installs it host-level)
+│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh
 │   ├── workflows/                     ← project-local Workflow scripts such as documenter-fanout and audit-ai-output-sessions; Wave Walker runs from the permanent Professor clone
-│   ├── skills/                        ← bundled legal shelf + source-fetched sources.json skills (rr, ghostwriter, vision-factory); reasoning protocols ship as nested commands under commands/
+│   ├── skills/                        ← bundled legal shelf + project source registry; machine-global skills use templates/global/skills/sources.json
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) pointer layer over .claude/ — never a restatement of it
 │   ├── config.toml                    ← sandbox reach + the {CODEX_MODEL}/{CODEX_REASONING_EFFORT} pins
@@ -348,11 +348,11 @@ See `templates/project/codex/README.md` for the full integration guide.
 
 The blueprint evolves through semver git tags. Each tier has one source of truth and one update path:
 
-| Tier | Truth | Staying current |
-| --- | --- | --- |
-| Machine-global commands, agents, and skills | Blueprint originals | Symlink-live. `pfm update` advances the recorded tagged clone, rebuilds the binary, runs `pfm install --yes`, and refreshes registrations. |
-| Project files (`CLAUDE.md`, `.claude/**`, docs, scripts) | **The local file, full stop** | `pfm init` scaffolds it once. `pfm update check` reports upstream template deltas for review and hand application; pfm never rewrites it during update. |
-| Engine mirrors (`AGENTS.md`, `.codex/**`, OpenCode outputs) | Generated from local project files | Never edit by hand. Run the owning compiler, including `pfm codex build|check`, after changing local sources. |
+| Tier                                                        | Truth                              | Staying current                                                                                                                                         |
+| ----------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Machine-global commands, agents, and skills                 | Blueprint originals                | Symlink-live. `pfm update` advances the recorded tagged clone, rebuilds the binary, runs `pfm install --yes`, and refreshes registrations.              |
+| Project files (`CLAUDE.md`, `.claude/**`, docs, scripts)    | **The local file, full stop**      | `pfm init` scaffolds it once. `pfm update check` reports upstream template deltas for review and hand application; pfm never rewrites it during update. |
+| Engine mirrors (`AGENTS.md`, `.codex/**`, OpenCode outputs) | Generated from local project files | Never edit by hand. Run the owning compiler, including `pfm codex build                                                                                 | check`, after changing local sources. |
 
 `pfm init` records each deployed local-to-template mapping in `.professor/baseline.json`. The pin hashes the template bytes with tokens intact and records the blueprint SHA; local token filling and later customization do not change that provenance. `.professor/manifest.json` remains the user-owned interview record.
 

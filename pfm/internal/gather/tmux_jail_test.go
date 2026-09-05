@@ -417,6 +417,8 @@ func TestJailedTmuxProbeAndGather(t *testing.T) {
 		session  = "01234567-89ab-cdef-0123-456789abcdef"
 	)
 	rolloutPath := filepath.Join(jail.codexRoot, "sessions", "2026", "rollout-live.jsonl")
+	writeRolloutMeta(t, rolloutPath, "user", "")
+	writeRolloutMeta(t, filepath.Join(jail.codexRoot, "sessions", "rollout-later.jsonl"), "subagent", "live")
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
 		cxPane.PID: {},
 		ccPane.PID: {},
@@ -540,6 +542,7 @@ func TestJailedResumedCodexPaneNamingAndConflicts(t *testing.T) {
 		"2026",
 		"rollout-fresh.jsonl",
 	)
+	writeRolloutMeta(t, rolloutPath, "user", "")
 	processes := map[int]fakeProcess{}
 	for _, socket := range []string{
 		resumedSocket,

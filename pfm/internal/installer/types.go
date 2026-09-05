@@ -62,6 +62,9 @@ type Options struct {
 	// the historical discovery of existing .cc account settings for callers
 	// that construct Options directly.
 	ConfigDirs []string
+	// ClaudeRegistries carries actual user-scope paths, including implicit accounts.
+	// Nil derives legacy paths from ConfigDirs; empty means no Claude clients.
+	ClaudeRegistries []string
 	// CodexHomes is the config-driven hooks.json fanout. A nil value retains
 	// the historical single ~/.codex target for direct legacy callers; an
 	// explicitly empty roster installs no Codex hook.

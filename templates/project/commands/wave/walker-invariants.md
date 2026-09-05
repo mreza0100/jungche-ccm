@@ -21,10 +21,10 @@ Everything the wave-walker engine needs that is specific to THIS project — the
 **Script path** — the built bundle, one copy per machine, never copied into this repo:
 
 ```
-{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine/dist/active-workflow.js
+{BLUEPRINT_CLONE_PATH}/engines/wave-walker/engine/dist/active-workflow.js
 ```
 
-The clone's `git pull` is this file's whole update story; the bundle opens with a `GENERATED FILE — DO NOT EDIT` banner and any hand edit is overwritten by the next `npm run build` in `{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`.
+`npm run build` emits side-by-side Claude and Codex candidates under `dist/cross-workflow/`; `npm run verify` checks them and the pinned legacy bundle. `dist/active-workflow.js` selects the Claude production artifact. Change that pointer only through `npm run activate:candidate` after the equivalence gate described in the engine design; rebuilding alone does not activate a candidate.
 
 **Profile (`args.project`)** — passed verbatim on every engine invocation, all modes:
 
@@ -61,7 +61,7 @@ One `##` section per invariant. Each entry:
   than its own exemplars makes the registry's blind spot the walker's.
 - **Triggers** — free-text diff predicates the scout judges semantically; the zero-token engine-side
   fail-safe floor beneath it is a territory-glob match (`computeArmedInvariants`,
-  `.professor/ENGINES/wave-walker/engine/src/engine.ts`).
+  `.professor/engines/wave-walker/engine/src/engine.ts`).
 - **Exemplars** — 2-4 confirmed bugs of exactly this class, cited `file:line`, each carrying its STATUS:
   LIVE, or FIXED naming the pin that closed it. A fixed exemplar still teaches the shape; an unmarked one
   sends a hunter to an anchor that no longer holds and teaches it the registry cannot be trusted. Anchors
@@ -133,7 +133,7 @@ sandbox). The registry's data arrives structured via `args.invariants`, an array
 
 Each field maps directly from this doc's per-entry `**Law:**` / `**Territory:**` / `**Triggers:**` /
 `**Exemplars:**` / `**Hunt Brief:**` lines — mechanical, list-to-array transcription. `Configs.
-parseInvariants` (`.professor/ENGINES/wave-walker/engine/src/config.ts`) validates the shape and throws
+parseInvariants` (`.professor/engines/wave-walker/engine/src/config.ts`) validates the shape and throws
 loudly on a malformed entry (missing `id`/`law`/`huntBrief`, empty/non-array `territory`). Absent or `[]`
 → THE FLOOR: no `invariantHunter`/`coverageCritic` dispatched, walker behavior byte-identical to the
 registry-less walker. The caller-side transcription duty is documented in `walker.md` § Entry points.

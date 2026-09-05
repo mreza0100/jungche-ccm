@@ -3,7 +3,7 @@
   "installed_from": {
     "mode": "self-hosted",
     "repo": "mreza0100/professor",
-    "version": "0.68.0"
+    "version": "0.69.0"
   },
   "profile": "minimal",
   "answers": {
@@ -51,7 +51,7 @@
       "Pragmatics & linguistics",
       "Cognitive load and attention"
     ],
-    "intersection_lens": "prompt engineering x epistemology of evidence — the judge must never be the thing being judged",
+    "intersection_lens": "prompt engineering x epistemology of evidence \u2014 the judge must never be the thing being judged",
     "failure_modes_watched": [
       "the honest-looking absence (a check that reports its own broken state as a clean result)",
       "drift between .claude/** and its templates/** twin",
@@ -65,8 +65,8 @@
       "renamed": false
     },
     "sacred_ground": [
-      "the leak line — no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
-      "the publication line — push/tag/release only on an explicit in-turn request"
+      "the leak line \u2014 no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
+      "the publication line \u2014 push/tag/release only on an explicit in-turn request"
     ],
     "tier_b_roles": [],
     "codex": true,
@@ -84,43 +84,29 @@
       "dev",
       "git",
       "p:360",
-      "p:rnd",
-      "p:tokens",
-      "ptm",
-      "ptm:context-meter",
-      "ptm:release",
+      "pfm",
+      "pfm:release",
       "quality:doc",
       "quality:prompt",
       "wave:ccc",
       "wave:live",
       "wave:refine",
-      "wave:walker-invariants",
-      "wave:walker"
+      "wave:walker",
+      "wave:walker-invariants"
     ],
-    "output_styles": [
-      "professor",
-      "dr-house"
-    ],
+    "output_styles": [],
     "scripts": [
       "build-opencode.mjs",
       "codex-sync.sh",
       "dev.sh",
       "explore-deny.sh",
-      "guard-stamp.sh"
+      "guard-stamp.sh",
+      "pfm-guard.sh"
     ],
-    "skills_source_fetched": {
-      "rr": {
-        "repo": "https://github.com/mreza0100/rr",
-        "sha": "4056d38b2f1e8afc91a493f6ffb98d6784aad0db",
-        "tracked": false,
-        "reason": "sources.json law — never vendored; gitignored"
-      }
-    },
+    "skills_source_fetched": {},
     "deliberately_absent": {
-      "wave pipeline (/wave:*, worktrees, ports, per-project planner/architect/developer/qa)": "minimal profile — the pipeline ships as blueprint source, it is not this repo's own workflow",
-      "/ptm:update": "this repo IS upstream; there is no newer tag to consume",
-      "/jc": "no separate hotfix route needed without a worktree pipeline — work lands on main under /dev + gitter",
-      "format-md.sh + notify.sh + limits-hook.sh + km-guard.sh + filter-test-output.sh": "not wired: prettier is absent on this host and an npx-fetching hook is a silent network call mid-turn",
+      "/jc": "no separate hotfix route needed without a worktree pipeline \u2014 work lands on main under /dev + gitter",
+      "format-md.sh + notify.sh + km-guard.sh + filter-test-output.sh": "not wired: prettier is absent on this host and an npx-fetching hook is a silent network call mid-turn",
       "docs/agents/ cluster + /documenter": "no permanent cross-project doc tree in a template repo"
     }
   },
@@ -135,28 +121,40 @@
     ".claude/commands/git.md": "c0d2b20ea0772a93ddbd79305a200fe8c703336feff89886963d3480a6a6b52f",
     ".claude/commands/p/360.md": "151b673eb9bc12124125277763fbeeaa1ea655ae42d09d07482a12c465f667c3",
     ".claude/commands/pfm.md": "92cc310bb449029dc32f0131a3e5dcc689d396635f0a85d7967e366bb3aac970",
-    ".claude/commands/pfm/release.md": "c6627633fba454736ad46676bfec96c2b997e2d4f9d772951369c585bae2850c",
+    ".claude/commands/pfm/release.md": "0edf509402fd0ccd3c45faaaf375ced9fb83d25da59160878c3ac433297b7098",
     ".claude/commands/quality/doc.md": "32318fbb1c56f93634d6a14933e555a580b6443002648f024aeef06a8fdba1e6",
     ".claude/commands/quality/prompt.md": "84243757907fca2b39c63379c087540e1e24424ed59c2029537cb798ac9b3b69",
     ".claude/commands/wave/ccc.md": "ac2836af7745dc278a662fa02e0374df2d9afc7ffdd05e77d8a932de077f892b",
     ".claude/commands/wave/live.md": "1eac2188cfcca4b3428c46936fbeeedad654f03345d4944bcdbb67cbbbee2f5f",
     ".claude/commands/wave/refine.md": "8b01092906b0a3ff14a1b9477c2cb4529ea82691a09ca7ff44fc0035a8af1f08",
-    ".claude/commands/wave/walker-invariants.md": "5ccafc93ea23dce7865034db35a8057b2ee08e7e2ca2e73cfc630853c8565ce8",
+    ".claude/commands/wave/walker-invariants.md": "1a844bd900040af21cd1e0e3181410d8ffa81a9c471a6ac98835a82ab4bb9c0b",
     ".claude/commands/wave/walker.md": "cc1713bcce44d830fbba6374218943969faa06532e687323fd08b9a7b4836ccf",
-    ".claude/scripts/build-opencode.mjs": "0dd303a37b0dca6fde229ef75e2ae9080eec60cd7b009bab2466e0666cda3cb4",
+    ".claude/scripts/build-opencode.mjs": "bf733565c5b02127fb361bcfcd938b35b34c36b107f09419e9bc0eec92a6db09",
     ".claude/scripts/codex-sync.sh": "05ba9af95d3d68b5005fe63d82fd6aa517afbf03eb5e8e6cc827d50ed93f92dd",
-    ".claude/scripts/dev.sh": "132c243c94346620caa6881397e1314209a80e63182f9c4c8031029ebc9fa924",
+    ".claude/scripts/dev.sh": "ff4cf6668da1063b53f0b6d5d9605a5e55ba49060529ee99cc21977e221d440c",
     ".claude/scripts/explore-deny.sh": "966d38099cd592963ef54b54fb7544d4d44437fd4e36faae0846219ab57b26b6",
     ".claude/scripts/guard-stamp.sh": "45e82d48d90e54906b090518d99a6085a83314380960885b2f608aa421e17e9b",
     ".claude/scripts/pfm-guard.sh": "f8150cc7ba2e6dcf51f1cc53dd91c92f4a8550b68198b87356757a9a0c050051",
-    ".claude/settings.json": "6d64400094adb69642bb79a84c0ea214431501cb798c00ba766bb0764533efe1",
+    ".claude/settings.json": "73566c99fbfef7582620a6b74e930b73583b7c08a9f17d2462bfddf8810f99b3",
     ".codex/agents/dev.toml": "2991b0a7ab962573e462b60c090a7a215cfbfe38c9a099047df5e50187435990",
     ".codex/agents/gitter.toml": "a6b7b71c5a9c6e8010ab9bef53edb2856f5f75b2df454d1bd1d0345517661192",
     ".codex/agents/qa.toml": "07f70f2921f973257049d304be93b6349e44a32369583e2187c6536a17130009",
     ".codex/agents/scheduler.toml": "0798af7d001f39b8cdbf487df1c3351beaacb4b2f5836cba4a43d6696d8cc891",
     ".codex/agents/tracer.toml": "e0a6b514f6f1b6763e607cd6d466da388942cee24bb599a4bfed81f6ead90442",
     ".codex/config.toml": "7509ceded2e03bdae6e3e3d4241a9e958df0a7ffa80bf2861d83dcb2c14161da",
-    ".gitignore": "d83464a9640a9aea35ee5f1235cba7192f98d3ac852bd23f4b861bd7a8fff02f",
+    ".codex/skills/dev/SKILL.md": "67ddce017e790996e3621e854785df8b08bbd1417ac3659cf9be40b3b64970cb",
+    ".codex/skills/git/SKILL.md": "086b360dbadf9983d6ad0bca89368e3f777d5b77d382ba5e17982216c963d90e",
+    ".codex/skills/p-360/SKILL.md": "668962e0d1ae5cec9ea0d1355e7d2212be730243786a36122f687286b44cc4db",
+    ".codex/skills/pfm-release/SKILL.md": "34a75ef1f2f27f48311386b56f2c5268aa2ea6db23d2932a46286a02de18c73c",
+    ".codex/skills/pfm/SKILL.md": "459415192086eb700d46e912a45920b577df1cb9b984cd6247a19d3102577193",
+    ".codex/skills/quality-doc/SKILL.md": "f81757875ad23f00fdb17de3a5656e9aef43eda1d8e1c3267982c444fd3904bf",
+    ".codex/skills/quality-prompt/SKILL.md": "52483e66be584709eecd3cf82fce16ddd20037fbbfdd2c6051aeb774532b2373",
+    ".codex/skills/wave-ccc/SKILL.md": "5eef1eb65b059627e880f2be286fe727ab0c9d1cec19124d136340ca31ad5e8a",
+    ".codex/skills/wave-live/SKILL.md": "ca171afc64ca67c611b2555bba92d463b8a7ba39e664d04dada76eca7a2c3414",
+    ".codex/skills/wave-refine/SKILL.md": "2bbbe2d5a117d009ac3d78b7ecc87cd678da5fea1c11004982b5fa10708bba5e",
+    ".codex/skills/wave-walker-invariants/SKILL.md": "4efd92cbbc0a6a56d6f28b3372a410e9d37b63ba90697193fa5f133d25410576",
+    ".codex/skills/wave-walker/SKILL.md": "966a7aa010ce11fc7aa4ab4abbf2341b083e58e800d819aa3d29000dd3457a61",
+    ".gitignore": "1c7e51681f5c86bf3949f22a0a8e6e7b11236876b62e7cc75d078ad842b2fdad",
     ".opencode/agent/dev.md": "e5dca45cf9da5bb45b005a94b6acc59af1d41e020ceaa593b2ca3b485cbdcf1a",
     ".opencode/agent/gitter.md": "448648c69a7106b8d48f2f45df39d59dd7713d635ca9c80df9b8569e0c2c1458",
     ".opencode/agent/qa.md": "f336782276c106dce7c682c7cae9eb5e01d6357fd2ea295350400987913720ac",
@@ -165,14 +163,14 @@
     ".opencode/command/dev.md": "ed84f393ae750e8a5d30e3d6a8bae750b7ef0c5dadbf023a625c690916d129b8",
     ".opencode/command/git.md": "d5e3a219f154b563553e01de81d061f20f9e5d6415829a5add865c0fc70d2f56",
     ".opencode/command/p-360.md": "30d66fb919dbfe4eb51f7e8331eebaefa90dffa58292bcd87e8a83e7feb1d6b7",
-    ".opencode/command/pfm-release.md": "34f69edb75f56ae0acfd4d0feed5ffd3c29d255eb0788d4489791b3d59386e5c",
+    ".opencode/command/pfm-release.md": "93c6263d6f3b0bb9aa6beb3ab6c0a84b56b78f531ad2305f4f0b8c38ea86df09",
     ".opencode/command/pfm.md": "94cb3571f4a89ccc0f23ff7718c742989bef27488a95b8a924eb53d2764a09b2",
     ".opencode/command/quality-doc.md": "5104d559152689680f7756d7ff56291b9878eaa9f1163e2932e1fd6b104058d2",
     ".opencode/command/quality-prompt.md": "78e1a30e34f6fcfca4e57bf42eef22596e59fcb811172574d6ef627a1974ae83",
     ".opencode/command/wave-ccc.md": "e9d1db5e58ac0381563c8c461018c02fa34034670b338eafea2bdcd7a299e54b",
     ".opencode/command/wave-live.md": "db47274ce5955c62f776b39c1d8fbd72705e47bb1cf73fe9a4fac8ccc88023dc",
     ".opencode/command/wave-refine.md": "d8eaf6d7bbeabc95b735cb509bad67440645f017eaca70c0f26d0c9811eb6a7a",
-    ".opencode/command/wave-walker-invariants.md": "cc255c04f53d3f8648a9027facd44914c0ec14c2618f7916020b7b29072f4884",
+    ".opencode/command/wave-walker-invariants.md": "716ae4499af366c9e02abd0b778265b35209823a1f96a3405bdc6c610ec90228",
     ".opencode/command/wave-walker.md": "5ac7fb6dd6b56933d5de34fccdf6d5b6980bdec0ece01f63457dda748e0d4d2c",
     ".opencode/opencode.jsonc": "a7d7d8147da1f7a731f971dfbc20e8497f6e1953a3ad88ff0fd705e38cadaf47",
     "AGENTS.md": "33aac8e7cc24289f2368b023186520de9fe726ff466a2c9c3954a26b5b4203dc",

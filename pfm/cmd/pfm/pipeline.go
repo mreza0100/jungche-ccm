@@ -1160,6 +1160,12 @@ func observeCodexPanes(
 	processThreads := make(map[string]string, len(live.Codex))
 	processConflicts := make(map[string]bool)
 	for _, process := range live.Codex {
+		if process.IdentityError != "" {
+			processConflicts[process.Socket+"\x00"+process.PaneID] = true
+			warn(fmt.Sprintf("codex pane %s %s: %s; binding not guessed", process.Socket, process.PaneID, process.IdentityError))
+			continue
+		}
+
 		// Only a rollout the process itself has open right now may override
 		// the screen. A resolver-derived identity (binding/argv/env guess,
 		// RolloutHeld false) never enters this map, so it can never overrule
@@ -1201,6 +1207,11 @@ func observeCodexPanes(
 			identity.Name = ""
 			identity.ThreadID = processID
 			identity.Failed = false
+		}
+		if processConflicts[key] {
+			identity.Failed = true
+			identity.ThreadID = ""
+			identity.Name = ""
 		}
 		observation := codexPaneObservation{
 			Socket: identity.Socket, PaneID: identity.PaneID,

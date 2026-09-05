@@ -90,7 +90,7 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 binary is not installed")
 	}
-	const tmuxRoot = "/tmp/tmux-1000"
+	tmuxRoot := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(tmuxRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +478,7 @@ func TestChatInjectResumeRefusesLiveSocketCrumbSession(t *testing.T) {
 	}
 	const id = "66666666-2222-4333-8444-555555555555"
 	const socket = "cc-1800000000-22-3"
-	base := "/tmp/tmux-1000"
+	base := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		t.Fatal(err)
 	}

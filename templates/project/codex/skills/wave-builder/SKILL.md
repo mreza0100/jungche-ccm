@@ -39,9 +39,9 @@ Repo law is enforced at two layers — the kernel sandbox (workspace-write, the 
 
    The child shares your working directory and loads the role protocol compiled from `.claude/agents/`. Do not shell out to another agent CLI. If a named role is absent, stop with a registry failure; never substitute `default` or execute gitter inline.
 
-2. **Pings** — your guaranteed channel is the spool: append one line to `tmp/wave-sensor/events.log` (`{ISO-8601} {wave} {T-id or event} {status} {report filename} codex-ping`) — the orchestrator's waiter polls it every ~10s, and the append IS the wake. Under the default workspace-write sandbox, unix-socket connects (tmux among them) are kernel-blocked, so `pfm chat inject` WILL fail — that is expected, not an error. Only on an explicitly operator-authorized full-access launch, ALSO send the pfm inject as the fast path. Echo the last verdict id in your next ping; re-ping once (idempotent) after ~10 minutes of silence.
+2. **Pings** — native subagents use `collaboration.send_message` to their parent agent path; completion also arrives through the harness mailbox. A separately launched terminal builder reports through the chat MCP to the exact orchestrator target in its briefing. Report delivery errors; no spool or timer provides a fallback.
 
-3. **Verdicts and steers inbound** — they arrive as typed turns in your TUI (the orchestrator injects your pane). After pinging, END YOUR TURN and idle at the prompt; a busy-wait loop deadlocks against the very inject you are waiting for.
+3. **Verdicts and steers inbound** — native subagents receive mailbox messages; separate terminal builders receive injected turns and end their turn after reporting. Use `wait_agent` when waiting for a native child.
 
 4. **Goal / allow-list machinery** — there is no Claude `/goal` harness continuation. The discipline is identical by this card: act ONLY on injected turns (a BRIEF, a verdict, a boundary brief); never self-start work, never open `$WAVES` manifests un-briefed, never self-schedule timers or background waiters.
 

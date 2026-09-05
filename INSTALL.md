@@ -24,7 +24,7 @@ Shortest path first.
 ## Runtime prerequisites for the `pfm` install paths
 
 Paths 1 and 2 use the same host runtime. Both require Linux or macOS on `amd64` or `arm64`,
-plus `tmux` ≥ 1.8, `git`, a POSIX `sh`, `bash`, `zsh`, and `sleep`. Linux also requires
+plus `tmux` ≥ 1.8, `git`, `jq`, a POSIX `sh`, `bash`, `zsh`, and `sleep`. Linux also requires
 `setsid`; macOS requires `ps`, `lsof`, and `launchctl`. `systemd` on Linux is optional when
 user units are unavailable, but the scheduler surface cannot be enabled without it.
 
@@ -142,11 +142,11 @@ TAG=$(git ls-remote --tags --sort=-v:refname "https://github.com/${REPO}.git" 'v
   | grep -v '\^{}' | head -1 | sed 's#.*/##')
 git clone "https://github.com/${REPO}.git" "$SOURCE_DIR"
 git -C "$HOME/.professor" checkout "$TAG"
-GOPROXY=<proxy> go -C "$HOME/.professor/pfm" build -trimpath -ldflags "-X main.version=$TAG" -o "$HOME/.local/bin/pfm" ./cmd/pfm
+mkdir -p "$HOME/.local/bin"
+GOPROXY=https://proxy.golang.org go -C "$HOME/.professor/pfm" build -trimpath -ldflags "-X main.version=$TAG" -o "$HOME/.local/bin/pfm" ./cmd/pfm
 ```
 
-Replace `<proxy>` with a Go module proxy reachable from your network (for example,
-`https://proxy.golang.org`). The source path needs Go **1.24.13 or newer**, the floor declared
+Set `GOPROXY` to a Go module proxy reachable from your network. The source path needs Go **1.24.13 or newer**, the floor declared
 by `pfm/go.mod`, and access to the module host or proxy. The tag lookup and explicit checkout
 keep the source and the binary on the same latest release; if the source directory already
 exists, fetch and check out that tag there instead of cloning over it.
@@ -193,12 +193,12 @@ Tell Claude to read the printed `docs/SETUP.md` path and execute its **Install i
 
 One writer per surface — the law that keeps the two installers from fighting over the same file.
 
-| Surface                                        | Written by                            | Paths                                                                                                                                                                                               |
-| ---------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host fleet wiring                              | `pfm install` — the only writer       | `~/.local/share/pfm/install/`, `~/.claude/commands/`, `~/.claude/skills/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/{prompts,skills,agents,hooks.json}`, one `~/.zshrc` line, and the opt-in VS Code user/remote `settings.json` |
-| Project discipline layer                       | `pfm init` scaffolds and pins; the interview owns later local adaptation | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                                               |
-| Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the host-fleet surfaces above — the interview never writes them directly                                                                                                           |
-| Source-fetched themes (default; `--skip-themes` opts out) | `pfm install` | `~/.claude/themes/tokyo-night.json` and other targets declared by `templates/themes/sources.json`; exact ownership is recorded in the install ledger |
+| Surface                                                   | Written by                                                               | Paths                                                                                                                                                                                                                                                                        |
+| --------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host fleet wiring                                         | `pfm install` — the only writer                                          | `~/.local/share/pfm/install/`, `~/.claude/commands/`, `~/.claude/skills/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/{prompts,skills,agents,hooks.json}`, one `~/.zshrc` line, and the opt-in VS Code user/remote `settings.json` |
+| Project discipline layer                                  | `pfm init` scaffolds and pins; the interview owns later local adaptation | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                                                                                                                        |
+| Host-level opt-ins chosen during the interview            | `pfm install`, invoked on your behalf                                    | Lands inside the host-fleet surfaces above — the interview never writes them directly                                                                                                                                                                                        |
+| Source-fetched themes (default; `--skip-themes` opts out) | `pfm install`                                                            | `~/.claude/themes/tokyo-night.json` and other targets declared by `templates/themes/sources.json`; exact ownership is recorded in the install ledger                                                                                                                         |
 
 `pfm install --config-dir DIR` retargets the `~/.claude`-rooted writes to a different config directory — the only supported override.
 
@@ -212,14 +212,15 @@ means no Codex home even if `~/.codex` exists and contains credentials. Non-empt
 {
   "version": 2,
   "codex": {
-    "homes": [
-      {"id": 1, "home": "~/.codex"}
-    ]
+    "homes": [{ "id": 1, "home": "~/.codex" }]
   }
 }
 ```
 
-With an empty list, PFM does not fall back to the default home.
+With an empty list, PFM does not fall back to the default home or write its Codex mirrors,
+configuration defaults, or hooks. If `ask.engine` is explicitly `codex`, select a configured
+engine there or remove that override; an explicit engine with no accounts is a configuration
+error. An omitted `ask.engine` is chosen from the available roster.
 
 ---
 
@@ -227,11 +228,11 @@ With an empty list, PFM does not fall back to the default home.
 
 Each tier has one source of truth and one update mechanism:
 
-| Tier | Truth | Staying current |
-| --- | --- | --- |
-| Machine-global commands, agents, and skills | Blueprint originals | `pfm update` advances the tagged source clone, rebuilds the binary, runs `pfm install --yes`, and refreshes the registry symlinks. |
-| Project files (`CLAUDE.md`, `.claude/**`, docs, scripts) | The local files | `pfm init` scaffolds them once (`pfm update adopt` pins an install that predates scaffolding). `pfm update check` reports template deltas; you review and hand-apply each wanted change, then pin it. |
-| Engine mirrors (`AGENTS.md`, `.codex/**`, OpenCode outputs) | Generated from local project files | Never edit them by hand. Rebuild or verify them with their compiler, including `pfm codex build|check`. |
+| Tier                                                        | Truth                              | Staying current                                                                                                                                                                                       |
+| ----------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Machine-global commands, agents, and skills                 | Blueprint originals                | `pfm update` advances the tagged source clone, rebuilds the binary, runs `pfm install --yes`, and refreshes the registry symlinks.                                                                    |
+| Project files (`CLAUDE.md`, `.claude/**`, docs, scripts)    | The local files                    | `pfm init` scaffolds them once (`pfm update adopt` pins an install that predates scaffolding). `pfm update check` reports template deltas; you review and hand-apply each wanted change, then pin it. |
+| Engine mirrors (`AGENTS.md`, `.codex/**`, OpenCode outputs) | Generated from local project files | Never edit them by hand. Rebuild or verify them with their compiler, including `pfm codex build` and `pfm codex check`.                                                                               |
 
 The project flow is deliberately non-destructive:
 

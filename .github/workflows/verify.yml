@@ -25,6 +25,16 @@ jobs:
         shell: bash
         run: git worktree add --detach "$RUNNER_TEMP/professor-fence" HEAD
 
+      - name: Stage private leak-check policy
+        env:
+          PFM_PRIVATE_LEAK_TERMS: ${{ secrets.PFM_PRIVATE_LEAK_TERMS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PFM_PRIVATE_LEAK_TERMS" || { echo "Missing repository secret PFM_PRIVATE_LEAK_TERMS" >&2; exit 1; }
+          umask 077
+          printf '%s\n' "$PFM_PRIVATE_LEAK_TERMS" > "$RUNNER_TEMP/professor-fence/scripts/leak-terms.txt"
+
       - name: Run the repository gate through the isolated fence
         shell: bash
         run: |
@@ -136,8 +146,15 @@ jobs:
         run: go -C pfm test ./...
 
       - name: leak-check (secrets / machine-absolute paths, full tracked tree)
+        env:
+          PFM_PRIVATE_LEAK_TERMS: ${{ secrets.PFM_PRIVATE_LEAK_TERMS }}
         shell: bash
-        run: ./scripts/leak-check.sh --files $(git ls-files)
+        run: |
+          set -euo pipefail
+          test -n "$PFM_PRIVATE_LEAK_TERMS" || { echo "Missing repository secret PFM_PRIVATE_LEAK_TERMS" >&2; exit 1; }
+          umask 077
+          printf '%s\n' "$PFM_PRIVATE_LEAK_TERMS" > scripts/leak-terms.txt
+          ./scripts/leak-check.sh --files $(git ls-files)
 
       - name: codex generated-marker gate
         run: node scripts/check-codex-markers.mjs

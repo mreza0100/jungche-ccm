@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,7 +35,7 @@ func assertNoLeakedTempFiles(t *testing.T, directory string) {
 
 // startHeadlessTmuxSession mirrors internal/inject's newInjectTmuxJail
 // (tmux_jail_test.go): a real tmux server on a scratch socket rooted at
-// /tmp/tmux-1000, never t.TempDir() (its test-name-derived path blows past
+// the current UID's tmux directory, never t.TempDir() (its test-name-derived path blows past
 // the unix socket sun_path limit). TMUX_TMPDIR is still pinned per
 // pfm/CLAUDE.md's testing rule even though capturePane below is handed the
 // ABSOLUTE socket path and never consults it.
@@ -43,7 +44,7 @@ func startHeadlessTmuxSession(t *testing.T) (socketPath, session string) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux binary is not installed")
 	}
-	const tmuxJailRoot = "/tmp/tmux-1000"
+	tmuxJailRoot := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(tmuxJailRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}

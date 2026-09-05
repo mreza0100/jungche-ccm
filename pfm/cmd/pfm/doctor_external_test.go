@@ -40,6 +40,7 @@ func TestDoctorWarnsWhenLegacyHarvesterClientsStillOwnTheRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	runtime.Config.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}}
 	var stdout, stderr bytes.Buffer
 	if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
 		t.Fatalf("doctor code=%d stdout=%q stderr=%q, want warning exit", code, stdout.String(), stderr.String())
@@ -74,6 +75,7 @@ func TestDoctorReportsHarvesterCutoverForModernForeignAndUnreadableClients(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
+		runtime.Config.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}}
 		var stdout, stderr bytes.Buffer
 		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 0 {
 			t.Fatalf("doctor code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -97,6 +99,7 @@ func TestDoctorReportsHarvesterCutoverForModernForeignAndUnreadableClients(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
+		runtime.Config.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}}
 		var stdout, stderr bytes.Buffer
 		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
 			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want retired-auth warnings", code, stdout.String(), stderr.String())
@@ -116,6 +119,7 @@ func TestDoctorReportsHarvesterCutoverForModernForeignAndUnreadableClients(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
+		runtime.Config.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}}
 		var stdout, stderr bytes.Buffer
 		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
 			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want foreign-route warnings", code, stdout.String(), stderr.String())
@@ -135,6 +139,7 @@ func TestDoctorReportsHarvesterCutoverForModernForeignAndUnreadableClients(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
+		runtime.Config.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}}
 		var stdout, stderr bytes.Buffer
 		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
 			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want unreadable warning", code, stdout.String(), stderr.String())
@@ -151,6 +156,7 @@ func TestDoctorReportsHarvesterCutoverForModernForeignAndUnreadableClients(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
+		runtime.Config.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}}
 		var stdout, stderr bytes.Buffer
 		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
 			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want unreadable warning", code, stdout.String(), stderr.String())

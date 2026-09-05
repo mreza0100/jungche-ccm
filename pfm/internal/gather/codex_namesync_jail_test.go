@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -32,7 +33,8 @@ func TestSessionIndexRenameConvergesAProbeWindow(t *testing.T) {
 	t.Setenv(paths.EnvSIDDir, filepath.Join(root, "sid"))
 	t.Setenv(paths.EnvClaudeRoots, filepath.Join(root, "claude"))
 	t.Setenv(paths.EnvCodexRoot, codexRoot)
-	t.Setenv(paths.EnvTmuxDir, "/tmp/tmux-1000")
+	t.Setenv("TMUX_TMPDIR", root)
+	t.Setenv(paths.EnvTmuxDir, filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid())))
 	t.Setenv(paths.EnvTmuxConf, "/dev/null")
 
 	const threadID = "11111111-1111-4111-8111-111111111111"
@@ -69,19 +71,19 @@ func TestSessionIndexRenameConvergesAProbeWindow(t *testing.T) {
 		"tmux", "-L", socket, "-f", "/dev/null",
 		"new-session", "-d", "-s", socket, "-n", "before", "sleep 120",
 	)
-	start.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR=/tmp")
+	start.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root)
 	if output, err := start.CombinedOutput(); err != nil {
 		t.Fatalf("start probe server: %v: %s", err, output)
 	}
 	t.Cleanup(func() {
 		kill := exec.Command("tmux", "-L", socket, "kill-server")
-		kill.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR=/tmp")
+		kill.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root)
 		_ = kill.Run()
 	})
 	windowIDCommand := exec.Command(
 		"tmux", "-L", socket, "list-windows", "-F", "#{window_id}",
 	)
-	windowIDCommand.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR=/tmp")
+	windowIDCommand.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root)
 	windowIDOutput, err := windowIDCommand.Output()
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +105,7 @@ func TestSessionIndexRenameConvergesAProbeWindow(t *testing.T) {
 	if len(renames) != 1 || renames[0].TargetName != "INDEX_TWIN" {
 		t.Fatalf("renames=%#v", renames)
 	}
-	if err := (CommandTmux{TmuxTmpDir: "/tmp"}).RenameWindow(
+	if err := (CommandTmux{TmuxTmpDir: root}).RenameWindow(
 		context.Background(), renames[0],
 	); err != nil {
 		t.Fatal(err)
@@ -111,7 +113,7 @@ func TestSessionIndexRenameConvergesAProbeWindow(t *testing.T) {
 	readName := exec.Command(
 		"tmux", "-L", socket, "display-message", "-p", "#{window_name}",
 	)
-	readName.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR=/tmp")
+	readName.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root)
 	output, err := readName.Output()
 	if err != nil {
 		t.Fatal(err)

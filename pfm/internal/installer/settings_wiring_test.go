@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,14 +31,18 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 	}
 
 	now := func() time.Time { return time.Date(2031, 2, 3, 4, 5, 6, 0, time.UTC) }
-	runner := &fakeRunner{}
+	runner := &outputRunner{printOutput: "state = not running\n"}
 	if _, err := Run(context.Background(), Options{
 		Mode: ModeApply, Home: home, ConfigDirs: []string{filepath.Join(home, ".claude"), filepath.Join(home, ".cc", "4")}, Now: now, Runner: runner,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) == 0 || runner.calls[0] != "systemctl --user is-active --quiet pfm-name-sync.service" {
-		t.Fatalf("installer did not probe the running-service gate before touching fixtures: %v", runner.calls)
+	wantedProbe := "systemctl --user is-active --quiet pfm-name-sync.service"
+	if schedulerIsLaunchd {
+		wantedProbe = "launchctl print gui/" + strconv.Itoa(os.Getuid()) + "/" + launchdLabel
+	}
+	if len(runner.calls) == 0 || runner.calls[0] != wantedProbe {
+		t.Fatalf("installer did not probe the running-service gate before touching fixtures; fake runner calls: %v", runner.calls)
 	}
 
 	for _, path := range []string{canonical, secondary} {

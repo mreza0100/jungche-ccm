@@ -275,6 +275,7 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	writeTestFile(t, rolloutPath, `{"type":"session_meta","payload":{"id":"`+codexID+`","thread_source":"user"}}`+"\n")
 	tmux := &fakeTmux{panePID: 10}
 	proc := &fakeProc{
 		pids:    []int{20},

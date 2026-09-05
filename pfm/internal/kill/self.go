@@ -129,13 +129,18 @@ func (manager *Manager) identifyCodexSelf(
 			"could not identify Codex chat: no live Codex session under this pane",
 		)
 	}
+	if live[0].IdentityError != "" {
+		return Target{}, fmt.Errorf("could not verify Codex root: %s", live[0].IdentityError)
+	}
 	rolloutPath := live[0].RolloutPath
+	// Verified held metadata wins over a reverted rollout's storage filename.
+	// State-store-only sessions retain their existing indexed-path resolution.
 	id := dataID(rolloutPath)
-	if rollout, found := rolloutByPath(manager, ctx, rolloutPath); found {
+	if live[0].RolloutHeld {
+		id = live[0].ThreadID
+	} else if rollout, found := rolloutByPath(manager, ctx, rolloutPath); found {
 		id = rollout
 	}
-	// A thread the state store knows but no rollout file names is identified
-	// by its thread id, the only identity such a session has.
 	if id == "" {
 		id = live[0].ThreadID
 	}

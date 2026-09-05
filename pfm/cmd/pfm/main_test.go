@@ -779,6 +779,13 @@ func stageHarnessPromptBaseline(t *testing.T, home string) {
 	if err := os.WriteFile(path, []byte(pin), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "harness-prompt-fixture.md"), []byte(harnessPromptFixtureCaptured), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "harness-original.model"), []byte("claude-sonnet-5\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func jailTest(t *testing.T) string {

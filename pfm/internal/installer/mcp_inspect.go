@@ -25,6 +25,7 @@ const (
 // first-class state so doctor cannot mistake a failed inspection for cutover.
 type MCPClientCutover struct {
 	Client string
+	Path   string
 	State  string
 	Error  error
 }
@@ -41,15 +42,31 @@ type mcpClientRegistration struct {
 // InspectHarvesterClientCutover inspects both supported client config files.
 // It never mutates a foreign registration; doctor turns non-PFM states into an
 // actionable warning for the operator completing the standalone migration.
-func InspectHarvesterClientCutover(home string, port int) []MCPClientCutover {
-	return []MCPClientCutover{
-		inspectClaudeHarvester(filepath.Join(home, ".mcp.json"), port),
-		inspectCodexHarvester(filepath.Join(home, ".codex", "config.toml"), port),
+func InspectHarvesterClientCutover(home string, port int, registries, codexHomes []string) []MCPClientCutover {
+	if registries == nil {
+		registries = []string{filepath.Join(home, ".claude.json")}
 	}
+	if codexHomes == nil {
+		codexHomes = []string{filepath.Join(home, ".codex")}
+	}
+	reports := []MCPClientCutover{}
+	seen := map[string]bool{}
+	for _, path := range registries {
+		if !seen[path] {
+			reports = append(reports, inspectClaudeHarvester(path, port))
+			seen[path] = true
+		}
+	}
+	for _, dir := range codexHomes {
+		reports = append(reports, inspectCodexHarvester(filepath.Join(dir, "config.toml"), port))
+	}
+	// Root .mcp.json is historical/project-scope evidence, not Claude user scope.
+	reports = append(reports, inspectClaudeHarvester(filepath.Join(home, ".mcp.json"), port))
+	return reports
 }
 
 func inspectClaudeHarvester(path string, port int) MCPClientCutover {
-	report := MCPClientCutover{Client: pfmengine.MustLookup(pfmengine.Claude).LongName, State: MCPClientAbsent}
+	report := MCPClientCutover{Client: pfmengine.MustLookup(pfmengine.Claude).LongName, State: MCPClientAbsent, Path: path}
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return report
@@ -79,7 +96,7 @@ func inspectClaudeHarvester(path string, port int) MCPClientCutover {
 }
 
 func inspectCodexHarvester(path string, port int) MCPClientCutover {
-	report := MCPClientCutover{Client: pfmengine.MustLookup(pfmengine.Codex).LongName, State: MCPClientAbsent}
+	report := MCPClientCutover{Client: pfmengine.MustLookup(pfmengine.Codex).LongName, State: MCPClientAbsent, Path: path}
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return report

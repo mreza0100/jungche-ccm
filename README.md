@@ -31,7 +31,7 @@ unwired or non-executable hook is a warning and a non-zero doctor result.
 
 `pfm` installs separately and is opt-in: see [INSTALL.md](INSTALL.md).
 Upgrading an existing installation? Follow the complete
-[v0.64.0 LLM upgrade runbook](releases/v0.64.0.md#llm-upgrade-runbook).
+[update workflow](INSTALL.md#updating).
 
 ---
 
@@ -235,7 +235,7 @@ deliberate and documented, not hidden.
 | `templates/`                          | The shipped framework an adopter clones — agents, commands, scripts, codex and opencode templates. Every file here is production prompt code.       |
 | `pfm/`                                | The Go fleet engine: `cmd/pfm` plus its `internal/` packages. Owns its staged host assets.                                                          |
 | `engines/`                            | `rr/` (research) and `wave-walker/` (wiring verification).                                                                                          |
-| `templates/global/agents/`            | Host-global agents — `tracer`, `rr`, `reviewer` — with their Codex `.toml` twins.                                                                  |
+| `templates/global/agents/`            | Host-global agents — `tracer`, `rr`, `reviewer` — with their Codex `.toml` twins.                                                                   |
 | `docs/`                               | `BLUEPRINT.md` (philosophy), `SETUP.md` (install interview), `PLACEHOLDERS.md` (substitution law), `ARCHITECTURE.md`, plus command reference cards. |
 | `scripts/`                            | Repo gates — `leak-check.sh` runs `pre-push`.                                                                                                       |
 | `infra/`                              | The isolated-dev container every code wave builds inside.                                                                                           |

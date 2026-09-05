@@ -1401,7 +1401,16 @@ func (installer *engine) skillTarget(asset string) (string, bool) {
 }
 
 func (installer *engine) retireLegacySwapCommand() error {
-	return installer.unlinkOne(filepath.Join(installer.options.ConfigDir, "commands", "swap.md"))
+	for _, configDir := range installer.claudeConfigDirs() {
+		path := filepath.Join(configDir, "commands", "swap.md")
+		if target, linked := resolvedLink(path); !linked || target != filepath.Join(installer.managedRoot, "swap.command.md") {
+			continue
+		}
+		if err := installer.unlinkOne(path); err != nil {
+			return err
+		}
+	}
+	return installer.retire(filepath.Join(installer.managedRoot, "swap.command.md"), "retired swap command")
 }
 
 func (installer *engine) retireBBInstall() error {
@@ -2141,34 +2150,35 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 }
 
 func (installer *engine) retirePredecessors() error {
-	config := installer.options.ConfigDir
-	for _, name := range []string{
-		"cc-kill.sh", "cx-kill.sh", "bb-hook.sh", "cc-archive.sh", "cc-reap.sh",
-		"cc-name-sync.sh", "cx-heal.sh", "cc-portable.sh", "cc-db.sh", "cx-recover.sh",
-		"cc-agent-open.sh", "cc-swap-chat.sh",
-	} {
-		if err := installer.retire(filepath.Join(config, "bin", name), "native pfm command"); err != nil {
+	for _, config := range installer.claudeConfigDirs() {
+		for _, name := range []string{
+			"cc-kill.sh", "cx-kill.sh", "bb-hook.sh", "cc-archive.sh", "cc-reap.sh",
+			"cc-name-sync.sh", "cx-heal.sh", "cc-portable.sh", "cc-db.sh", "cx-recover.sh",
+			"cc-agent-open.sh", "cc-swap-chat.sh",
+		} {
+			if err := installer.retire(filepath.Join(config, "bin", name), "native pfm command"); err != nil {
+				return err
+			}
+		}
+		if err := installer.retireGlob(filepath.Join(config, "bin", "cx-recover.sh.pre-professor-*"), "retired recovery artifact"); err != nil {
 			return err
 		}
-	}
-	if err := installer.retireGlob(filepath.Join(config, "bin", "cx-recover.sh.pre-professor-*"), "retired recovery artifact"); err != nil {
-		return err
-	}
-	for _, name := range []string{
-		"statusline-command.sh",
-		"statusline/segments.d/10-vertex-spend.sh",
-		"statusline/segments.d/40-gpt-account.sh",
-		"statusline/vertex-spend-refresh.py",
-		"statusline/gpt-usage.py",
-		"statusline/vertex_daily_tokens.py",
-	} {
-		if err := installer.retire(filepath.Join(config, filepath.FromSlash(name)), "native pfm statusline"); err != nil {
-			return err
+		for _, name := range []string{
+			"statusline-command.sh",
+			"statusline/segments.d/10-vertex-spend.sh",
+			"statusline/segments.d/40-gpt-account.sh",
+			"statusline/vertex-spend-refresh.py",
+			"statusline/gpt-usage.py",
+			"statusline/vertex_daily_tokens.py",
+		} {
+			if err := installer.retire(filepath.Join(config, filepath.FromSlash(name)), "native pfm statusline"); err != nil {
+				return err
+			}
 		}
-	}
-	for _, name := range []string{"dump.md", "chat-ops.sh", "group.sh"} {
-		if err := installer.retire(filepath.Join(config, "commands", "chat", name), "native pfm chat command"); err != nil {
-			return err
+		for _, name := range []string{"dump.md", "chat-ops.sh", "group.sh"} {
+			if err := installer.retire(filepath.Join(config, "commands", "chat", name), "native pfm chat command"); err != nil {
+				return err
+			}
 		}
 	}
 	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-hidden")
@@ -2193,40 +2203,63 @@ var retiredGlobalAgents = []string{"frr"}
 // global Claude agent registry — but only when the file is unambiguously
 // the installer's own leftover, never a user's own agent that happens to
 // reuse the retired filename:
-//   - a symlink at the retired path is always installer-authored (nothing
-//     else in this registry ever creates one), so it retires outright,
-//     including a dangling one whose old template target is long gone;
+//   - a symlink retires only when it targets a known Professor source;
+//     unrelated personal links are preserved, including dangling ones;
 //   - a regular file retires only when its YAML frontmatter `name:` field
 //     still reads the retired name — the exact field RunGlobalAgents itself
 //     keys the compiled TOML and the registry identity on, so a user who
 //     repurposed the filename for their own agent (and so changed its
 //     frontmatter name) is left alone, untouched and unreported.
 func (installer *engine) retireRenamedGlobalAgents() error {
-	config := installer.options.ConfigDir
-	for _, retired := range retiredGlobalAgents {
-		path := filepath.Join(config, "agents", retired+".md")
-		info, err := os.Lstat(path)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("inspect retired global agent %s: %w", path, err)
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			frontmatterName, readErr := agentFrontmatterName(path)
-			if readErr != nil {
-				return fmt.Errorf("read retired global agent %s: %w", path, readErr)
-			}
-			if frontmatterName != retired {
-				installer.skip(path + " is not the retired " + retired + " agent (frontmatter name=" + frontmatterName + ") — left alone")
+	repos, err := installer.recordedProfessorSourceRepos()
+	if err != nil {
+		return err
+	}
+	repos = append(repos, filepath.Join(installer.options.Home, ".professor"))
+	for _, config := range installer.claudeConfigDirs() {
+		for _, retired := range retiredGlobalAgents {
+			path := filepath.Join(config, "agents", retired+".md")
+			info, err := os.Lstat(path)
+			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
-		}
-		if err := installer.retire(path, "renamed global agent ("+retired+" -> current roster)"); err != nil {
-			return err
+			if err != nil {
+				return fmt.Errorf("inspect retired global agent %s: %w", path, err)
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				target, err := os.Readlink(path)
+				if err != nil {
+					return err
+				}
+				if !filepath.IsAbs(target) {
+					target = filepath.Join(filepath.Dir(path), target)
+				}
+				owned := false
+				for _, repo := range repos {
+					if filepath.Clean(target) == filepath.Join(repo, "templates", "global", "agents", retired+".md") {
+						owned = true
+					}
+				}
+				if !owned {
+					installer.skip(path + " is an unrelated personal agent link — left alone")
+					continue
+				}
+			} else {
+				frontmatterName, readErr := agentFrontmatterName(path)
+				if readErr != nil {
+					return fmt.Errorf("read retired global agent %s: %w", path, readErr)
+				}
+				if frontmatterName != retired {
+					installer.skip(path + " is not the retired " + retired + " agent (frontmatter name=" + frontmatterName + ") — left alone")
+					continue
+				}
+			}
+			if err := installer.retire(path, "renamed global agent ("+retired+" -> current roster)"); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+	return installer.retireRenamedCodexAgents()
 }
 
 // agentFrontmatterName reads the `name:` field out of an agent Markdown

@@ -66,6 +66,12 @@ jobs:
       - name: Install e2e tools
         run: brew install tmux
 
+      - name: Verify native scheduler isolation and account migration
+        env:
+          PFM_DEV_FENCE: "1"
+          PFM_HARVESTPY_OFFLINE: "1"
+        run: go -C pfm test -count=1 ./internal/installer ./cmd/pfm -run 'TestInstall|TestMCP|TestRetire|TestLaunchAgent'
+
       - name: Run serial installer e2e
         env:
           PFM_DEV_FENCE: "1"

@@ -42,7 +42,7 @@
 
 import {
   existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync,
-  rmSync, symlinkSync, writeFileSync,
+  rmSync, symlinkSync, writeFileSync, statSync, realpathSync,
 } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,12 +71,15 @@ Stamp every deliverable, report, or verdict you produce with: Executor: opencode
 // ---------- helpers ----------------------------------------------------------
 
 const read = (p) => readFileSync(p, 'utf8');
-const isDir = (p) => existsSync(p) && lstatSync(p).isDirectory();
+const isDir = (p) => existsSync(p) && statSync(p).isDirectory();
 
-function* walkMd(dir) {
+function* walkMd(dir, ancestors = new Set()) {
+  const physical = realpathSync(dir);
+  if (ancestors.has(physical)) throw new Error(`command source symlink cycle at ${dir}`);
+  const visiting = new Set([...ancestors, physical]);
   for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) yield* walkMd(p);
+    if (isDir(p)) yield* walkMd(p, visiting);
     else if (e.name === 'SKILL.md') yield { dir: dirname(p), skillDir: true };
     else if (e.name.endsWith('.md') && e.name !== 'README.md') yield { file: p };
   }
@@ -130,8 +133,9 @@ const colonName = (rel) => rel.replace(/\.md$/, '').split('/').join(':');
 // list, never a generic rewrite (that would corrupt path fragments like
 // /scripts, /src). A directory alone (wave/, no wave.md) contributes no entry.
 const commandRoster = new Map(); // "a:b" colon-form -> "/flat-form" (only where they differ)
-const commandsRoot = join(ROOT, '.claude/commands');
-if (isDir(commandsRoot)) {
+// Include shipped globals so repository output is stable in a clean HOME.
+for (const commandsRoot of [join(ROOT, '.claude/commands'), join(ROOT, 'templates/global/commands'), join(HOME, '.claude/commands')]) {
+  if (!isDir(commandsRoot)) continue;
   for (const entry of walkMd(commandsRoot)) {
     const rel = relative(commandsRoot, entry.skillDir ? entry.dir : entry.file);
     const colon = colonName(rel);
@@ -207,10 +211,10 @@ for (const { src, name } of agentSources) {
 function compileCommands(srcRoot, srcLabel, emit) {
   if (!isDir(srcRoot)) return;
   for (const entry of walkMd(srcRoot)) {
-    if (entry.skillDir) continue; // skills compile separately, as directories
-    const rel = relative(srcRoot, entry.file);
+    const file = entry.skillDir ? join(entry.dir, "SKILL.md") : entry.file;
+    const rel = relative(srcRoot, entry.skillDir ? entry.dir : file);
     const flat = flatName(rel);
-    const { body, fields } = parseFm(read(entry.file));
+    const { body, fields } = parseFm(read(file));
     emit({
       flat,
       content: `---\n# ${marker(`${srcLabel}/${rel}`)}\ndescription: ${yamlQuote(cmdSwap(fields.description ?? ''))}\n---\n${cmdSwap(body)}`,

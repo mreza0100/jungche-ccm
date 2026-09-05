@@ -62,6 +62,8 @@ type LiveCodex struct {
 	// currently holding open, and must never outrank what the pane's own
 	// screen says.
 	RolloutHeld bool
+	// IdentityError refuses pane rebinding when a live process cannot prove its root.
+	IdentityError string
 }
 
 // ClaudeProcess maps one live Claude process onto its owning tmux pane.

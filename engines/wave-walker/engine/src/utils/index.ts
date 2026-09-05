@@ -194,7 +194,7 @@ function renderTelemetryMdInner(rec: DebugRecord): string {
 
   lines.push(
     '',
-    '_tokenAttribution: not available at the engine layer (agent() returns no usage metadata) — see the p:tokens skill for post-hoc spend analysis._',
+    '_tokenAttribution: not available at the engine layer (agent() returns no usage metadata) — see the tokens skill for post-hoc spend analysis._',
   );
   return lines.join('\n');
 }

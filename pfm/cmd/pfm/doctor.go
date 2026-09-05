@@ -339,7 +339,8 @@ func printCodexPaneBindingDoctor(
 	// entirely of litter — a check that cries wolf is the same failure as one
 	// that stays silent, just louder.
 	live := make(map[string]bool)
-	panes, paneErr := liveCodexPanes(ctx, runtime)
+	snapshot, paneErr := liveCodexSnapshot(ctx, runtime, manager)
+	panes := snapshot.Panes
 	if paneErr != nil {
 		// A pane list that could not be read is not an empty one. Without it,
 		// nothing can be called stale, so the contested count is left over the
@@ -423,7 +424,7 @@ func printCodexPaneBindingDoctor(
 		"doctor: codex_pane_bindings total=%d live=%d stale=%d contested=%d retired=%d undecodable=%d\n",
 		len(bindings), len(bindings)-stale-undecodable, stale, contested, retired, undecodable,
 	)
-	warnings += printCodexPaneFollowDoctor(ctx, stdout, database, manager, runtime, panes, paneErr)
+	warnings += printCodexPaneFollowDoctor(ctx, stdout, database, manager, runtime, snapshot, paneErr)
 	if warnings != 0 {
 		fmt.Fprintf(
 			stdout,
@@ -460,7 +461,7 @@ func printCodexPaneFollowDoctor(
 	database *store.Store,
 	manager *kill.Manager,
 	runtime commandRuntime,
-	panes []gather.Pane,
+	snapshot gather.Snapshot,
 	paneErr error,
 ) int {
 	if paneErr != nil {
@@ -469,7 +470,7 @@ func printCodexPaneFollowDoctor(
 		// the failure; this only refuses to report coverage it does not have.
 		return 1
 	}
-	if len(panes) == 0 {
+	if len(snapshot.Panes) == 0 {
 		fmt.Fprintln(stdout, "doctor: codex_panes live=0")
 		return 0
 	}
@@ -479,9 +480,9 @@ func printCodexPaneFollowDoctor(
 		return 1
 	}
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
-	silent := func(string) {}
+	silent := func(message string) { fmt.Fprintf(stdout, "doctor: warning %s\n", message) }
 	_, actions := observeCodexPanes(
-		ctx, database, manager, capturer, gather.Snapshot{Panes: panes}, runtime, cxNames, silent,
+		ctx, database, manager, capturer, snapshot, runtime, cxNames, silent,
 	)
 
 	unfollowable := 0
@@ -1123,20 +1124,28 @@ func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {
 
 func printMCPClientCutover(stdout io.Writer, runtime commandRuntime) int {
 	warnings := 0
-	for _, report := range installer.InspectHarvesterClientCutover(runtime.Paths.Home, runtime.Config.MCP.HTTP.Port) {
+	claudeDirs := make([]string, 0, len(runtime.Config.Accounts))
+	for _, account := range runtime.Config.Accounts {
+		claudeDirs = append(claudeDirs, installer.ClaudeUserRegistry(runtime.Paths.Home, account.ConfigDir, account.Implicit))
+	}
+	codexHomes := make([]string, 0, len(runtime.Config.CodexAccounts))
+	for _, account := range runtime.Config.CodexAccounts {
+		codexHomes = append(codexHomes, account.Home)
+	}
+	for _, report := range installer.InspectHarvesterClientCutover(runtime.Paths.Home, runtime.Config.MCP.HTTP.Port, claudeDirs, codexHomes) {
 		switch report.State {
 		case installer.MCPClientAbsent, installer.MCPClientPFM:
 			continue
 		case installer.MCPClientUnreadable:
 			warnings++
-			fmt.Fprintf(stdout, "doctor: mcp client=%s harvester=unreadable error=%v\n", report.Client, report.Error)
+			fmt.Fprintf(stdout, "doctor: mcp client=%s harvester=unreadable error=%v path=%s\n", report.Client, report.Error, report.Path)
 		default:
 			warnings++
 			fmt.Fprintf(
 				stdout,
-				"doctor: mcp client=%s harvester=%s warning=consumer cutover incomplete remediation=repoint to PFM, verify it, then remove the foreign registration\n",
+				"doctor: mcp client=%s harvester=%s warning=consumer cutover incomplete remediation=repoint to PFM, verify it, then remove the foreign registration path=%s\n",
 				report.Client,
-				report.State,
+				report.State, report.Path,
 			)
 		}
 	}
@@ -1307,6 +1316,11 @@ func nonFleetServerCrumb(name string) bool {
 }
 
 func knownSIDMetadata(name string) bool {
+	for _, prefix := range []string{"nudge-ctx-", "nudge-band-"} {
+		if session, ok := strings.CutPrefix(name, prefix); ok {
+			return strings.TrimSpace(session) != ""
+		}
+	}
 	const reloadPrefix = "reload-"
 	const logSuffix = ".log"
 	if strings.HasPrefix(name, reloadPrefix) && strings.HasSuffix(name, logSuffix) {
@@ -1324,4 +1338,16 @@ func knownSIDMetadata(name string) bool {
 	socket := strings.TrimSuffix(name, suffix)
 	_, paneID, ok := gather.ParseCrumbName(socket)
 	return ok && paneID == ""
+}
+
+func liveCodexSnapshot(ctx context.Context, runtime commandRuntime, manager *kill.Manager) (gather.Snapshot, error) {
+	panes, err := liveCodexPanes(ctx, runtime)
+	snapshot := gather.Snapshot{Panes: panes}
+	if err != nil || len(panes) == 0 {
+		return snapshot, err
+	}
+	roots := codexHomes(runtime.Config)
+	resolver := store.NewCodexThreadResolverRoots(ctx, roots, manager.CodexPaneBound(ctx))
+	snapshot.Codex, err = gather.DetectCodexThreadsInRoots(gather.NewProcFS(runtime.Paths.ProcRoot), roots, panes, resolver, runtime.Config.Codex.Binary)
+	return snapshot, err
 }

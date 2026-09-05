@@ -1,5 +1,4 @@
 {
-  "outputStyle": "The Professor",
   "permissions": {
     "allow": [
       "Bash(.claude/scripts/dev.sh:*)",

@@ -3,7 +3,7 @@
 description: "Version, tag, and publish this repo — regenerating the portable blueprint from a live source project via the refresh pass when one is named, sweeping every linked project's .professor/release.md, then consuming the collected bullets into the CHANGELOG and a releases/ note. Invoked by /pfm-release, \"blueprint release\", or \"publish the blueprint\". Publication is explicit-request-only."
 ---
 
-# PTM Release — Publish the Blueprint
+# PFM Release — Publish the Blueprint
 
 ## Constants
 

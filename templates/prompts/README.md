@@ -30,11 +30,18 @@ Claude replacement, Codex appendix, and the Claude drift baseline.
   dynamic sections excluded), the drift baseline. Captured via a localhost sink: point `ANTHROPIC_BASE_URL`
   at a listener that records the request body and answers a non-retryable 400 — the exact assembled prompt,
   zero tokens spent. Rendered with `jq -r '.system | map(.text) | join("\n\n=== SYSTEM BLOCK ===\n\n")'`,
-  then the billing header's build stamp masked (`sed 's/cc_version=[^; ]*;/cc_version=*;/'`) — every release
+  then the optional Environment model-name and knowledge-cutoff lines removed, and the billing header's build stamp masked (`sed 's/cc_version=[^; ]*;/cc_version=*;/'`) — every release
   changes that stamp, so it is masked on both sides and DRIFT means the prose changed.
 - `harness-original.sha256` — the baseline's pinned hash (`sha256sum` of the masked file reproduces it).
-  `pfm doctor` re-captures the live CLI's prompt the same way, masks the stamp, and compares hashes: a mismatch
-  means a Claude Code update changed the harness prompt — recapture, review the diff, and re-pin.
+  `pfm doctor` captures the built-in Sonnet prompt, verifies the stored body/hash/model identity,
+  normalizes both prompts, and compares them. It reports the requested/resolved model, live CLI version,
+  and baseline filename. Match means this Sonnet baseline matches; it does not validate the active chat,
+  Fable, Opus, Codex, or the Professor replacement. A model mismatch is missing baseline coverage,
+  not behavioral drift. Failed capture, unavailable baseline, real differences, and match remain distinct.
+
+- `harness-original.model` — the resolved request model belonging to the baseline (`claude-sonnet-5`).
+  Re-pinning requires reviewing both prompt prose and model identity; do not compare another model to
+  this Sonnet baseline or remove model-specific instructions to force a match.
 
 `claude.systemPrompt` values: `production` (default — the CLI's own prompt, untouched), `lean` (the CLI's
 built-in minimal prompt via `CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=1`), `professor` (inject `professor.md`).

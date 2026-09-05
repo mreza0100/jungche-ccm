@@ -134,9 +134,10 @@ func (installer *engine) reloadLaunchAgentWithLabel(ctx context.Context, path, l
 	domain := "gui/" + strconv.Itoa(os.Getuid())
 	_ = installer.options.Runner.Run(ctx, "launchctl", "bootout", domain+"/"+label)
 	if err := installer.options.Runner.Run(ctx, "launchctl", "bootstrap", domain, path); err != nil {
-		installer.skip("launchctl bootstrap failed; the agent is installed but not loaded: " + err.Error())
-		installer.say("")
-		return nil
+		return fmt.Errorf("launchctl bootstrap %s failed; agent file is installed but service is not loaded: %w", label, err)
+	}
+	if err := installer.options.Runner.Run(ctx, "launchctl", "print", domain+"/"+label); err != nil {
+		return fmt.Errorf("launchctl bootstrap %s returned success but loaded-agent verification failed: %w", label, err)
 	}
 	installer.ok("launchctl bootstrap " + label)
 	installer.say("")

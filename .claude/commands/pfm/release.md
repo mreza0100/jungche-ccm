@@ -4,7 +4,7 @@ description: Version, tag, and publish this repo — regenerating the portable b
 argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}] [--ledger {root}]…
 ---
 
-# PTM Release — Publish the Blueprint
+# PFM Release — Publish the Blueprint
 
 ## Constants
 

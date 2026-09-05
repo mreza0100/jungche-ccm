@@ -41,6 +41,26 @@ func TestInstallerOptionsCarryEachEngineRosterIndependently(t *testing.T) {
 	}
 }
 
+func TestInstallerAndDoctorUseImplicitClaudeRegistry(t *testing.T) {
+	home := t.TempDir()
+	runtime := commandRuntime{Paths: paths.Values{Home: home}, Config: pfmconfig.Config{
+		Accounts:      []pfmconfig.Account{{ID: 1, ConfigDir: filepath.Join(home, ".cc", "1"), Implicit: true}, {ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")}},
+		CodexAccounts: []pfmconfig.CodexAccount{},
+	}}
+	options := newInstallerOptions(installer.ModeDryRun, "", true, io.Discard, runtime)
+	want := []string{filepath.Join(home, ".claude.json"), filepath.Join(home, ".cc", "2", ".claude.json")}
+	if !reflect.DeepEqual(options.ClaudeRegistries, want) {
+		t.Fatalf("registries=%q want=%q", options.ClaudeRegistries, want)
+	}
+	if err := os.WriteFile(want[0], []byte(`{"mcpServers":{"harvester":{"command":"manual"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if warnings := printMCPClientCutover(&output, runtime); warnings != 1 || !strings.Contains(output.String(), want[0]) {
+		t.Fatalf("warnings=%d output=%s", warnings, &output)
+	}
+}
+
 // writeManagerFakes stages fake systemctl and launchctl binaries in one PATH
 // directory, each appending its own invocation to a shared log so a subtest
 // can assert WHICH manager the sandbox actually reached instead of assuming
@@ -143,7 +163,11 @@ func TestInstallGateScopesDryRunIdleAndRunningService(t *testing.T) {
 		if code := runInstall([]string{"--yes"}, &stdout, &stderr); code != 97 {
 			t.Fatalf("runInstall() code=%d, want 97; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
-		if !strings.Contains(stderr.String(), "systemctl --user stop pfm-name-sync.service") {
+		remediation := "systemctl --user stop pfm-name-sync.service"
+		if goRuntime.GOOS == "darwin" {
+			remediation = "launchctl bootout"
+		}
+		if !strings.Contains(stderr.String(), remediation) {
 			t.Fatalf("stderr=%q, want actionable running-service refusal", stderr.String())
 		}
 		entries, err := os.ReadDir(home)

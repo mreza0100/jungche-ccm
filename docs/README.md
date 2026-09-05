@@ -10,7 +10,7 @@ This is the **transplantable nervous system** — not a config dump. Built by th
 
 A complete `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
 
-- **The full cast** — The Professor (orchestrator), JC, PTM, Audit, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
+- **The full cast** — The Professor (orchestrator), JC, PFM, Audit, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). The harness prompt owns the Professor voice; working prompts carry their task contracts.
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`. Only one agent (`gitter`) touches git.
 - **Self-improvement at the source** — a meta-agent (`/pfm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
@@ -46,16 +46,14 @@ docs/                     ← you are here
 ├── README.md, BLUEPRINT.md, ARCHITECTURE.md, SETUP.md, PLACEHOLDERS.md, RELEASE.md
 └── references/
 
-templates/                ← the shipped product, one clone away
-    ├── refresh-map.json  ← every template ↔ its live source
-    ├── CLAUDE.md          ← root project rules + Professor persona
-    ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
-    ├── commands/          ← Tier A: build, jc, ptm, dev, git, wave, documenter, save
-    │                         Tier B (opt-in): officer, km, pm, mentor, marketer
-    ├── skills/            ← bundled p:* skills (+ p:360/ghostwriter/vision-factory source-fetched via sources.json; deep-rr is in-tree at engines/deep-rr)
-    ├── themes/            ← tokyo-night theme, source-fetched via sources.json
-    ├── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
-    └── codex/             ← (OPTIONAL) Codex dual-runtime templates
+templates/
+├── refresh-map.json      ← template-to-source tracking
+├── project/              ← scaffolded rules, agents, commands, hooks, and engine adapters
+├── global/               ← machine-global commands, agents, and skill source registry
+├── prompts/              ← Claude replacement and Codex appendix
+└── themes/               ← source-fetched theme registry
+engines/deep-rr/           ← bundled research skill
+engines/wave-walker/engine/ ← shared Claude/Codex walker implementation
 ```
 
 Host fleet tooling has one source outside the template tree: the Go engine under `../pfm/`, with
@@ -74,15 +72,15 @@ binary, then runs `pfm install --yes`; no separate host template bundle is copie
 git clone --branch vX.Y.Z https://github.com/mreza0100/professor.git /path/to/professor
 
 cd /path/to/your-project
+pfm init .
 claude
-> Read every file in /path/to/professor/templates/.
-> Follow SETUP.md to install Professor in THIS project.
+> Read /path/to/professor/docs/SETUP.md and follow its Install interview.
 > Conduct the interview before touching any files.
 ```
 
-> Replace `/path/to/professor` with a permanent clone path, conventionally `~/.professor`. Keep it: installed Wave callers execute the engine in this clone, and `/pfm update` updates the same authority in place.
+> Replace `/path/to/professor` with a permanent clone path, conventionally `~/.professor`. Keep it: installed Wave callers execute the engine in this clone, and `pfm update` updates the same authority in place.
 
-Claude runs an interview (~10 questions about your stack, character preferences, domain), customizes every template, copies them into your repo. First `/wave:builder` smoke-test reveals anything missed.
+`pfm init` scaffolds the project; Claude interviews you and adapts those local files. The install verification checks the selected project tooling and runtime mirrors.
 
 For the manual path, see `SETUP.md`.
 
@@ -111,9 +109,9 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 **Bundled commands (ship with the blueprint):** `/wave:refine`, `/wave:walker`, `/rnd`, `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`.
 
-**Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `p:360`, `ghostwriter`, `vision-factory`. The `deep-rr` skill is in-tree at `engines/deep-rr/` and installs with the blueprint.
+**Skill sources:** machine-global fetches are declared in `templates/global/skills/sources.json`; project fetches in `templates/project/skills/sources.json`. `deep-rr` lives in `engines/deep-rr/`; `legal` is bundled under `templates/project/skills/`. `/p:360` is a project command.
 
-**Host tooling (opt-in):** statusline, the `pfm install --vscode` terminal profile, a macOS multi-account `/reload` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-kill, `pfm reap` orphan sweeper).
+**Host tooling (opt-in):** statusline, the `pfm install --vscode` terminal profile, a Linux/macOS multi-account `/reload` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-kill, `pfm reap` orphan sweeper).
 
 **Tier B — opt-in domain archetypes:**
 

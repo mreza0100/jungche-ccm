@@ -105,8 +105,8 @@ func TestMain(m *testing.M) {
 	// whether a doctor fixture reads as matches/DRIFT/CHECK-FAILED still
 	// depends only on what baseline (if any) the fixture stages, via
 	// stageHarnessPromptBaseline in main_test.go.
-	harnessCaptureOverride = func(context.Context, pfmconfig.Config) (string, error) {
-		return harnessPromptFixtureCaptured, nil
+	harnessCaptureOverride = func(context.Context, pfmconfig.Config) (harnessCapture, error) {
+		return harnessCapture{Prompt: harnessPromptFixtureCaptured, ResolvedModel: "claude-sonnet-5", CLIVersion: "fixture"}, nil
 	}
 	os.Exit(testjail.Run(m))
 }

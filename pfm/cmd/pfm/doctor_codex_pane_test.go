@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/store"
@@ -266,5 +267,47 @@ func TestCodexPaneBindingDoctorCountsDeadPaneBindingsAsStale(t *testing.T) {
 	}
 	if warnings != 0 {
 		t.Fatalf("stale bindings raised %d warnings:\n%s", warnings, report)
+	}
+}
+
+func TestCodexPaneDoctorUsesHeldRootDespiteModelFirstStatus(t *testing.T) {
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+	const socket = "cx-1800000051-1-1"
+	const id = "11111111-2222-4333-8444-555555555555"
+	startCodexStatusPane(t, tmuxTmpDir, socket, `  gpt-6-astra · NAMED_SEAT · /work/example · Full Access\n`)
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := codexJailRollout(t, database, root, id, 1)
+	if _, _, err := manager.AdvanceCodexPane(ctx, socket, "%0", id); err != nil {
+		t.Fatal(err)
+	}
+	runtime := commandRuntime{Paths: resolved, Config: config.Config{CodexAccounts: []config.CodexAccount{{ID: 1, Home: filepath.Join(root, "codex")}}}}
+	panes, err := liveCodexPanes(ctx, runtime)
+	if err != nil || len(panes) != 1 {
+		t.Fatalf("panes=%#v err=%v", panes, err)
+	}
+	writeFakeProcess(t, resolved.ProcRoot, fakeProcessSpec{pid: 900001, parentPID: panes[0].PID, comm: "codex", cmdline: []string{"codex"}, withFD: true})
+	if err := os.Symlink(path, filepath.Join(resolved.ProcRoot, "900001", "fd", "3")); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	warnings := printCodexPaneBindingDoctor(ctx, &output, database, runtime)
+	if warnings != 0 || strings.Contains(output.String(), "unfollowable socket=") {
+		t.Fatalf("held root was dropped: warnings=%d\n%s", warnings, output.String())
+	}
+	bound, found, err := manager.CodexPaneBinding(ctx, socket, "%0")
+	if err != nil || !found || bound != id {
+		t.Fatalf("read-only doctor changed binding: %q %v %v", bound, found, err)
 	}
 }

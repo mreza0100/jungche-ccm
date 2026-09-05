@@ -313,6 +313,9 @@ func runInstallE2E(t *testing.T) {
 		result := harness.pfm(freshHome, "init", project)
 		harness.requireSuccess("init", result)
 		harness.assertInit(project, repo)
+		harness.requireSuccess("init Codex build", harness.pfm(freshHome, "codex", "build", "--home", freshHome, project))
+		harness.requireSuccess("init Codex check", harness.pfm(freshHome, "codex", "check", "--home", freshHome, project))
+		harness.assertInitPath(filepath.Join(project, "AGENTS.md"), "AGENTS.md")
 	})
 
 	t.Run("launcher", func(t *testing.T) {
@@ -663,9 +666,14 @@ func (h *e2eHarness) newHome(binary string) string {
 	if err := copyFile(binary, filepath.Join(home, e2eCanonicalPFM), 0o755); err != nil {
 		h.t.Fatalf("stage pfm binary: %v", err)
 	}
+	testBinary, err := os.Executable()
+	if err != nil {
+		h.t.Fatal(err)
+	}
 	native := filepath.Join(home, ".local", "share", "claude", "versions", "fixture")
 	launcherEvidence := filepath.Join(home, "launcher-evidence")
 	body := "#!/bin/sh\n" +
+		"if [ \"${1-}\" = -p ]; then exec env PFM_E2E_CLAUDE_CAPTURE=1 " + shellQuoteFixture(testBinary) + " -test.run '^TestClaudeHarnessCaptureFixture$'; fi\n" +
 		"if [ \"${1-}\" = --version ]; then printf '2.1.238 (Claude Code)\\n'; exit 0; fi\n" +
 		"printf '%s\\n' \"${TMUX%%,*}\" > " + shellQuoteFixture(launcherEvidence) + "\n" +
 		"exit 0\n"
@@ -679,7 +687,8 @@ func (h *e2eHarness) newHome(binary string) string {
 		h.t.Fatal(err)
 	}
 	codex := filepath.Join(home, ".local", "bin", "codex")
-	codexBody := `#!/bin/sh
+	codexBody := "#!/bin/sh\n" +
+		"if [ \"${1-}\" = app-server ]; then exec env PFM_E2E_CODEX_HOOK_FIXTURE=1 " + shellQuoteFixture(testBinary) + " -test.run '^TestCodexHookAPIFixture$'; fi\n" + `
 if [ "${1-}" = --version ]; then printf 'codex-cli 0.149.0\n'; exit 0; fi
 if [ "${1-}" = doctor ] && [ "${2-}" = --help ]; then printf 'usage: codex doctor\n'; exit 0; fi
 if [ "${1-}" = doctor ]; then printf 'healthy\n'; exit 0; fi
@@ -692,6 +701,7 @@ exit 2
 	if err := os.WriteFile(auth, []byte(`{"tokens":{"access_token":"fixture-token","account_id":"fixture-account"}}`+"\n"), 0o600); err != nil {
 		h.t.Fatal(err)
 	}
+	stageSchedulerFixtures(h.t, home)
 	return home
 }
 
@@ -809,6 +819,7 @@ func (h *e2eHarness) requireSkippedHarvestDoctor(result commandResult) {
 		"doctor: dep harvestpy path= broken",
 		"doctor: harvestpy skipped",
 		"doctor: pre-push gate=UNWIRED expected=.githooks actual=(unset)",
+		"doctor: harness-prompt: matches baseline",
 		"doctor: warnings=3",
 	} {
 		if !strings.Contains(output, want) {
@@ -1007,10 +1018,9 @@ func (h *e2eHarness) assertTmuxConfig(home string) {
 
 func (h *e2eHarness) assertInit(project, source string) {
 	h.t.Helper()
-	templates := filepath.Join(source, "templates")
+	templates := filepath.Join(source, "templates", "project")
 	for _, mapping := range []struct{ source, target string }{
 		{"CLAUDE.md", "CLAUDE.md"},
-		{"CLAUDE.md", "AGENTS.md"},
 		{"settings.json", ".claude/settings.json"},
 	} {
 		h.assertInitFile(filepath.Join(templates, mapping.source), filepath.Join(project, mapping.target), mapping.target)
@@ -1024,6 +1034,9 @@ func (h *e2eHarness) assertInit(project, source string) {
 				return err
 			}
 			if entry.IsDir() {
+				if directory == "agents" && entry.Name() == "per-project" {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			relative, relErr := filepath.Rel(sourceDir, path)
@@ -1049,6 +1062,11 @@ func (h *e2eHarness) assertInitFile(source, target, relative string) {
 	got, err := os.ReadFile(target)
 	if err != nil {
 		h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", relative, err)
+	}
+	// Scaffold ownership provenance is generated; the installed body must
+	// otherwise remain byte-identical to its canonical template.
+	if parts := bytes.SplitN(got, []byte("\n"), 3); len(parts) == 3 && string(parts[0]) == "---" && bytes.HasPrefix(parts[1], []byte("# pfm-scaffold: ")) {
+		got = append([]byte("---\n"), parts[2]...)
 	}
 	if !bytes.Equal(got, want) {
 		h.t.Fatalf("init scaffold failed; differing paths: %s; bytes do not match templates source", relative)

@@ -77,12 +77,6 @@ func detectCodexThreadsInRootsFrom(
 ) ([]LiveCodex, error) {
 	pids := sortedPIDs(cmdlines)
 	paneByPID := panesByPID(panes)
-	sessionsRoots := make([]string, 0, len(codexRoots))
-	for _, codexRoot := range codexRoots {
-		if strings.TrimSpace(codexRoot) != "" {
-			sessionsRoots = append(sessionsRoots, filepath.Join(codexRoot, "sessions"))
-		}
-	}
 
 	live := make([]LiveCodex, 0)
 	for _, pid := range pids {
@@ -90,25 +84,22 @@ func detectCodexThreadsInRootsFrom(
 		if !IsCodexCommand(cmdline, binaries...) {
 			continue
 		}
-		links, err := proc.FDLinks(pid)
-		if err != nil {
+		pane, found := paneForProcess(proc, pid, paneByPID)
+		if !found {
 			continue
 		}
-		sort.Slice(links, func(left, right int) bool {
-			return links[left].FD < links[right].FD
-		})
-
-		rolloutPath := ""
-		for _, link := range links {
-			for _, sessionsRoot := range sessionsRoots {
-				if isRolloutUnder(sessionsRoot, link.Target) {
-					rolloutPath = filepath.Clean(link.Target)
-					break
-				}
-			}
-			if rolloutPath != "" {
-				break
-			}
+		links, err := proc.FDLinks(pid)
+		if err != nil {
+			live = append(live, LiveCodex{PID: pid, PanePID: pane.PID, Socket: pane.Socket, PaneID: pane.PaneID, IdentityError: fmt.Sprintf("read Codex descriptors: %v", err)})
+			continue
+		}
+		rolloutPath, _, identityErr := heldCodexRoot(links, codexRoots)
+		if errors.Is(identityErr, errHeldSubagents) && hasCodexAncestor(proc, pid, pane.PID, cmdlines, binaries) {
+			continue
+		}
+		if identityErr != nil {
+			live = append(live, LiveCodex{PID: pid, PanePID: pane.PID, Socket: pane.Socket, PaneID: pane.PaneID, IdentityError: identityErr.Error()})
+			continue
 		}
 		// True only when the loop above actually found the rollout among
 		// this process's own FDLinks — before argv/env/identify get a
@@ -134,10 +125,6 @@ func detectCodexThreadsInRootsFrom(
 			continue
 		}
 
-		pane, found := paneForProcess(proc, pid, paneByPID)
-		if !found {
-			continue
-		}
 		if rolloutPath == "" && identify != nil {
 			id, path := identify(threadID, pane.CurrentPath, processBirth(proc, pid), pane.Socket, pane.PaneID)
 			if id == "" {
@@ -186,7 +173,8 @@ func CodexRolloutID(path string) string {
 		rest[13] == '-' &&
 		rest[16] == '-' &&
 		rest[19] == '-' {
-		return rest[20:]
+		threadID, _, _ := strings.Cut(rest[20:], "_")
+		return threadID
 	}
 	return rest
 }
@@ -251,22 +239,16 @@ func RefreshCodexHeldRollouts(proc ProcFS, previous []LiveCodex, roots []string)
 				continue
 			}
 			issues = append(issues, fmt.Errorf("read Codex pid %d rollout descriptors: %w", process.PID, err))
+			process.RolloutPath, process.ThreadID, process.RolloutHeld = "", "", false
+			process.IdentityError = fmt.Sprintf("read Codex descriptors: %v", err)
+			live = append(live, process)
 			continue
 		}
-		sort.Slice(links, func(i, j int) bool { return links[i].FD < links[j].FD })
-		process.RolloutPath, process.ThreadID, process.RolloutHeld = "", "", false
-		for _, link := range links {
-			for _, root := range roots {
-				if strings.TrimSpace(root) != "" && isRolloutUnder(filepath.Join(root, "sessions"), link.Target) {
-					process.RolloutPath = filepath.Clean(link.Target)
-					process.ThreadID = CodexRolloutID(process.RolloutPath)
-					process.RolloutHeld = true
-					break
-				}
-			}
-			if process.RolloutHeld {
-				break
-			}
+		path, _, identityErr := heldCodexRoot(links, roots)
+		process.RolloutPath, process.ThreadID, process.RolloutHeld = path, CodexRolloutID(path), path != ""
+		process.IdentityError = ""
+		if identityErr != nil {
+			process.IdentityError = identityErr.Error()
 		}
 		live = append(live, process)
 	}

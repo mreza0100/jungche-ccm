@@ -68,6 +68,30 @@ elif ! diff -u "$TMP/want-files" "$TMP/got-files"; then
   fail "file_hashes coverage does not match the installed tracked surface"
 fi
 
+# Descriptive installed arrays are a contract too: hashes alone cannot expose
+# a retired command or output-style still advertised as installed.
+for category in agents commands scripts output_styles; do
+  case "$category" in
+    output_styles) source_dir="output-styles" ;;
+    *) source_dir="$category" ;;
+  esac
+  repo_git ls-files ".claude/$source_dir" | while IFS= read -r path; do
+    relative="${path#".claude/$source_dir/"}"
+    case "$category" in
+      scripts) printf '%s\n' "$relative" ;;
+      commands) [[ "$relative" == *.md ]] && printf '%s\n' "${relative%.md}" | tr '/' ':' ;;
+      *) [[ "$relative" == *.md ]] && printf '%s\n' "${relative%.md}" ;;
+    esac
+  done | LC_ALL=C sort -u >"$TMP/want-$category"
+  jq -r --arg category "$category" '.installed[$category][]?' "$MANIFEST" | LC_ALL=C sort -u >"$TMP/got-$category"
+  if ! diff -u "$TMP/want-$category" "$TMP/got-$category"; then
+    fail "installed.$category does not match canonical Claude sources"
+  fi
+ done
+if ! diff -u <(jq -S '.source_fetched' "$ROOT/templates/project/skills/sources.json") <(jq -S '.installed.skills_source_fetched' "$MANIFEST"); then
+  fail "installed.skills_source_fetched does not match project source registry"
+fi
+
 digest() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'

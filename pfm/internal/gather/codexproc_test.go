@@ -13,7 +13,7 @@ import (
 // the process stays invisible, which is the pre-0.146 behavior every other
 // caller still gets.
 func TestDetectCodexThreadsIdentifiesSessionsWithoutRolloutFiles(t *testing.T) {
-	codexRoot := "/jail/codex"
+	codexRoot := t.TempDir()
 	declared := filepath.Join(
 		codexRoot,
 		"sessions",
@@ -187,7 +187,7 @@ func TestCodexResumeArgvTakesOnlyAUUID(t *testing.T) {
 // An unidentifiable codex process — the app-server daemon, for instance —
 // never becomes a live chat row.
 func TestDetectCodexThreadsSkipsUnidentifiedProcesses(t *testing.T) {
-	codexRoot := "/jail/codex"
+	codexRoot := t.TempDir()
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
 		100: {stat: ProcStat{ParentPID: 1}},
 		400: {
@@ -216,8 +216,9 @@ func TestDetectCodexThreadsSkipsUnidentifiedProcesses(t *testing.T) {
 // can rotate it while argv and CODEX_THREAD_ID still name the old thread, so
 // the file must win without consulting the state-store resolver.
 func TestDetectCodexThreadsPrefersCurrentRolloutOverInheritedIdentity(t *testing.T) {
-	codexRoot := "/jail/codex"
+	codexRoot := t.TempDir()
 	rollout := filepath.Join(codexRoot, "sessions", "2026", "rollout-live.jsonl")
+	writeRolloutMeta(t, rollout, "user", "")
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
 		100: {stat: ProcStat{ParentPID: 1}},
 		400: {
@@ -264,8 +265,9 @@ func TestDetectCodexThreadsPrefersCurrentRolloutOverInheritedIdentity(t *testing
 // pane's own screen (pipeline.go). Blanket-true here would silently restore
 // the defect this field exists to prevent.
 func TestDetectCodexThreadsMarksOnlyAnFDHeldRolloutAsHeld(t *testing.T) {
-	codexRoot := "/jail/codex"
+	codexRoot := t.TempDir()
 	heldRollout := filepath.Join(codexRoot, "sessions", "2026", "rollout-held.jsonl")
+	writeRolloutMeta(t, heldRollout, "user", "")
 	resolvedRollout := filepath.Join(codexRoot, "sessions", "2026", "rollout-resolved-paginated.jsonl")
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
 		100: {stat: ProcStat{ParentPID: 1}},
@@ -337,8 +339,9 @@ func TestCodexRolloutIDAcceptsTimestampedAndUntimestampedFiles(t *testing.T) {
 }
 
 func TestDetectCodexThreadsMatchesRolloutsUnderEveryConfiguredRoot(t *testing.T) {
-	roots := []string{"/jail/codex-1", "/jail/codex-2"}
+	roots := []string{t.TempDir(), t.TempDir()}
 	rollout := filepath.Join(roots[1], "sessions", "2026", "rollout-second.jsonl")
+	writeRolloutMeta(t, rollout, "user", "")
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
 		100: {stat: ProcStat{ParentPID: 1}},
 		400: {

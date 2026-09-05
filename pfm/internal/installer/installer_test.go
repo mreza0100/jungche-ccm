@@ -51,7 +51,7 @@ func (runner *fakeRunner) Run(_ context.Context, name string, args ...string) er
 	if strings.Contains(call, "is-active") || strings.Contains(call, "is-enabled") || strings.Contains(call, "is-failed") {
 		return errors.New("not loaded")
 	}
-	if runner.manager {
+	if runner.manager || name == "launchctl" {
 		return nil
 	}
 	return errors.New("dead user bus")
@@ -124,7 +124,7 @@ func TestReachableIdleUserManagerAllowsMutatingModes(t *testing.T) {
 			var output bytes.Buffer
 			_, err := Run(context.Background(), Options{
 				Mode: mode, Home: home, Stdout: &output,
-				Runner: &fakeRunner{manager: true, nameSyncIdle: true},
+				Runner: &outputRunner{fakeRunner: fakeRunner{manager: true, nameSyncIdle: true}, printOutput: "state = not running\n"},
 			})
 			if err != nil {
 				t.Fatalf("mode %d refused an idle reachable manager: %v\n%s", mode, err, output.String())
@@ -164,11 +164,17 @@ func TestRunningNameSyncRefusesMutatingModesBeforeWriting(t *testing.T) {
 	for _, mode := range []Mode{ModeApply, ModeUninstall} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			home := t.TempDir()
+			var runner CommandRunner = &fakeRunner{nameSyncActive: true}
+			expected := ErrNameSyncRunning
+			if schedulerIsLaunchd {
+				runner = &outputRunner{printOutput: "state = running\n"}
+				expected = ErrLaunchAgentRunning
+			}
 			_, err := Run(context.Background(), Options{
-				Mode: mode, Home: home, Runner: &fakeRunner{nameSyncActive: true},
+				Mode: mode, Home: home, Runner: runner,
 			})
-			if !errors.Is(err, ErrNameSyncRunning) {
-				t.Fatalf("Run() error = %v, want ErrNameSyncRunning", err)
+			if !errors.Is(err, expected) {
+				t.Fatalf("Run() error = %v, want %v", err, expected)
 			}
 			if entries, readErr := os.ReadDir(home); readErr != nil || len(entries) != 0 {
 				t.Fatalf("running-service refusal wrote files: entries=%v err=%v", entries, readErr)

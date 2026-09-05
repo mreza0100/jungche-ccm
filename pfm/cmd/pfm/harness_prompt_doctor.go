@@ -39,8 +39,34 @@ func printHarnessPromptDoctor(ctx context.Context, stdout io.Writer, home string
 		fmt.Fprintf(stdout, "doctor: harness-prompt: baseline malformed at %s — run pfm install\n", baselinePath)
 		return 1
 	}
+	decoded, decodeErr := hex.DecodeString(fields[0])
+	if decodeErr != nil || len(decoded) != sha256.Size || filepath.Base(fields[1]) != fields[1] {
+		fmt.Fprintln(stdout, "doctor: harness-prompt: baseline malformed — run pfm install")
+		return 1
+	}
+	modelRaw, modelErr := os.ReadFile(filepath.Join(filepath.Dir(baselinePath), "harness-original.model"))
+	baselineModel := strings.TrimSpace(string(modelRaw))
+	baseline, baselineErr := os.ReadFile(filepath.Join(filepath.Dir(baselinePath), fields[1]))
+	baselineSum := sha256.Sum256(baseline)
+	if modelErr != nil || baselineModel == "" || baselineErr != nil || hex.EncodeToString(baselineSum[:]) != fields[0] {
+		fmt.Fprintf(stdout, "doctor: harness-prompt: BASELINE UNAVAILABLE identity=%s model=%q — missing, unreadable or inconsistent baseline; run pfm install\n", fields[1], baselineModel)
+		return 1
+	}
 	captured, captureErr := configuredHarnessCapture(ctx, machine)
-	line, warn := harnessPromptVerdict(fields[0], fields[1], captured, captureErr)
+	resolved, version := captured.ResolvedModel, captured.CLIVersion
+	if resolved == "" {
+		resolved = "unknown"
+	}
+	if version == "" {
+		version = "unknown"
+	}
+	fmt.Fprintf(stdout, "doctor: harness-prompt scope=claude-sonnet-only runtime=claude-code requested=sonnet resolved=%s cli=%q baseline=%s baseline_model=%s unchecked=active-chat,fable,opus,codex\n", resolved, version, fields[1], baselineModel)
+	if captureErr == nil && captured.ResolvedModel != baselineModel {
+		fmt.Fprintln(stdout, "doctor: harness-prompt: BASELINE UNAVAILABLE for resolved model — model mismatch; drift unknown")
+		return 1
+	}
+	canonicalBaseline := sha256.Sum256([]byte(normalizeHarnessPrompt(string(baseline))))
+	line, warn := harnessPromptVerdict(hex.EncodeToString(canonicalBaseline[:]), fields[1], captured.Prompt, captureErr)
 	fmt.Fprintln(stdout, line)
 	if warn {
 		return 1
@@ -55,9 +81,15 @@ func printHarnessPromptDoctor(ctx context.Context, stdout io.Writer, home string
 // pattern as dependencyProbeOverride and hookProbeOverride. Only the CAPTURE
 // step is ever swapped; the baseline read and the verdict comparison stay
 // real, so a test still exercises the actual match/DRIFT/CHECK-FAILED logic.
-var harnessCaptureOverride func(context.Context, config.Config) (string, error)
+type harnessCapture struct {
+	Prompt        string
+	ResolvedModel string
+	CLIVersion    string
+}
 
-func configuredHarnessCapture(ctx context.Context, machine config.Config) (string, error) {
+var harnessCaptureOverride func(context.Context, config.Config) (harnessCapture, error)
+
+func configuredHarnessCapture(ctx context.Context, machine config.Config) (harnessCapture, error) {
 	if harnessCaptureOverride != nil {
 		return harnessCaptureOverride(ctx, machine)
 	}
@@ -69,8 +101,23 @@ func configuredHarnessCapture(ctx context.Context, machine config.Config) (strin
 // the stored baseline are masked before hashing — DRIFT means prose drift.
 var harnessBuildStamp = regexp.MustCompile(`cc_version=[^; ]*;`)
 
-func maskHarnessBuildStamp(prompt string) string {
-	return harnessBuildStamp.ReplaceAllLiteralString(prompt, "cc_version=*;")
+// normalizeHarnessPrompt excludes only CLI identity metadata. Claude may omit
+// these two Environment lines even with dynamic sections excluded. Instructions
+// in that section, and matching text elsewhere, remain part of the drift hash.
+func normalizeHarnessPrompt(prompt string) string {
+	lines := strings.Split(harnessBuildStamp.ReplaceAllLiteralString(prompt, "cc_version=*;"), "\n")
+	kept := lines[:0]
+	inEnvironment := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "# ") || line == "=== SYSTEM BLOCK ===" {
+			inEnvironment = line == "# Environment"
+		}
+		if inEnvironment && (strings.HasPrefix(line, " - You are powered by the model named ") || strings.HasPrefix(line, " - Assistant knowledge cutoff is ")) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
 
 // harnessPromptVerdict is the pure comparator: baseline hash + name, the
@@ -79,12 +126,12 @@ func harnessPromptVerdict(baselineSHA, baselineName, captured string, captureErr
 	if captureErr != nil {
 		return fmt.Sprintf("doctor: harness-prompt: CHECK FAILED to run (%v) — drift unknown", captureErr), true
 	}
-	sum := sha256.Sum256([]byte(maskHarnessBuildStamp(captured)))
+	sum := sha256.Sum256([]byte(normalizeHarnessPrompt(captured)))
 	live := hex.EncodeToString(sum[:])
 	if live == baselineSHA {
 		return "doctor: harness-prompt: matches baseline " + baselineName, false
 	}
-	return fmt.Sprintf("doctor: harness-prompt: DRIFT live=%s baseline=%s (%s) — Claude Code changed its system prompt; recapture, review, re-pin", live[:16], baselineSHA[:16], baselineName), true
+	return fmt.Sprintf("doctor: harness-prompt: DRIFT live=%s baseline=%s (%s) — checked Sonnet prompt differs; recapture, review, re-pin", live[:16], baselineSHA[:16], baselineName), true
 }
 
 // captureHarnessPrompt DELIBERATELY BYPASSES action.ClaudeSpawn, the one spawn
@@ -99,10 +146,10 @@ func harnessPromptVerdict(baselineSHA, baselineName, captured string, captureErr
 // It spawns `claude -p` pointed at an ephemeral localhost listener that
 // records the request body and refuses it with a non-retryable 400 (a 500
 // would put the CLI into its retry loop).
-func captureHarnessPrompt(ctx context.Context, machine config.Config) (string, error) {
+func captureHarnessPrompt(ctx context.Context, machine config.Config) (harnessCapture, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return "", fmt.Errorf("open capture sink: %w", err)
+		return harnessCapture{}, fmt.Errorf("open capture sink: %w", err)
 	}
 	bodies := make(chan []byte, 1)
 	server := &http.Server{Handler: harnessSinkHandler(bodies)}
@@ -112,6 +159,15 @@ func captureHarnessPrompt(ctx context.Context, machine config.Config) (string, e
 	binary := machine.Claude.Binary
 	if binary == "" {
 		binary = pfmengine.MustLookup(pfmengine.Claude).Binary
+	}
+	versionCtx, versionCancel := context.WithTimeout(ctx, 5*time.Second)
+	versionCmd := exec.CommandContext(versionCtx, binary, "--version")
+	versionCmd.WaitDelay = 500 * time.Millisecond
+	versionCmd.Env = harnessCaptureEnv(os.Environ(), "http://"+listener.Addr().String())
+	versionRaw, versionErr := versionCmd.Output()
+	versionCancel()
+	if versionErr != nil {
+		return harnessCapture{}, fmt.Errorf("read Claude CLI version: %w", versionErr)
 	}
 	runCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -129,9 +185,11 @@ func captureHarnessPrompt(ctx context.Context, machine config.Config) (string, e
 	_ = command.Run()
 	select {
 	case body := <-bodies:
-		return joinSystemBlocks(body)
+		captured, err := decodeHarnessCapture(body)
+		captured.CLIVersion = strings.TrimSpace(string(versionRaw))
+		return captured, err
 	case <-time.After(2 * time.Second):
-		return "", errors.New("no API request reached the capture sink")
+		return harnessCapture{CLIVersion: strings.TrimSpace(string(versionRaw))}, errors.New("no API request reached the capture sink")
 	}
 }
 
@@ -198,6 +256,9 @@ func joinSystemBlocks(body []byte) (string, error) {
 	}
 	var plain string
 	if err := json.Unmarshal(payload.System, &plain); err == nil {
+		if strings.TrimSpace(plain) == "" {
+			return "", errors.New("captured system prompt is empty")
+		}
 		return plain + "\n", nil
 	}
 	var blocks []struct {
@@ -210,5 +271,22 @@ func joinSystemBlocks(body []byte) (string, error) {
 	for _, block := range blocks {
 		texts = append(texts, block.Text)
 	}
+	if strings.TrimSpace(strings.Join(texts, "")) == "" {
+		return "", errors.New("captured system prompt is empty")
+	}
 	return strings.Join(texts, "\n\n=== SYSTEM BLOCK ===\n\n") + "\n", nil
+}
+
+func decodeHarnessCapture(body []byte) (harnessCapture, error) {
+	var request struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		return harnessCapture{}, fmt.Errorf("parse captured request: %w", err)
+	}
+	if strings.TrimSpace(request.Model) == "" {
+		return harnessCapture{}, errors.New("captured request carries no resolved model")
+	}
+	prompt, err := joinSystemBlocks(body)
+	return harnessCapture{Prompt: prompt, ResolvedModel: request.Model}, err
 }

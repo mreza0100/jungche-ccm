@@ -138,11 +138,17 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 		if err := os.WriteFile(path, []byte(pin), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.WriteFile(filepath.Join(filepath.Dir(path), name), []byte(captured), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(filepath.Dir(path), "harness-original.model"), []byte("claude-sonnet-5\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	refuseCapture := func(t *testing.T) func(context.Context, config.Config) (string, error) {
-		return func(context.Context, config.Config) (string, error) {
+	refuseCapture := func(t *testing.T) func(context.Context, config.Config) (harnessCapture, error) {
+		return func(context.Context, config.Config) (harnessCapture, error) {
 			t.Fatal("capture must not run before the baseline is readable and well-formed")
-			return "", nil
+			return harnessCapture{}, nil
 		}
 	}
 
@@ -179,8 +185,8 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 			name: "override content matching the staged baseline reports clean",
 			setup: func(t *testing.T, home string) {
 				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
-				harnessCaptureOverride = func(context.Context, config.Config) (string, error) {
-					return "captured-fixture\n", nil
+				harnessCaptureOverride = func(context.Context, config.Config) (harnessCapture, error) {
+					return harnessCapture{Prompt: "captured-fixture\n", ResolvedModel: "claude-sonnet-5", CLIVersion: "fixture"}, nil
 				}
 			},
 			wantWarn: false,
@@ -190,8 +196,8 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 			name: "override content diverging from the staged baseline reports DRIFT",
 			setup: func(t *testing.T, home string) {
 				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
-				harnessCaptureOverride = func(context.Context, config.Config) (string, error) {
-					return "a different live prompt\n", nil
+				harnessCaptureOverride = func(context.Context, config.Config) (harnessCapture, error) {
+					return harnessCapture{Prompt: "a different live prompt\n", ResolvedModel: "claude-sonnet-5", CLIVersion: "fixture"}, nil
 				}
 			},
 			wantWarn: true,
@@ -201,8 +207,8 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 			name: "override capture error reports CHECK FAILED, never DRIFT or matches",
 			setup: func(t *testing.T, home string) {
 				stageBaseline(t, home, "captured-fixture\n", "fixture-baseline.md")
-				harnessCaptureOverride = func(context.Context, config.Config) (string, error) {
-					return "", errors.New("no API request reached the capture sink")
+				harnessCaptureOverride = func(context.Context, config.Config) (harnessCapture, error) {
+					return harnessCapture{}, errors.New("no API request reached the capture sink")
 				}
 			},
 			wantWarn: true,
@@ -223,5 +229,35 @@ func TestPrintHarnessPromptDoctorHonorsCaptureOverride(t *testing.T) {
 				t.Fatalf("output=%q, want substring %q", stdout.String(), testCase.want)
 			}
 		})
+	}
+}
+
+func TestHarnessPromptVerdictIgnoresOptionalEnvironmentMetadata(t *testing.T) {
+	baseline := "# Environment\n - Keep this behavioral instruction.\n\n# Other\n - Assistant knowledge cutoff is part of an example here.\n"
+	sum := sha256.Sum256([]byte(baseline))
+	pin := hex.EncodeToString(sum[:])
+	metadata := " - You are powered by the model named Sonnet 5. The exact model ID is claude-sonnet-5.\n - Assistant knowledge cutoff is January 2026.\n"
+	for _, optional := range []string{"", metadata} {
+		captured := strings.Replace(baseline, "# Environment\n", "# Environment\n"+optional, 1)
+		if line, warn := harnessPromptVerdict(pin, "fixture.md", captured, nil); warn {
+			t.Fatalf("optional metadata produced a warning: %s", line)
+		}
+		changed := strings.Replace(captured, "Keep this behavioral instruction.", "Change this behavioral instruction.", 1)
+		if line, warn := harnessPromptVerdict(pin, "fixture.md", changed, nil); !warn || !strings.Contains(line, "DRIFT") {
+			t.Fatalf("behavioral change was hidden: %s", line)
+		}
+	}
+}
+
+func TestKnownSIDMetadataIncludesNudgeRecords(t *testing.T) {
+	for _, name := range []string{"nudge-ctx-11111111-2222-4333-8444-555555555555", "nudge-band-11111111-2222-4333-8444-555555555555", "nudge-ctx-session-a"} {
+		if !knownSIDMetadata(name) {
+			t.Errorf("valid nudge record %q rejected", name)
+		}
+	}
+	for _, name := range []string{"nudge-ctx-", "nudge-band-", "nudge-band-   "} {
+		if knownSIDMetadata(name) {
+			t.Errorf("invalid nudge record %q accepted", name)
+		}
 	}
 }

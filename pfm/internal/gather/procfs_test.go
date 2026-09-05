@@ -63,10 +63,12 @@ func TestNativeProcFSSmokeOwnProcessOnly(t *testing.T) {
 	}
 }
 
-func TestDetectCodexNumericFDAndAncestorMatching(t *testing.T) {
-	codexRoot := "/jail/codex"
+func TestDetectCodexRootMetadataAndAncestorMatching(t *testing.T) {
+	codexRoot := t.TempDir()
 	first := filepath.Join(codexRoot, "sessions", "2026", "rollout-first.jsonl")
 	second := filepath.Join(codexRoot, "sessions", "2026", "rollout-second.jsonl")
+	writeRolloutMeta(t, first, "user", "")
+	writeRolloutMeta(t, second, "subagent", "first")
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
 		100: {stat: ProcStat{ParentPID: 1}},
 		200: {stat: ProcStat{ParentPID: 100}},

@@ -159,8 +159,10 @@ func newInstallerOptions(
 		}
 		if configDir == "" {
 			options.ConfigDirs = make([]string, 0, len(runtime.Config.Accounts))
+			options.ClaudeRegistries = make([]string, 0, len(runtime.Config.Accounts))
 			for _, account := range runtime.Config.Accounts {
 				options.ConfigDirs = append(options.ConfigDirs, account.ConfigDir)
+				options.ClaudeRegistries = append(options.ClaudeRegistries, installer.ClaudeUserRegistry(runtime.Paths.Home, account.ConfigDir, account.Implicit))
 			}
 		}
 	}

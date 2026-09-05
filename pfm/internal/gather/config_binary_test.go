@@ -10,8 +10,9 @@ func TestConfiguredBinaryBasenamesReachLiveDetectors(t *testing.T) {
 	customClaude := "/opt/tools/claude enterprise"
 	customCodex := "/opt/tools/codex safe"
 	claudeSession := "11111111-1111-4111-8111-111111111111"
-	codexRoot := "/jail/codex"
+	codexRoot := t.TempDir()
 	rollout := filepath.Join(codexRoot, "sessions", "2026", "rollout-configured.jsonl")
+	writeRolloutMeta(t, rollout, "user", "")
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
 		100: {stat: ProcStat{ParentPID: 1}},
 		101: {stat: ProcStat{ParentPID: 1}},

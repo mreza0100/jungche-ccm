@@ -61,7 +61,12 @@ codex_live() {
   [ -z "$CX_STUB_ROLLOUT" ] && return 0
   STUB_TRANSCRIPT="$CX_STUB_ROLLOUT"
   mkdir -p "$(dirname "$STUB_TRANSCRIPT")"
-  : >> "$STUB_TRANSCRIPT"
+  if [ ! -s "$STUB_TRANSCRIPT" ]; then
+    rollout_name="${STUB_TRANSCRIPT##*/}"
+    rollout_id="${rollout_name%.jsonl}"
+    rollout_id="${rollout_id: -36}"
+    printf '{"type":"session_meta","payload":{"id":"%s","source":"cli","thread_source":"user"}}\n' "$rollout_id" >> "$STUB_TRANSCRIPT"
+  fi
   _fakeproc codex
   ln -sf "$STUB_TRANSCRIPT" "$PFM_PROC_ROOT/$$/fd/7"
   return 0

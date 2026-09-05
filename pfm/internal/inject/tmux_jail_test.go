@@ -41,7 +41,7 @@ func newInjectTmuxJail(t *testing.T) *injectTmuxJail {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 is not installed")
 	}
-	const tmuxJailRoot = "/tmp/tmux-1000"
+	tmuxJailRoot := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(tmuxJailRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
