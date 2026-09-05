@@ -5,10 +5,9 @@ import "sort"
 // A Codex pane's identity has one trustworthy source and one treacherous one.
 //
 // The trustworthy source is a bare thread id on the pane's own status line.
-// Codex renders the raw id only while a thread is UNNAMED, and a thread born
-// from /clear is always unnamed — so the bare id appears at precisely the
-// moment a binding must move, and it names the pane's own running thread with
-// nothing in between.
+// Codex renders the raw id while a thread is UNNAMED. A named /clear or a
+// quickly auto-titled successor can skip that frame; the forward-name path
+// below handles those observations without assuming an unnamed interval.
 //
 // The treacherous source is the display NAME. It is a lagging mirror of
 // Codex's own index: after a clear pfm re-applies the chat's name to the new
@@ -246,8 +245,7 @@ func decideCodexPane(
 		return action
 	}
 
-	// The pane named its own thread outright. This is the only input allowed
-	// to move a binding, and the only one that can witness a /clear.
+	// The pane named its own thread outright, without a lagging title lookup.
 	if observation.ThreadID != "" {
 		if observation.ThreadID == observation.Bound {
 			return action
@@ -267,8 +265,9 @@ func decideCodexPane(
 		}
 		previousRoot, currentRoot := lineageRoot(observation.Bound), lineageRoot(observation.ThreadID)
 		if previousRoot == "" || currentRoot == "" {
-			// The binding still advances — the pane's screen is not in doubt —
-			// but a kill on an unread lineage would be a guess.
+			// Keep the old binding until retirement can be decided. Advancing
+			// here would forget the only evidence of the missed clear forever.
+			action.Bind = ""
 			action.Skip, action.Loud = codexPaneLineageUnknown, true
 			return action
 		}

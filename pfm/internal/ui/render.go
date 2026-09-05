@@ -541,7 +541,7 @@ func (model Model) renderLimitCards(innerWidth int) []string {
 			if account.Engine == pfmengine.Codex && renderedWindows >= 1 {
 				break
 			}
-			appendLine(renderLimitWindow(now, window, innerWidth))
+			appendLine(renderLimitWindowMode(now, window, innerWidth, account.Engine == pfmengine.Codex))
 			renderedWindows++
 		}
 		if renderedWindows == 0 {
@@ -586,6 +586,10 @@ func limitAccountHeader(account pfmstats.AccountLimits, now time.Time) string {
 }
 
 func renderLimitWindow(now time.Time, window pfmstats.Window, innerWidth int) string {
+	return renderLimitWindowMode(now, window, innerWidth, false)
+}
+
+func renderLimitWindowMode(now time.Time, window pfmstats.Window, innerWidth int, remaining bool) string {
 	const nameWidth = 10
 	showReset := innerWidth >= 60
 	reserved := 27
@@ -596,6 +600,11 @@ func renderLimitWindow(now time.Time, window pfmstats.Window, innerWidth int) st
 	name := fmt.Sprintf("%-*s", nameWidth, clipRunes(cleanField(window.Name), nameWidth))
 	bar := limitBar(window.UsedPct, barWidth)
 	percent := fmt.Sprintf("%.0f%% used", window.UsedPct)
+	if remaining {
+		left := 100 - math.Max(0, math.Min(100, window.UsedPct))
+		bar = renderLimitBar(left, window.UsedPct, barWidth, false)
+		percent = fmt.Sprintf("%.0f%% left", left)
+	}
 	percentStyle := limitPercentStyle
 	if window.UsedPct >= 95 {
 		percentStyle = limitErrorStyle
@@ -613,10 +622,15 @@ func renderLimitWindow(now time.Time, window pfmstats.Window, innerWidth int) st
 }
 
 func limitBar(percent float64, width int) string {
+	return renderLimitBar(percent, percent, width, true)
+}
+
+// Fill follows the displayed quantity; warning colors always follow usage.
+func renderLimitBar(percent, used float64, width int, fullLabel bool) string {
 	width = maxInt(1, width)
 	percent = math.Max(0, math.Min(100, percent))
-	style := limitUsageStyle(percent)
-	if percent >= 100 && width >= 4 {
+	style := limitUsageStyle(used)
+	if fullLabel && percent >= 100 && width >= 4 {
 		return style.Render("▕" + strings.Repeat("█", width-4) + "FULL" + "▏")
 	}
 	scaled := percent / 100 * float64(width)

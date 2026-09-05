@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/gather"
+	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
@@ -229,14 +230,17 @@ func (manager *Manager) AdvanceCodexPane(
 
 // KillClearedCodex records a prompt-baseline kill on the visible lineage root
 // for an already indexed Codex thread. It never guesses an id: the caller
-// (pipeline.reconcileCodexPanes) supplies the id AdvanceCodexPane just moved
-// a pane's binding OFF of — the thread a /clear it just observed replaced.
+// (pipeline.reconcileCodexPanes) supplies the previous pane binding. Retirement
+// must succeed before that binding advances, so failures remain retryable.
 func (manager *Manager) KillClearedCodex(
 	ctx context.Context,
 	id string,
 ) (Target, bool, error) {
 	if id == "" {
 		return Target{}, false, nil
+	}
+	if err := fleetindex.RefreshCodexLineage(ctx, manager.database, id); err != nil {
+		return Target{}, false, err
 	}
 	lineage, found, err := manager.database.CodexLineage(ctx, id)
 	if err != nil || !found {

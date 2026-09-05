@@ -1,7 +1,9 @@
 package gather
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -234,6 +236,41 @@ func processBirth(proc ProcFS, pid int) int64 {
 		return 0
 	}
 	return birth
+}
+
+// RefreshCodexHeldRollouts checks only already-known PIDs, not the whole
+// process tree. Idle pane reconciliation must never let an old FD snapshot
+// overrule a newly cleared screen. Processes that exited contribute no claim.
+func RefreshCodexHeldRollouts(proc ProcFS, previous []LiveCodex, roots []string) ([]LiveCodex, error) {
+	live := make([]LiveCodex, 0, len(previous))
+	var issues []error
+	for _, process := range previous {
+		links, err := proc.FDLinks(process.PID)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			issues = append(issues, fmt.Errorf("read Codex pid %d rollout descriptors: %w", process.PID, err))
+			continue
+		}
+		sort.Slice(links, func(i, j int) bool { return links[i].FD < links[j].FD })
+		process.RolloutPath, process.ThreadID, process.RolloutHeld = "", "", false
+		for _, link := range links {
+			for _, root := range roots {
+				if strings.TrimSpace(root) != "" && isRolloutUnder(filepath.Join(root, "sessions"), link.Target) {
+					process.RolloutPath = filepath.Clean(link.Target)
+					process.ThreadID = CodexRolloutID(process.RolloutPath)
+					process.RolloutHeld = true
+					break
+				}
+			}
+			if process.RolloutHeld {
+				break
+			}
+		}
+		live = append(live, process)
+	}
+	return live, errors.Join(issues...)
 }
 
 func isRolloutUnder(root, target string) bool {

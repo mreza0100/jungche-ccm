@@ -347,7 +347,7 @@ func TestLimitsTabScrollsAcrossClaudeCodexAndOpenCodeCardsAfterResize(t *testing
 		t.Fatalf("Home after resize did not reset Limits offset: command=%v offset=%d", command, model.limitsOffset)
 	}
 	wide := ansi.Strip(model.renderLimitsPanel(80, 30))
-	for _, label := range []string{"Claude", "Codex", "OpenCode", " 1%", " 4%", " 6%"} {
+	for _, label := range []string{"Claude", "Codex", "OpenCode", " 1% used", " 96% left", " 6% used"} {
 		if !strings.Contains(wide, label) {
 			t.Fatalf("resized Limits viewport lost %q:\n%s", label, wide)
 		}

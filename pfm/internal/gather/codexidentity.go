@@ -25,8 +25,8 @@ type CodexIdentity struct {
 // same bounded fan-out CaptureClaudeLabels runs for the claude 🔖 label, over
 // a different parse. Codex's TUI renders the thread's NAME, or the bare
 // thread id when the thread is unnamed, as the first `·`-separated field of
-// its last status line — and a thread born from /clear is always unnamed,
-// so the bare id is the only identity such a pane has until it is renamed.
+// its last status line. Named /clear and auto-titled successors may expose
+// only a name; the caller must resolve it rather than assume a bare-id frame.
 func CaptureCodexIdentity(
 	ctx context.Context,
 	capturer PaneCapturer,

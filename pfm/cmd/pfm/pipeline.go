@@ -48,16 +48,12 @@ const (
 	// 65s ≥ 60s) rather than many gentle ones.
 	fleetRefreshGrowth = 13
 	// fleetRefreshParkThreshold is the point past which the loop stops
-	// scheduling real passes at all — see the park/poll split in
-	// streamFleetRefreshesWith. internal/ui's sky tick parks the
-	// same way for the same reason: an abandoned picker's periodic work
-	// must eventually cost nothing, not merely cost less.
+	// scheduling unconditional full-fleet passes. Known Codex panes retain
+	// lightweight identity checks so /clear in another pane stays observable.
 	fleetRefreshParkThreshold = 60 * time.Second
 	// fleetRefreshParkPollInterval is how often a PARKED stream checks
-	// whether the activity clock moved — an atomic int64 load and a timer
-	// reset, no tmux fork+exec, no store read, no /proc walk. Negligible
-	// even run forever, and short enough that a keystroke's next fleet scan
-	// never feels like it is waiting on a stale multi-minute timer.
+	// whether the activity clock or a known Codex pane's identity moved.
+	// It never scans the whole process tree while nothing changes.
 	fleetRefreshParkPollInterval = 2 * time.Second
 )
 
@@ -840,12 +836,13 @@ func streamFleetRefreshesWith(
 	defer timer.Stop()
 	// parked survives across iterations: once the cadence backs off past
 	// fleetRefreshParkThreshold, the loop stops doing real passes on every
-	// fire and instead polls fleetRefreshParkPollInterval — an atomic load,
-	// no fleet I/O — until cadence.next() reports the activity clock moved,
-	// at which point it un-parks and the very fire that noticed does the
-	// pass (the "keystroke restores full cadence" promise pays out on the
-	// next poll tick, never on an already-scheduled multi-minute timer).
+	// fire. Known Codex panes still get a bounded identity/descriptor check:
+	// interacting in Codex does not stamp the picker's activity clock. A clear
+	// wakes a full pass to publish the new binding and hidden predecessor.
 	parked := false
+	// A failed publication must be retried even if reconciliation already
+	// committed the binding and therefore reports no further identity change.
+	pendingRefresh := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -858,9 +855,21 @@ func streamFleetRefreshesWith(
 		// permanently silent on the first gather hiccup, which reads on screen
 		// as a fleet that simply stopped changing.
 		next := cadence.next()
-		if parked && next >= fleetRefreshParkThreshold {
+		if parked && next >= fleetRefreshParkThreshold && !pendingRefresh {
 			timer.Reset(fleetRefreshParkPollInterval)
-			continue
+			if request.ReadOnly || len(live.Codex) == 0 {
+				continue
+			}
+			probe := gather.Snapshot{Panes: live.Panes}
+			probe.Codex, err = gather.RefreshCodexHeldRollouts(
+				gather.NewProcFS(environment.paths.ProcRoot), live.Codex, environment.paths.Roots[pfmengine.Codex],
+			)
+			if err != nil {
+				warn(fmt.Sprintf("Codex idle identity probe: %v", err))
+			}
+			if !reconcileCodexPanes(ctx, database, probe, commandRuntime{Config: environment.config, Paths: environment.paths}, warn) {
+				continue
+			}
 		}
 		parked = next >= fleetRefreshParkThreshold
 		if parked {
@@ -868,6 +877,7 @@ func streamFleetRefreshesWith(
 		} else {
 			timer.Reset(next)
 		}
+		pendingRefresh = true
 		environment, err = resolveScanEnvironment(request)
 		if err != nil {
 			writeRefreshError(ctx, stderr, "", err)
@@ -960,6 +970,7 @@ func streamFleetRefreshesWith(
 		if !sendRefresh(ctx, environment, request, data, live, false, updates) {
 			return
 		}
+		pendingRefresh = false
 	}
 }
 
@@ -999,16 +1010,16 @@ func reconcileCodexPanes(
 	runtime commandRuntime,
 	warn gatherWarn,
 ) bool {
-	killed := false
+	changed := false
 	manager, err := kill.New(database, killDependencies(runtime))
 	if err != nil {
 		warn(fmt.Sprintf("Codex pane reconcile: %v", err))
-		return killed
+		return changed
 	}
 	cxNames, err := database.CxNames(ctx)
 	if err != nil {
 		warn(fmt.Sprintf("Codex pane reconcile: read thread names: %v", err))
-		return killed
+		return changed
 	}
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
 	renamer := codexRenamerFor(runtime)
@@ -1031,6 +1042,7 @@ func reconcileCodexPanes(
 						action.Socket, action.PaneID, action.Skip, err,
 					))
 				} else {
+					changed = true
 					warn(fmt.Sprintf(
 						"codex pane %s %s: repaired — %s; binding dropped",
 						action.Socket, action.PaneID, action.Skip,
@@ -1050,28 +1062,33 @@ func reconcileCodexPanes(
 				action.Socket, action.PaneID, action.Skip,
 			))
 		}
-		if _, _, err := manager.AdvanceCodexPane(
+		var target kill.Target
+		if action.ClearKill != "" {
+			var recorded bool
+			target, recorded, err = manager.KillClearedCodex(ctx, action.ClearKill)
+			if err != nil {
+				warn(fmt.Sprintf("codex pane %s %s: record clear kill (binding retained for retry): %v", action.Socket, action.PaneID, err))
+				continue
+			}
+			if !recorded {
+				warn(fmt.Sprintf("codex pane %s %s: clear lineage %s unavailable; binding retained for retry", action.Socket, action.PaneID, action.ClearKill))
+				continue
+			}
+			changed = true
+		}
+		if _, moved, err := manager.AdvanceCodexPane(
 			ctx, action.Socket, action.PaneID, action.Bind,
 		); err != nil {
 			warn(fmt.Sprintf(
 				"codex pane %s %s: advance binding: %v", action.Socket, action.PaneID, err,
 			))
 			continue
+		} else {
+			changed = changed || moved
 		}
 		if action.ClearKill == "" {
 			continue
 		}
-		target, recorded, err := manager.KillClearedCodex(ctx, action.ClearKill)
-		if err != nil {
-			warn(fmt.Sprintf(
-				"codex pane %s %s: record clear kill: %v", action.Socket, action.PaneID, err,
-			))
-			continue
-		}
-		if !recorded {
-			continue
-		}
-		killed = true
 		// The name is stored per THREAD, so the cleared thread's own row is
 		// the one that carries it. The lineage root is the fallback for a
 		// cleared thread that was itself a resumed child: its row can be
@@ -1117,7 +1134,7 @@ func reconcileCodexPanes(
 			))
 		}
 	}
-	return killed
+	return changed
 }
 
 // observeCodexPanes captures every live Codex pane, pairs each with the

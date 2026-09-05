@@ -99,10 +99,9 @@ func TestDecideCodexPaneRulings(t *testing.T) {
 			wantSkip:    codexPaneSameLineage,
 		},
 		{
-			name:        "an unreadable lineage advances the binding but never kills",
+			name:        "an unreadable lineage retains the binding for retry",
 			observation: codexPaneObservation{Socket: "cx-a", PaneID: "%0", ThreadID: fresh, Bound: bound},
 			lineage:     brokenLineage,
-			wantBind:    fresh,
 			wantSkip:    codexPaneLineageUnknown,
 			wantLoud:    true,
 		},
