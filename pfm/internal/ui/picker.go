@@ -25,6 +25,9 @@ func (picker BubblePicker) Pick(
 	}
 	defer terminal.Close()
 
+	samplingContext, cancelSamples := context.WithCancel(ctx)
+	defer cancelSamples()
+	snapshot.SamplingContext = samplingContext
 	model := NewModel(snapshot)
 	program := tea.NewProgram(
 		model,

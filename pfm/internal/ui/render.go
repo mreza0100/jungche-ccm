@@ -588,19 +588,19 @@ func limitAccountHeader(account pfmstats.AccountLimits, now time.Time) string {
 func renderLimitWindow(now time.Time, window pfmstats.Window, innerWidth int) string {
 	const nameWidth = 10
 	showReset := innerWidth >= 60
-	reserved := 22
+	reserved := 27
 	if showReset {
 		reserved += 18
 	}
-	barWidth := minInt(40, maxInt(12, innerWidth-reserved))
+	barWidth := minInt(40, maxInt(1, innerWidth-reserved))
 	name := fmt.Sprintf("%-*s", nameWidth, clipRunes(cleanField(window.Name), nameWidth))
 	bar := limitBar(window.UsedPct, barWidth)
-	percent := fmt.Sprintf("%.0f%%", window.UsedPct)
+	percent := fmt.Sprintf("%.0f%% used", window.UsedPct)
 	percentStyle := limitPercentStyle
 	if window.UsedPct >= 95 {
 		percentStyle = limitErrorStyle
 	}
-	line := "  " + name + "  " + bar + "  " + percentStyle.Render(fmt.Sprintf("%4s", percent))
+	line := "  " + name + "  " + bar + "  " + percentStyle.Render(fmt.Sprintf("%9s", percent))
 	if showReset {
 		reset, urgent := limitReset(now, window)
 		style := dimStyle

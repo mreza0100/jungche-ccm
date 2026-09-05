@@ -189,10 +189,10 @@ func wrapDelta(delta float64) float64 {
 const cosmosRevolution = 0.03
 
 func (model *Model) advanceCosmos(nowNS int64) {
-	dt := float64(nowNS-model.cosmosNowNS) / float64(time.Second)
-	if dt < 0 {
-		dt = 0
+	if nowNS <= model.cosmosNowNS {
+		return
 	}
+	dt := float64(nowNS-model.cosmosNowNS) / float64(time.Second)
 	for _, seat := range model.cosmosSeats {
 		seat.Angle += wrapDelta(seat.Target-seat.Angle) * math.Min(1, dt*5)
 		seat.Ring += (seat.RingTarget - seat.Ring) * math.Min(1, dt*3)

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -767,4 +768,448 @@ func TestLimitsSamplerReadsCachePayloadTheHookWroteWithoutFetching(t *testing.T)
 	if limits[0].Windows[0].UsedPct != five || limits[0].Windows[1].UsedPct != seven {
 		t.Fatalf("windows=%#v, want five=%v seven=%v read from the planted cache", limits[0].Windows, five, seven)
 	}
+}
+
+func TestLimitsSamplerLiveRefreshDoesNotBlockOtherAccounts(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan int, 2)
+	completed := make(chan int, 2)
+	var calls atomic.Int32
+
+	sampler := NewLimitsSampler([]LimitAccount{
+		{ID: 1, Engine: pfmengine.Claude, Label: "account 1"},
+		{ID: 2, Engine: pfmengine.Claude, Label: "account 2"},
+	})
+	sampler.Now = func() time.Time { return now }
+	sampler.Fetch = func(ctx context.Context, account LimitAccount) (usagehook.Usage, error) {
+		calls.Add(1)
+		started <- account.ID
+		if account.ID == 1 {
+			<-ctx.Done()
+			completed <- account.ID
+			return usagehook.Usage{}, ctx.Err()
+		}
+		completed <- account.ID
+		return liveClaudeUsage(now, 22), nil
+	}
+
+	type sampleResult struct {
+		limits   []AccountLimits
+		warnings []string
+	}
+	result := make(chan sampleResult, 1)
+	go func() {
+		limits, warnings := sampler.SampleLive(ctx)
+		result <- sampleResult{limits, warnings}
+	}()
+	var initial sampleResult
+	select {
+	case initial = <-result:
+	case <-time.After(time.Second):
+		t.Fatal("live sampling blocked behind a provider")
+	}
+	limits, warnings := initial.limits, initial.warnings
+	if len(limits) != 2 || len(warnings) != 0 {
+		t.Fatalf("initial live sample limits=%#v warnings=%v, want two immediate cards", limits, warnings)
+	}
+	seen := map[int]bool{}
+	for range 2 {
+		seen[waitForLimitSignal(t, started)] = true
+	}
+	if !seen[1] || !seen[2] {
+		t.Fatalf("refreshes started for accounts=%v, want both blocked account 1 and healthy account 2", seen)
+	}
+	if got := waitForLimitSignal(t, completed); got != 2 {
+		t.Fatalf("completed refresh account=%d, want fast account 2", got)
+	}
+	waitForCachedWindow(t, sampler, 2, 22)
+
+	limits, warnings = sampler.SampleLive(ctx)
+	if len(warnings) != 0 || len(limits) != 2 || len(limits[1].Windows) != 2 || limits[1].Windows[0].UsedPct != 22 {
+		t.Fatalf("fast account was not usable while account 1 was blocked: limits=%#v warnings=%v", limits, warnings)
+	}
+	if !strings.Contains(limits[0].Status, "refreshing") {
+		t.Fatalf("blocked account status=%q, want explicit refreshing state", limits[0].Status)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("live refresh calls=%d, want one worker per account", got)
+	}
+	cancel()
+	if got := waitForLimitSignal(t, completed); got != 1 {
+		t.Fatalf("canceled refresh account=%d, want account 1", got)
+	}
+}
+
+func TestLimitsSamplerLiveRefreshUsesSingleFlightPerAccount(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	ctx := context.Background()
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	completed := make(chan struct{}, 1)
+	var calls atomic.Int32
+
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 3, Engine: pfmengine.Claude, Label: "account 3"}})
+	sampler.Now = func() time.Time { return now }
+	sampler.Fetch = func(ctx context.Context, _ LimitAccount) (usagehook.Usage, error) {
+		calls.Add(1)
+		started <- struct{}{}
+		select {
+		case <-release:
+			completed <- struct{}{}
+			return liveClaudeUsage(now, 33), nil
+		case <-ctx.Done():
+			return usagehook.Usage{}, ctx.Err()
+		}
+	}
+
+	sampler.SampleLive(ctx)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first live refresh did not start")
+	}
+	sampler.SampleLive(ctx)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("duplicate live workers=%d, want single-flight account refresh", got)
+	}
+	close(release)
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("single live refresh did not complete")
+	}
+}
+
+func TestLimitsSamplerLiveTTLDoesNotExtendProviderConfirmationAge(t *testing.T) {
+	var clock atomic.Int64
+	start := time.Unix(1_800_000_000, 0)
+	clock.Store(start.UnixNano())
+	started := make(chan int, 2)
+	release := make(chan struct{})
+	var calls atomic.Int32
+
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 4, Engine: pfmengine.Claude, Label: "account 4"}})
+	sampler.TTL = LiveLimitsTTL
+	sampler.Now = func() time.Time { return time.Unix(0, clock.Load()) }
+	sampler.Fetch = func(_ context.Context, _ LimitAccount) (usagehook.Usage, error) {
+		call := int(calls.Add(1))
+		started <- call
+		<-release
+		return liveClaudeUsage(time.Unix(0, clock.Load()), float64(call*10)), nil
+	}
+
+	sampler.SampleLive(context.Background())
+	if got := waitForLimitSignal(t, started); got != 1 {
+		t.Fatalf("first refresh call=%d, want 1", got)
+	}
+	close(release)
+	waitForCachedWindow(t, sampler, 4, 10)
+
+	clock.Store(start.Add(4 * time.Second).UnixNano())
+	limits, _ := sampler.SampleLive(context.Background())
+	if got := calls.Load(); got != 1 || len(limits[0].Windows) != 2 {
+		t.Fatalf("fresh 4s read-through calls=%d limits=%#v, want cache without refresh", got, limits)
+	}
+
+	clock.Store(start.Add(6 * time.Second).UnixNano())
+	limits, _ = sampler.SampleLive(context.Background())
+	if len(limits) != 1 || len(limits[0].Windows) != 2 || limits[0].Windows[0].UsedPct != 10 {
+		t.Fatalf("stale live card=%#v, want last-good windows during refresh", limits)
+	}
+	if got := waitForLimitSignal(t, started); got != 2 {
+		t.Fatalf("expired refresh call=%d, want second provider call after 5s TTL", got)
+	}
+	waitForCachedWindow(t, sampler, 4, 20)
+}
+
+func TestLimitsSamplerLiveRecoversFutureAndEmptyCacheEntries(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	t.Run("future", func(t *testing.T) {
+		started := make(chan struct{}, 1)
+		release := make(chan struct{})
+		sampler := NewLimitsSampler([]LimitAccount{{ID: 5, Engine: pfmengine.Claude, Label: "account 5"}})
+		sampler.Now = func() time.Time { return now }
+		sampler.Fetch = func(_ context.Context, _ LimitAccount) (usagehook.Usage, error) {
+			started <- struct{}{}
+			<-release
+			return liveClaudeUsage(now, 55), nil
+		}
+		key := sampler.Accounts[0].cacheKey()
+		sampler.mu.Lock()
+		sampler.cache[key] = cachedLimits{
+			limits: AccountLimits{Account: 5, Engine: pfmengine.Claude, Windows: []Window{{Name: "5h", UsedPct: 99}}},
+			when:   now.Add(time.Minute),
+		}
+		sampler.mu.Unlock()
+
+		limits, _ := sampler.SampleLive(context.Background())
+		if len(limits) != 1 || len(limits[0].Windows) != 1 || limits[0].Windows[0].UsedPct != 99 {
+			t.Fatalf("future cache card=%#v, want visible last-good payload while refreshing", limits)
+		}
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("future cache did not trigger recovery refresh")
+		}
+		close(release)
+		waitForCachedWindow(t, sampler, 5, 55)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		var calls atomic.Int32
+		var clock atomic.Int64
+		clock.Store(now.UnixNano())
+		sampler := NewLimitsSampler([]LimitAccount{{ID: 6, Engine: pfmengine.Claude, Label: "account 6"}})
+		sampler.TTL = LiveLimitsTTL
+		sampler.Now = func() time.Time { return time.Unix(0, clock.Load()) }
+		sampler.Fetch = func(_ context.Context, _ LimitAccount) (usagehook.Usage, error) {
+			if calls.Add(1) == 1 {
+				return usagehook.Usage{}, nil
+			}
+			return liveClaudeUsage(now, 66), nil
+		}
+
+		limits, _ := sampler.SampleLive(context.Background())
+		if len(limits) != 1 || limits[0].Status != "refreshing limits…" {
+			t.Fatalf("empty cold card=%#v, want explicit refreshing state", limits)
+		}
+		waitForCachedStatus(t, sampler, 6, "empty usage response")
+		clock.Store(now.Add(LiveLimitsTTL).UnixNano())
+		limits, _ = sampler.SampleLive(context.Background())
+		if !strings.Contains(limits[0].Status, "empty usage response") {
+			t.Fatalf("empty cached status=%q, want failed attempt retained while retrying", limits[0].Status)
+		}
+		waitForCachedWindow(t, sampler, 6, 66)
+		if got := calls.Load(); got != 2 {
+			t.Fatalf("empty-cache recovery calls=%d, want initial empty response plus retry", got)
+		}
+	})
+}
+
+func TestLimitsSamplerCanceledLiveWorkerDoesNotBackoffAndCanRetry(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan int, 2)
+	completed := make(chan struct{}, 1)
+	var calls atomic.Int32
+
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 7, Engine: pfmengine.Claude, Label: "account 7"}})
+	sampler.Now = func() time.Time { return now }
+	sampler.Fetch = func(ctx context.Context, _ LimitAccount) (usagehook.Usage, error) {
+		call := int(calls.Add(1))
+		started <- call
+		if call == 1 {
+			<-ctx.Done()
+			completed <- struct{}{}
+			return usagehook.Usage{}, ctx.Err()
+		}
+		completed <- struct{}{}
+		return liveClaudeUsage(now, 77), nil
+	}
+
+	sampler.SampleLive(ctx)
+	if got := waitForLimitSignal(t, started); got != 1 {
+		t.Fatalf("first worker=%d, want 1", got)
+	}
+	cancel()
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("canceled worker did not stop")
+	}
+	waitForNoCachedEntry(t, sampler, 7)
+
+	sampler.SampleLive(context.Background())
+	if got := waitForLimitSignal(t, started); got != 2 {
+		t.Fatalf("retry worker=%d, want a new worker after cancellation", got)
+	}
+	waitForCachedWindow(t, sampler, 7, 77)
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("canceled worker calls=%d, want exactly one retry and no backoff suppression", got)
+	}
+}
+
+func TestLimitsSamplerLiveReturnsIndependentCachedValues(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 8, Engine: pfmengine.Claude, Label: "account 8"}})
+	sampler.Now = func() time.Time { return now }
+	key := sampler.Accounts[0].cacheKey()
+	sampler.mu.Lock()
+	sampler.cache[key] = cachedLimits{
+		limits:   AccountLimits{Account: 8, Engine: pfmengine.Claude, Windows: []Window{{Name: "5h", UsedPct: 18}}},
+		warnings: []string{"cached warning"}, when: now,
+	}
+	sampler.mu.Unlock()
+
+	limits, warnings := sampler.SampleLive(context.Background())
+	if len(limits) != 1 || len(limits[0].Windows) != 1 || len(warnings) != 1 {
+		t.Fatalf("cached sample limits=%#v warnings=%v", limits, warnings)
+	}
+	limits[0].Windows[0].UsedPct = 99
+	limitsAgain, warningsAgain := sampler.SampleLive(context.Background())
+	if limitsAgain[0].Windows[0].UsedPct != 18 || len(warningsAgain) != 1 || warningsAgain[0] != "cached warning" {
+		t.Fatalf("cached values aliased caller memory: limits=%#v warnings=%v", limitsAgain, warningsAgain)
+	}
+}
+
+func TestLimitsSamplerLiveKeepsRefreshingAcrossHours(t *testing.T) {
+	var clock atomic.Int64
+	start := time.Unix(1_800_000_000, 0)
+	clock.Store(start.UnixNano())
+	var calls atomic.Int32
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 23, Engine: pfmengine.Claude, Label: "monitor"}})
+	sampler.TTL = LiveLimitsTTL
+	sampler.Now = func() time.Time { return time.Unix(0, clock.Load()) }
+	sampler.Fetch = func(context.Context, LimitAccount) (usagehook.Usage, error) {
+		return liveClaudeUsage(sampler.Now(), float64(calls.Add(1)%100)), nil
+	}
+	// Model two hours of uninterrupted six-second refresh cycles. The real
+	// UI's two-second result poll checks the five-second TTL at this cadence.
+	for tick := 0; tick <= 1200; tick++ {
+		clock.Store(start.Add(time.Duration(tick) * 6 * time.Second).UnixNano())
+		sampler.SampleLive(ctx)
+		waitForCachedWindow(t, sampler, 23, float64((tick+1)%100))
+		if got := calls.Load(); got != int32(tick+1) {
+			t.Fatalf("six-second cycle %d: provider calls=%d, want %d", tick, got, tick+1)
+		}
+	}
+}
+
+func TestLimitsSamplerStaleRateLimitStatusPreservesRetryTime(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(paths.EnvHome, home)
+	now := time.Unix(1_800_000_000, 0)
+	account := LimitAccount{ID: 9, Engine: pfmengine.Claude, Label: "account 9", ConfigDir: filepath.Join(home, "claude")}
+	confirmedAt := now.Add(-10 * time.Minute)
+	usage := liveClaudeUsage(confirmedAt, 49)
+	retryMessage := "limits unavailable: 429 Too Many Requests — retry at 15:04"
+	if err := usagehook.WriteCacheRecord(usagehook.CachePath(usagehook.DefaultCacheDir(), account.ID), usagehook.CacheRecord{
+		Usage: usage, ConfigDir: account.ConfigDir, FetchedAt: &confirmedAt,
+		Backoff: &usagehook.CacheBackoff{Message: retryMessage, RetryAfter: now.Add(10 * time.Minute), RecordedAt: now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sampler := NewLimitsSampler([]LimitAccount{account})
+	sampler.Now = func() time.Time { return now }
+	limits, warnings := sampler.Sample(context.Background())
+	if len(limits) != 1 || len(limits[0].Windows) != 2 || limits[0].Status != "provider rate-limited; retry at 15:04; showing cached limits" {
+		t.Fatalf("rate-limited stale card=%#v, want retry time and cached windows", limits)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "retry at 15:04") {
+		t.Fatalf("rate-limit warnings=%v, want retry time preserved", warnings)
+	}
+}
+
+func TestLimitsSamplerSuccessfulFetchReportsClaudeCacheWriteFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(paths.EnvHome, home)
+	if err := os.WriteFile(filepath.Join(home, "tmp"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configDir := filepath.Join(home, "claude")
+	writeFixtureCredentials(t, configDir)
+	now := time.Unix(1_800_000_000, 0)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, usageJSONBody(51, 61, now))
+	}))
+	defer server.Close()
+
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 10, Engine: pfmengine.Claude, Label: "account 10", ConfigDir: configDir}})
+	sampler.Now = func() time.Time { return now }
+	sampler.Endpoint = server.URL
+	sampler.Client = server.Client()
+	limits, warnings := sampler.Sample(context.Background())
+	if len(limits) != 1 || len(limits[0].Windows) != 2 || !strings.HasPrefix(limits[0].Status, "write Claude limits cache:") {
+		t.Fatalf("successful provider fetch hid cache write error: limits=%#v", limits)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "write Claude limits cache:") {
+		t.Fatalf("cache write warnings=%v, want concrete write failure", warnings)
+	}
+}
+
+func liveClaudeUsage(now time.Time, used float64) usagehook.Usage {
+	return usagehook.Usage{
+		FiveHour: usagehook.Window{Utilization: &used, ResetsAt: now.Add(5 * time.Hour).Format(time.RFC3339)},
+		SevenDay: usagehook.Window{Utilization: &used, ResetsAt: now.Add(7 * 24 * time.Hour).Format(time.RFC3339)},
+	}
+}
+
+func waitForLimitSignal[T any](t *testing.T, signals <-chan T) T {
+	t.Helper()
+	select {
+	case signal := <-signals:
+		return signal
+	case <-time.After(time.Second):
+		var zero T
+		t.Fatal("timed out waiting for live limits worker")
+		return zero
+	}
+}
+
+func waitForCachedWindow(t *testing.T, sampler *LimitsSampler, accountID int, used float64) {
+	t.Helper()
+	key := limitTestAccountKey(t, sampler, accountID)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		sampler.mu.Lock()
+		entry, found := sampler.cache[key]
+		_, running := sampler.flights[key]
+		sampler.mu.Unlock()
+		if !running && found && len(entry.limits.Windows) > 0 && entry.limits.Windows[0].UsedPct == used {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("account %d cache never reached %.0f%%", accountID, used)
+}
+
+func waitForCachedStatus(t *testing.T, sampler *LimitsSampler, accountID int, fragment string) {
+	t.Helper()
+	key := limitTestAccountKey(t, sampler, accountID)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		sampler.mu.Lock()
+		entry, found := sampler.cache[key]
+		_, running := sampler.flights[key]
+		sampler.mu.Unlock()
+		if !running && found && strings.Contains(entry.limits.Status, fragment) {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("account %d cache status never contained %q", accountID, fragment)
+}
+
+func waitForNoCachedEntry(t *testing.T, sampler *LimitsSampler, accountID int) {
+	t.Helper()
+	key := limitTestAccountKey(t, sampler, accountID)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		sampler.mu.Lock()
+		_, found := sampler.cache[key]
+		_, running := sampler.flights[key]
+		sampler.mu.Unlock()
+		if !found && !running {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("account %d retained a canceled worker cache entry", accountID)
+}
+
+func limitTestAccountKey(t *testing.T, sampler *LimitsSampler, accountID int) string {
+	t.Helper()
+	for _, account := range sampler.Accounts {
+		if account.ID == accountID {
+			return account.cacheKey()
+		}
+	}
+	t.Fatalf("fixture has no account %d", accountID)
+	return ""
 }

@@ -7,3 +7,5 @@ Shape: `- {Tier}: {scope} — {semantic change}`, plus a `#### → For:` line wh
 and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
+
+- Engine: Limits monitoring — refreshes account quotas independently with five-second cache freshness; keeps reset countdowns and confirmation ages live while idle, labels percentages as used, cancels requests on tab exit, and prevents stale cache timestamps and delayed animation messages from freezing or rewinding monitoring.

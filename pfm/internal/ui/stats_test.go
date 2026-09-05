@@ -476,9 +476,16 @@ func TestLimitPercentageUsesStableHighContrastForeground(t *testing.T) {
 	want := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color(palette.Header)).
-		Render("  4%")
+		Render("  4% used")
 	if !strings.Contains(line, want) {
 		t.Fatalf("percentage does not use stable high-contrast foreground:\n%q\nwant fragment %q", line, want)
+	}
+	narrow := ansi.Strip(renderLimitWindow(time.Unix(0, 0), pfmstats.Window{Name: "5h", UsedPct: 4}, 38))
+	if !strings.Contains(narrow, "4% used") {
+		t.Fatalf("narrow percentage lost semantic used label: %q", narrow)
+	}
+	if got := lipgloss.Width(narrow); got != 38 {
+		t.Fatalf("narrow percentage line width=%d, want 38: %q", got, narrow)
 	}
 }
 

@@ -145,6 +145,7 @@ func runLS(
 			scan.Paths.CgroupRoot,
 		)
 		statsSampler.Limits = pfmstats.NewLimitsSampler(limitAccounts(runtime))
+		statsSampler.Limits.TTL = pfmstats.LiveLimitsTTL
 		scan.Snapshot.StatsSampler = statsSampler
 		scan.Snapshot.CosmosSampler = cosmosSampler{reader: sharedState}
 		refreshContext, refreshCancel := context.WithCancel(ctx)

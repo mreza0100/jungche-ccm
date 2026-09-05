@@ -22,6 +22,7 @@ RUN case "${TARGETARCH}" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; es
  && tar -C /usr/local --strip-components=1 -xJf "${node_tar}" \
  && rm -f "${node_tar}" SHASUMS256.txt
 ENV HOME=/root \
+    LANG=C.UTF-8 \
     PATH=/usr/local/go/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     CGO_ENABLED=0
 WORKDIR /worktree

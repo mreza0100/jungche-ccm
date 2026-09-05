@@ -207,12 +207,9 @@ func (model *Model) cosmosReturnToNow() {
 	model.settleCosmosSeatsWithoutSky()
 }
 
-// adoptCosmosClock lets the ledger clock follow a fresher "now" than the
-// animation tick — the refresh stream's snapshot clock, which keeps arriving
-// under --no-sky, where no tick ever runs. Without it the chronoscope's idea
-// of now froze at launch there: a scrub measured its window against a stale
-// mark and snapped "back to live" at a moment that was already history.
-// Monotonic: a snapshot older than the tick clock never rewinds it.
+// adoptCosmosClock advances the ledger clock without changing a replay's
+// playhead. Wall-clock, sample, and animation messages can arrive out of order;
+// an older timestamp never rewinds the live clock.
 func (model *Model) adoptCosmosClock(nowNS int64) {
 	if nowNS <= model.cosmosNowNS {
 		return

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,6 +27,7 @@ const (
 	defaultHeight         = 28
 	statsRefreshInterval  = 2 * time.Second
 	cosmosRefreshInterval = 2 * time.Second
+	clockRefreshInterval  = 5 * time.Second
 	// skyTickBaseInterval is the ambient sky/cosmos header widget's cadence
 	// while somebody is watching — ~8fps, fast enough that comets, wind, and
 	// twinkle read as motion. Unlike the fleet scan and the Stats/Cosmos tab
@@ -120,6 +122,9 @@ type Model struct {
 	limitsOffset         int
 	stats                pfmstats.Snapshot
 	statsSampler         StatsSampler
+	samplingContext      context.Context
+	limitsContext        context.Context
+	limitsCancel         context.CancelFunc
 	statsGeneration      uint64
 	statsLoading         bool
 	statsError           string
@@ -226,6 +231,7 @@ func NewModel(snapshot Snapshot) Model {
 		applyDeactivate:     snapshot.ApplyDeactivate,
 		deactivatedSockets:  make(map[string]bool),
 		statsSampler:        snapshot.StatsSampler,
+		samplingContext:     snapshot.SamplingContext,
 		cosmosSampler:       snapshot.CosmosSampler,
 		cosmosSeats:         make(map[string]*cosmosSeat),
 		cosmosNowNS:         snapshot.NowNS,
@@ -236,6 +242,9 @@ func NewModel(snapshot Snapshot) Model {
 		skyCadence:          newTickCadence(snapshot.Activity, skyTickBaseInterval, skyTickGrowth, skyTickParkThreshold),
 		mergeNewChat:        snapshot.MergeNewChat,
 		newChatEngine:       defaultNewChatEngine(snapshot.AccountIDs, snapshot.CodexAccountIDs, snapshot.OpencodeAccountIDs),
+	}
+	if model.samplingContext == nil {
+		model.samplingContext = context.Background()
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
@@ -307,13 +316,13 @@ func normalizedAccountIDs(values []int) []int {
 	return result
 }
 
-// Init starts only the pure animation clock. Stats remains fully lazy: its
-// first sampling command is created only by a key that focuses the Stats tab.
+// Init starts the wall clock and optional animation. Provider and resource
+// sampling starts only when its tab is selected.
 func (model Model) Init() tea.Cmd {
 	if !model.skyEnabled {
-		return nil
+		return clockTickCmd()
 	}
-	return skyTickCmd(skyTickBaseInterval)
+	return batchCommands(clockTickCmd(), skyTickCmd(skyTickBaseInterval))
 }
 
 // Update applies one message without touching the outside world.
@@ -327,6 +336,12 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case RefreshMsg:
 		model.applyRefresh(message.Snapshot)
 		return model, nil
+	case clockTickMsg:
+		if model.tab == TabCosmos && model.skyEnabled {
+			model.advanceCosmos(message.nowNS)
+		}
+		model.adoptClock(message.nowNS)
+		return model, clockTickCmd()
 	case statsSampleMsg:
 		if !isStatsSamplingTab(model.tab) || message.generation != model.statsGeneration {
 			return model, nil
@@ -377,7 +392,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if !model.skyEnabled {
 			return model, nil
 		}
-		model.nowNS = message.nowNS
+		model.nowNS = max(model.nowNS, message.nowNS)
 		kept := model.skyEvents[:0]
 		for _, event := range model.skyEvents {
 			if !event.Expired(model.nowNS) {
@@ -602,6 +617,15 @@ func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
 // ignored. Leaving both tabs also clears the in-flight latch so a quick return
 // can start fresh instead of waiting for an obsolete command to finish.
 func (model *Model) samplingTabTransition(previous Tab) tea.Cmd {
+	if previous != model.tab {
+		if model.limitsCancel != nil {
+			model.limitsCancel()
+			model.limitsContext, model.limitsCancel = nil, nil
+		}
+		if model.tab == TabLimits {
+			model.limitsContext, model.limitsCancel = context.WithCancel(model.samplingContext)
+		}
+	}
 	if previous != model.tab && (previous == TabCosmos || model.tab == TabCosmos) {
 		model.cosmosTickGeneration++
 	}
@@ -854,6 +878,23 @@ type statsTickMsg struct{ generation uint64 }
 
 type skyTickMsg struct{ nowNS int64 }
 
+type clockTickMsg struct{ nowNS int64 }
+
+// This inexpensive clock keeps ages and reset timers live even when fleet
+// scans and animation are parked, including under --no-sky.
+func clockTickCmd() tea.Cmd {
+	return tea.Tick(clockRefreshInterval, func(now time.Time) tea.Msg {
+		return clockTickMsg{nowNS: now.UnixNano()}
+	})
+}
+
+func (model *Model) adoptClock(nowNS int64) {
+	if nowNS > model.nowNS {
+		model.nowNS = nowNS
+	}
+	model.adoptCosmosClock(nowNS)
+}
+
 // skyTickCmd schedules the next ambient sky/cosmos header tick after
 // interval, which the caller computes from model.skyCadence so an untouched
 // picker's animation loop decays instead of rendering at a flat 8fps for as
@@ -914,10 +955,18 @@ func (model *Model) startStatsSample() tea.Cmd {
 	rows := append([]compose.Row(nil), model.rows...)
 	sampler := model.statsSampler
 	resourcesOnly := model.tab == TabStats
+	limitsContext := model.limitsContext
+	if limitsContext == nil {
+		limitsContext = model.samplingContext
+	}
 	return func() tea.Msg {
 		var snapshot pfmstats.Snapshot
 		var err error
-		if limitsSampler, ok := sampler.(interface {
+		if liveSampler, ok := sampler.(interface {
+			SampleLiveLimits(context.Context) pfmstats.Snapshot
+		}); !resourcesOnly && ok {
+			snapshot = liveSampler.SampleLiveLimits(limitsContext)
+		} else if limitsSampler, ok := sampler.(interface {
 			SampleLimits() pfmstats.Snapshot
 		}); !resourcesOnly && ok {
 			snapshot = limitsSampler.SampleLimits()
@@ -941,6 +990,7 @@ func statsWaitCmd(generation uint64) tea.Cmd {
 func (model *Model) applyStats(snapshot pfmstats.Snapshot) {
 	follow := model.selectedStatsKey()
 	model.stats = snapshot
+	model.adoptClock(snapshot.SampleTime)
 	model.sortStats(follow)
 	innerWidth, innerHeight := model.limitViewportDimensions()
 	model.limitsOffset = minInt(model.limitsOffset, maxInt(0, len(model.renderLimitCards(innerWidth))-innerHeight))
@@ -1056,9 +1106,7 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 		}
 	}
 	model.rows = append(model.rows[:0], rows...)
-	// The refresh clock is the freshest "now" a --no-sky picker ever sees:
-	// adopt it before anything below measures an age against cosmosNowNS.
-	model.adoptCosmosClock(snapshot.NowNS)
+	model.adoptClock(snapshot.NowNS)
 	if snapshot.Cosmos.Err != "" {
 		model.cosmos.Err = snapshot.Cosmos.Err
 		model.cosmos.Warnings = append(model.cosmos.Warnings[:0], snapshot.Cosmos.Warnings...)
@@ -1069,7 +1117,6 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 	// graph's ghosts are cut against the rows of NOW, so it is re-cut too.
 	model.rebuildCosmosPast()
 	model.mergeCosmosSeats()
-	model.nowNS = snapshot.NowNS
 	model.view = snapshot.View
 	model.killedCount = snapshot.KilledCount
 	model.suppressedCount = snapshot.SuppressedCount

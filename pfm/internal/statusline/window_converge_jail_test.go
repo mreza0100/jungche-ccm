@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func TestRenderConvergesTheWindowNameOnAProbeSocket(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	base := "/tmp/tmux-1000"
+	base := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestRenderConvergesTheWindowNameOnAProbeSocket(t *testing.T) {
 			t.Errorf("remove probe jail: %v", err)
 		}
 	})
-	tmuxDir := filepath.Join(root, "tmux-1000")
+	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(tmuxDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestRenderLeavesASharedWindowAlone(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	base := "/tmp/tmux-1000"
+	base := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestRenderLeavesASharedWindowAlone(t *testing.T) {
 			t.Errorf("remove probe jail: %v", err)
 		}
 	})
-	tmuxDir := filepath.Join(root, "tmux-1000")
+	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(tmuxDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +233,7 @@ func TestRenderConvergesToTheSameClipNameSyncUses(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	base := "/tmp/tmux-1000"
+	base := filepath.Join(os.TempDir(), "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,7 @@ func TestRenderConvergesToTheSameClipNameSyncUses(t *testing.T) {
 			t.Errorf("remove probe jail: %v", err)
 		}
 	})
-	tmuxDir := filepath.Join(root, "tmux-1000")
+	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(tmuxDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

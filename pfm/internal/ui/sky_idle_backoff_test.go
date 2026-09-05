@@ -208,21 +208,30 @@ func TestSkyTickMsgParksThenWakes(t *testing.T) {
 
 // TestNoSkyModelNeverSchedulesSkyTick proves --no-sky (skyEnabled false)
 // stops the animation loop outright rather than merely slowing it — Init
-// returns no command, and a stray skyTickMsg (there should never be one, but
-// the case exists) is a no-op rather than a reschedule.
+// keeps only the independent wall clock, and a stray skyTickMsg (there should
+// never be one, but the case exists) is a no-op rather than a reschedule.
 func TestNoSkyModelNeverSchedulesSkyTick(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	snapshot.NoSky = true
 	model := NewModel(snapshot)
 
-	if cmd := model.Init(); cmd != nil {
-		t.Fatal("Init scheduled a sky tick under --no-sky")
+	if cmd := model.Init(); cmd == nil {
+		t.Fatal("Init did not schedule the independent wall clock under --no-sky")
 	}
-	updated, cmd := model.Update(skyTickMsg{nowNS: model.nowNS + 1})
+
+	future := model.nowNS + int64(2*time.Hour)
+	updated, cmd := model.Update(clockTickMsg{nowNS: future})
+	model = updated.(Model)
+	if cmd == nil || model.nowNS != future || model.cosmosNowNS != future {
+		t.Fatalf("wall clock under --no-sky: command=%v now=%d cosmosNow=%d want=%d", cmd, model.nowNS, model.cosmosNowNS, future)
+	}
+
+	updated, cmd = model.Update(skyTickMsg{nowNS: future + 1})
+	model = updated.(Model)
 	if cmd != nil {
 		t.Fatal("a stray sky tick rescheduled itself under --no-sky")
 	}
-	if _, ok := updated.(Model); !ok {
-		t.Fatalf("Update returned %T", updated)
+	if model.nowNS != future || model.cosmosNowNS != future {
+		t.Fatalf("a stray sky tick changed --no-sky clocks: now=%d cosmosNow=%d", model.nowNS, model.cosmosNowNS)
 	}
 }

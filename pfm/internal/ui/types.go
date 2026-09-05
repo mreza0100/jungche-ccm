@@ -103,6 +103,8 @@ type Snapshot struct {
 	// Nil makes the action unavailable; the model reports that refusal in-frame.
 	ApplyDeactivate func(compose.Row) error
 	StatsSampler    StatsSampler
+	// SamplingContext bounds provider workers to the interactive picker's life.
+	SamplingContext context.Context
 	Cosmos          compose.CosmosGraph
 	CosmosSampler   CosmosSampler
 	NoSky           bool

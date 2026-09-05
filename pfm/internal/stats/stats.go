@@ -158,6 +158,22 @@ func (sampler *Sampler) SampleLimits() Snapshot {
 	return Snapshot{Limits: limits, Ready: true, Warnings: warnings, SampleTime: now}
 }
 
+// SampleLiveLimits returns provider quota cards immediately. LimitsSampler
+// keeps stale windows visible while it refreshes due accounts asynchronously;
+// the caller's context bounds those refresh workers to its lifetime.
+func (sampler *Sampler) SampleLiveLimits(ctx context.Context) Snapshot {
+	now := time.Now().UnixNano()
+	if sampler.Clock != nil {
+		now = sampler.Clock()
+	}
+	var limits []AccountLimits
+	var warnings []string
+	if sampler.Limits != nil {
+		limits, warnings = sampler.Limits.SampleLive(ctx)
+	}
+	return Snapshot{Limits: limits, Ready: true, Warnings: warnings, SampleTime: now}
+}
+
 func (sampler *Sampler) sample(rows []compose.Row, includeLimits bool) (Snapshot, error) {
 	now := time.Now().UnixNano()
 	if sampler.Clock != nil {
