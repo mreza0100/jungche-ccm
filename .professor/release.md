@@ -7,5 +7,3 @@ Shape: `- {Tier}: {scope} — {semantic change}`, plus a `#### → For:` line wh
 and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
-
-- Engine: harness drift checks — compare Sonnet and Opus against separately reviewed baselines, keep model names and versions informational, and warn on instruction changes. Metadata normalization is limited to complete identity lines in their owning sections; failed captures and invalid baselines remain distinct coverage warnings.
