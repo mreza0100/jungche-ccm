@@ -48,7 +48,6 @@ func SandboxedCodexRun(request SandboxedCodexRequest) (HeadlessPlan, error) {
 	command.WriteString("exec ")
 	command.WriteString(headlessHygiene)
 	command.WriteByte(' ')
-	command.WriteString("pfm internal codex-launch ")
 	command.WriteString(binaryWord(request.Binary, pfmengine.MustLookup(pfmengine.Codex).Binary, request.Binary != ""))
 	for _, argument := range arguments {
 		command.WriteByte(' ')

@@ -266,7 +266,6 @@ func newRunJail(t *testing.T) *runJail {
 			t.Fatal(err)
 		}
 	}
-	write("pfm", "#!/bin/sh\n[ \"$1\" = internal ] && [ \"$2\" = codex-launch ] || exit 90\nshift 2\nexec \"$@\"\n")
 	write("codex", stubCodex)
 	write("claude", stubClaude)
 	if err := os.WriteFile(

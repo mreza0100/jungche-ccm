@@ -10,7 +10,8 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
 - Engine: Limits monitoring — refreshes account quotas independently with five-second cache freshness; keeps reset countdowns and confirmation ages live while idle, labels percentages as used, cancels requests on tab exit, and prevents stale cache timestamps and delayed animation messages from freezing or rewinding monitoring.
 
-- Engine: Codex coordination defaults — `pfm install` merges `templates/global/codex/config.toml` into each configured Codex home, preserves existing settings and unrelated TOML, and updates a marked developer-instruction block for mailbox waits and native child-message routing (cost: adds developer instructions to Codex context).
+- Engine: Codex coordination defaults — `pfm install` merges `templates/global/codex/config.toml` into each configured Codex home, preserves existing settings and unrelated TOML, and migrates the retired marked developer-instruction block into the separately installed harness appendix.
 
-- Global: harness prompts — keep Claude's Professor replacement and a model-independent Codex appendix in paired templates and installer assets; append after effective personal developer instructions across managed launch paths, remove the retired marked global prompt, and keep numeric wait defaults. (cost: one local config/read exchange per managed Codex launch; no model tokens)
+- Global: harness prompts — keep Claude's Professor replacement and a model-independent Codex appendix in paired templates and installer assets. Codex receives a separate native SessionStart developer message with bounded, best-effort history deduplication and visible warnings for unsupported history. The individually trusted account hook preserves final-project and managed instructions; install-time native RPC has bounded cancellation. No preparatory launch/config-home process remains.
+
 - Project: runtime guidance — move the autonomy and status-summary triggers into both harness prompts and remove duplicated completion guidance from project instructions.

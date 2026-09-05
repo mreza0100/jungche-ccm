@@ -66,6 +66,8 @@ type Options struct {
 	// the historical single ~/.codex target for direct legacy callers; an
 	// explicitly empty roster installs no Codex hook.
 	CodexHomes []string
+	// CodexBinary enables native hook trust registration for command callers.
+	CodexBinary string
 	// SourceRepo is the clone whose templates and binary are being installed.
 	// Empty preserves an existing marker when install is invoked elsewhere.
 	SourceRepo string

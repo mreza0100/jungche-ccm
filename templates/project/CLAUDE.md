@@ -32,7 +32,7 @@ This project runs two AI runtimes as a team. Full protocol: `docs/commands/pfm/r
 
 ## Persona
 
-Voice and delivery law live in Professor's harness prompts: `templates/prompts/professor.md` for the Claude replacement and `templates/prompts/codex-appendix.md` for managed Codex launches. Claude's `production` mode uses its native prompt.
+Voice and delivery law live in Professor's harness prompts: `templates/prompts/professor.md` for the Claude replacement and `templates/prompts/codex-appendix.md` for configured Codex accounts. Claude's `production` mode uses its native prompt.
 
 ## Path vars:
 

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"hostops/pfm/internal/codexappendix"
 	pfmconfig "hostops/pfm/internal/config"
 )
 
@@ -45,15 +46,6 @@ func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 		})
 	}
 	seen := map[string]bool{}
-	// Codex's own SessionStart(source=clear) hook is retired, not migrated:
-	// it fires on the new session's FIRST TURN, by which point every Codex
-	// chat on the host shares one app-server daemon pid, so it could never
-	// say which pane cleared (codex-clear-identity train). There is
-	// therefore no per-account ~/.codex/hooks.json entry to expect anymore;
-	// pfm install actively strips a leftover one (codex_hooks.go), and
-	// doctor reports nothing about a hook it no longer wires — reporting
-	// "missing: run pfm install" for a hook that was never coming back
-	// would be the lie, not the silence.
 	templates := claudeHookTemplates(home)
 	result := make([]ExpectedHook, 0, len(targets)*len(templates))
 	for _, target := range targets {
@@ -67,6 +59,18 @@ func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 			hook.File = target.file
 			result = append(result, hook)
 		}
+	}
+	for _, account := range config.CodexAccounts {
+		file := filepath.Join(account.Home, "hooks.json")
+		physical := physicalSettingsPath(file)
+		if seen[physical] {
+			continue
+		}
+		seen[physical] = true
+		hook := codexHookTemplate(home)
+		hook.Target = fmt.Sprintf("codex[%d]", account.ID)
+		hook.File = file
+		result = append(result, hook)
 	}
 	return result
 }
@@ -310,4 +314,8 @@ func inspectExpectedHookDocument(document map[string]any) (settingsHookCounts, s
 		}
 	}
 	return typed, all, "", issues
+}
+
+func codexHookTemplate(home string) ExpectedHook {
+	return ExpectedHook{Event: "SessionStart", Matcher: codexappendix.Matcher, Command: codexappendix.Command(home), Name: "codex-appendix"}
 }

@@ -58,11 +58,11 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 		t.Fatalf("second apply report=%#v err=%v\n%s", report, err, second.String())
 	}
 
-	// The retired Codex SessionStart clear-kill hook is never written fresh:
-	// a host with no existing hooks.json gets none created.
-	if _, err := os.Stat(filepath.Join(home, ".codex", "hooks.json")); !os.IsNotExist(err) {
-		t.Fatalf("install created a Codex hooks.json carrying the retired clear-kill hook: %v", err)
+	raw := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
+	if hookCommandCount(t, raw, "SessionStart", codexHookTemplate(home).Command) != 1 {
+		t.Fatalf("missing appendix: %s", raw)
 	}
+
 }
 
 func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) {

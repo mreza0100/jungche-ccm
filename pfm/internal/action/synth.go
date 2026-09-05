@@ -513,7 +513,6 @@ func codexCommandWithAccount(
 		command.WriteString(Quote(selected.Home))
 	}
 	command.WriteByte(' ')
-	command.WriteString("pfm internal codex-launch ")
 	command.WriteString(binaryWord(
 		policy.Binary,
 		pfmengine.MustLookup(pfmengine.Codex).Binary,

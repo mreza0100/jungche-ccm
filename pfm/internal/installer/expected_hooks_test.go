@@ -131,20 +131,16 @@ func TestClaudeHookTemplatesIncludesReloadIntercept(t *testing.T) {
 	}
 }
 
-// ExpectedHooks names no Codex SessionStart hook at all anymore: the hook is
-// retired (see updateCodexHooks), and doctor reporting "missing: run pfm
-// install" for a hook that is never coming back would be the lie, not the
-// silence.
-func TestExpectedHooksEmitsNoCodexHookEvenWithCodexAccountsConfigured(t *testing.T) {
+func TestExpectedHooksIncludesCodexAppendixAcrossAccounts(t *testing.T) {
 	home := t.TempDir()
-	machine := pfmconfig.Config{CodexAccounts: []pfmconfig.CodexAccount{
-		{ID: 1, Home: filepath.Join(home, ".codex")},
-		{ID: 2, Home: filepath.Join(home, ".codex-2")},
-	}}
+	machine := pfmconfig.Config{CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}, {ID: 2, Home: filepath.Join(home, ".codex-2")}}}
 	hooks := ExpectedHooks(home, machine)
+	if len(hooks) != 2 {
+		t.Fatalf("hooks=%#v", hooks)
+	}
 	for _, hook := range hooks {
-		if strings.HasPrefix(hook.Target, "codex[") {
-			t.Fatalf("ExpectedHooks() still names a Codex hook: %#v", hooks)
+		if hook.Name != "codex-appendix" || hook.Event != "SessionStart" {
+			t.Fatalf("hook=%#v", hook)
 		}
 	}
 }
@@ -171,8 +167,8 @@ func TestCodexHookWiringStripsALeftoverClearKillHookInEveryShape(t *testing.T) {
 	if !changed {
 		t.Fatal("Codex hook wiring did not strip the leftover clear-kill hook")
 	}
-	if len(owned) != 0 {
-		t.Fatalf("Codex hook wiring claimed ownership of a hook it just retired: %#v", owned)
+	if len(owned) != 1 {
+		t.Fatalf("appendix ownership=%#v", owned)
 	}
 	if got := hookCommandCount(t, string(updated), "SessionStart", canonical); got != 0 {
 		t.Fatalf("canonical clear-kill count=%d, want zero:\n%s", got, updated)
@@ -180,8 +176,8 @@ func TestCodexHookWiringStripsALeftoverClearKillHookInEveryShape(t *testing.T) {
 	if got := hookCommandCount(t, string(updated), "SessionStart", legacyParent); got != 0 {
 		t.Fatalf("shell-parent clear-kill count=%d, want zero:\n%s", got, updated)
 	}
-	if strings.Contains(string(updated), `"SessionStart"`) {
-		t.Fatalf("an empty SessionStart array was left behind:\n%s", updated)
+	if hookCommandCount(t, string(updated), "SessionStart", codexHookTemplate(home).Command) != 1 {
+		t.Fatalf("missing appendix: %s", updated)
 	}
 
 	// Idempotent: a second pass over the already-converged file changes

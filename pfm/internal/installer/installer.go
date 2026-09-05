@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 
+	"hostops/pfm/internal/codexappendix"
 	"hostops/pfm/internal/codexgen"
 	"hostops/pfm/internal/harvestpy"
 	"hostops/pfm/internal/paths"
@@ -1924,6 +1925,11 @@ func (installer *engine) wireCodexHooks() error {
 		raw, readErr := os.ReadFile(path)
 		existed := true
 		if errors.Is(readErr, fs.ErrNotExist) {
+			if info, statErr := os.Lstat(path); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("Codex hooks file is a dangling symlink: %s", path)
+			} else if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+				return fmt.Errorf("inspect Codex hooks %s: %w", path, statErr)
+			}
 			existed = false
 			raw = []byte("{\"hooks\":{}}\n")
 			if installer.options.Mode == ModeUninstall {
@@ -1943,31 +1949,62 @@ func (installer *engine) wireCodexHooks() error {
 			if installer.options.Mode == ModeUninstall && len(ownership[physical]) > 0 {
 				return fmt.Errorf("refuse to strand owned hooks in invalid Codex hooks JSON at %s: %w", path, updateErr)
 			}
-			installer.skip("invalid Codex hooks JSON at " + path + ": " + updateErr.Error())
-			continue
+			return fmt.Errorf("invalid Codex hooks JSON at %s: %w", path, updateErr)
 		}
 		if len(nextOwned) == 0 {
 			delete(ownership, physical)
 		} else {
 			ownership[physical] = nextOwned
 		}
+
 		if !changed {
 			installer.ok(path + " wiring")
-			continue
-		}
-		if err := installer.change(changeDescription(path, existed), func() error {
+		} else if err := installer.change(changeDescription(path, existed), func() error {
 			if existed {
 				backup := availableBackup(path, installer.stamp)
 				if err := copyBackup(path, backup); err != nil {
 					return fmt.Errorf("backup %s: %w", path, err)
 				}
 			}
-			return atomicWrite(path, updated, 0o600)
+			return atomicWrite(physical, updated, 0o600)
 		}); err != nil {
 			return err
 		}
+		if err := installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership); err != nil {
+			return err
+		}
+		if len(ownership) == 0 {
+			ownershipRaw = nil
+		} else {
+			ownershipRaw, err = encodeSettingsHookOwnership(ownership)
+			if err != nil {
+				return err
+			}
+		}
 	}
-	return installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership)
+	if err := installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership); err != nil {
+		return err
+	}
+	seenAccounts := map[string]bool{}
+	for _, account := range installer.codexHomes() {
+		physical := physicalSettingsPath(account)
+		if seenAccounts[physical] {
+			continue
+		}
+		seenAccounts[physical] = true
+		if installer.options.Mode == ModeUninstall {
+			if err := installer.change("remove appendix hook trust "+account, func() error { return codexappendix.Unregister(account) }); err != nil {
+				return err
+			}
+		} else if installer.options.CodexBinary != "" {
+			if err := installer.change("trust Professor appendix hook "+account, func() error {
+				return codexappendix.Register(context.Background(), installer.options.CodexBinary, installer.options.Home, account, false)
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (installer *engine) codexHomes() []string {

@@ -25,9 +25,6 @@ func TestSummarizeCachesCompleteExchangeAndBoundsAnswer(t *testing.T) {
 	writeSummaryStub(t, bin, "codex", `
 printf x >> "$ASK_COUNTER"
 printf 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty thirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven thirty-eight thirty-nine forty forty-one forty-two\n'`)
-	writeSummaryStub(t, bin, "pfm", `[ "$1" = internal ] && [ "$2" = codex-launch ] || exit 90
-shift 2
-exec "$@"`)
 	t.Setenv("PATH", bin)
 	t.Setenv("ASK_COUNTER", counter)
 	options := SummaryOptions{
@@ -61,9 +58,6 @@ func TestSummarizeMarksPartialAndNeverCachesIt(t *testing.T) {
 	counter := filepath.Join(root, "calls")
 	bin := filepath.Join(root, "bin")
 	writeSummaryStub(t, bin, "claude", "printf x >> \"$ASK_COUNTER\"\nprintf 'checks are running\\n'")
-	writeSummaryStub(t, bin, "pfm", `[ "$1" = internal ] && [ "$2" = codex-launch ] || exit 90
-shift 2
-exec "$@"`)
 	t.Setenv("PATH", bin)
 	t.Setenv("ASK_COUNTER", counter)
 	options := SummaryOptions{Config: summaryMachine("claude"), Database: database, TempDir: filepath.Join(root, "tmp")}
@@ -90,9 +84,6 @@ func TestSummarizeDistinguishesMissingEngineFromRunnerFailure(t *testing.T) {
 	if err := os.MkdirAll(bin, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeSummaryStub(t, bin, "pfm", `[ "$1" = internal ] && [ "$2" = codex-launch ] || exit 90
-shift 2
-exec "$@"`)
 	t.Setenv("PATH", bin)
 	machine := summaryMachine("codex")
 	machine.Codex.Binary = "absent-codex"

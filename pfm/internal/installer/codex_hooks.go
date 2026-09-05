@@ -3,6 +3,7 @@ package installer
 import (
 	"encoding/json"
 	"fmt"
+	"hostops/pfm/internal/codexappendix"
 	"strings"
 )
 
@@ -11,18 +12,13 @@ import (
 // current ownership path recognizes or writes this retired shape.
 const codexClearMatcher = "startup|resume|clear"
 
-// updateCodexHooks converges ~/.codex/hooks.json two ways: an ordinary
-// binary-path migration (cc-fleet → pfm) for whatever hooks a host still
-// carries, exactly as before; and, unconditionally in both install and
-// uninstall passes, the REMOVAL of the SessionStart clear-kill hook this
-// installer used to wire. That hook is retired, not migrated: Codex's own
-// SessionStart(source=clear) fires on the new session's FIRST TURN, by
-// which point every Codex chat on the host shares one app-server daemon
-// pid, so it could never say which pane cleared (codex-clear-identity
-// train). There is no install-mode branch left that writes it back.
+// updateCodexHooks preserves personal handlers, retires clear-kill, and owns the appendix.
 func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHookCounts) ([]byte, bool, settingsHookCounts, error) {
 	var document map[string]any
 	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, false, nil, err
+	}
+	if err := validateCodexHooks(document); err != nil {
 		return nil, false, nil, err
 	}
 	oldBinary := home + "/.local/bin/cc-fleet"
@@ -34,6 +30,7 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 		oldBinary + ` internal clear-kill --parent "$PPID"`: true,
 	}
 
+	before := countSettingsHookCommands(document)
 	changed := false
 	if uninstall {
 		changed = removeOwnedSettingsHooks(document, owned)
@@ -64,26 +61,35 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 		entry["hooks"] = kept
 	}
 	pruneEmptyHooks(document, "SessionStart")
-	// pruneEmptyHooks only trims entries, and unconditionally writes the
-	// (possibly nil, possibly now-empty) array back — the shape every OTHER
-	// hook it prunes still needs, since a claude settings.json keeps other
-	// SessionStart hooks alongside clear-kill. A Codex hooks.json has NO
-	// other SessionStart hook, so an event key holding nothing is deleted
-	// outright rather than left behind as a bare `"SessionStart": []` (or
-	// `null`, when the key never existed at all — pruneEmptyHooks writes
-	// one anyway). This never affects whether the file NEEDS rewriting:
-	// deleting a key pruneEmptyHooks only just introduced restores exactly
-	// the document's own prior shape.
 	if hooks, ok := document["hooks"].(map[string]any); ok {
 		if values, _ := hooks["SessionStart"].([]any); len(values) == 0 {
 			delete(hooks, "SessionStart")
 		}
 	}
 
-	// Nothing in this file is ever installer-owned going forward: the one
-	// hook the installer used to claim here is retired, and no code path
-	// writes a fresh claim.
-	nextOwned := settingsHookCounts{}
+	if !uninstall && !hasHookCommandWithMatcher(hookEntries(document, "SessionStart", false), codexappendix.Command(home), codexappendix.Matcher) {
+		appendHookWithMatcher(document, "SessionStart", codexappendix.Matcher, codexappendix.Command(home))
+		changed = true
+	}
+	if !uninstall {
+		for _, entry := range hookEntries(document, "SessionStart", false) {
+			if entry["matcher"] != codexappendix.Matcher {
+				continue
+			}
+			handlers, _ := entry["hooks"].([]any)
+			for _, value := range handlers {
+				handler, _ := value.(map[string]any)
+				if handler["command"] == codexappendix.Command(home) {
+					if handler["type"] != "command" || handler["timeout"] != float64(10) {
+						handler["type"] = "command"
+						handler["timeout"] = float64(10)
+						changed = true
+					}
+				}
+			}
+		}
+	}
+	nextOwned := nextSettingsHookOwnership(before, countSettingsHookCommands(document), owned, pfmBinary, uninstall, settingsDocumentHasMixedOwnershipEntry(document, pfmBinary))
 	if !changed {
 		return raw, false, nextOwned, nil
 	}
@@ -92,4 +98,45 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 		return nil, false, nil, fmt.Errorf("encode Codex hooks: %w", err)
 	}
 	return append(updated, '\n'), true, nextOwned, nil
+}
+
+func validateCodexHooks(document map[string]any) error {
+	if document == nil {
+		return fmt.Errorf("hooks document must be an object")
+	}
+	value, present := document["hooks"]
+	if !present {
+		return nil
+	}
+	events, ok := value.(map[string]any)
+	if !ok {
+		return fmt.Errorf("hooks must be an object")
+	}
+	for event, value := range events {
+		entries, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("%s must be a matcher array", event)
+		}
+		for _, value := range entries {
+			entry, ok := value.(map[string]any)
+			if !ok {
+				return fmt.Errorf("%s matcher must be an object", event)
+			}
+			if matcher, present := entry["matcher"]; present && matcher != nil {
+				if _, ok := matcher.(string); !ok {
+					return fmt.Errorf("%s matcher must be a string", event)
+				}
+			}
+			handlers, ok := entry["hooks"].([]any)
+			if !ok {
+				return fmt.Errorf("%s hooks must be an array", event)
+			}
+			for _, value := range handlers {
+				if _, ok := value.(map[string]any); !ok {
+					return fmt.Errorf("%s handler must be an object", event)
+				}
+			}
+		}
+	}
+	return nil
 }

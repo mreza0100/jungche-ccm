@@ -164,7 +164,7 @@ func nextSettingsHookOwnership(
 
 func installerOwnedHookCommand(command, pfmBinary string) bool {
 	home := filepath.Dir(filepath.Dir(filepath.Dir(pfmBinary)))
-	for _, hook := range claudeHookTemplates(home) {
+	for _, hook := range append(claudeHookTemplates(home), codexHookTemplate(home)) {
 		if hook.Command == command {
 			return true
 		}
@@ -174,7 +174,7 @@ func installerOwnedHookCommand(command, pfmBinary string) bool {
 
 func installerOwnedHookKey(key settingsHookKey, pfmBinary string) bool {
 	home := filepath.Dir(filepath.Dir(filepath.Dir(pfmBinary)))
-	for _, hook := range claudeHookTemplates(home) {
+	for _, hook := range append(claudeHookTemplates(home), codexHookTemplate(home)) {
 		if hook.Event == key.Event && hook.Matcher == key.Matcher && hook.Command == key.Command {
 			return true
 		}

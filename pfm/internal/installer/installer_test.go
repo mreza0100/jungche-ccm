@@ -428,7 +428,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	// Codex chat on the host shares one app-server daemon pid, so it could
 	// never say which pane cleared. Install strips a leftover one and never
 	// writes it back.
-	if strings.Contains(codexHooks, "internal clear-kill") || strings.Contains(codexHooks, `"SessionStart"`) {
+	if strings.Contains(codexHooks, "internal clear-kill") {
 		t.Fatalf("install wrote the retired Codex SessionStart clear-kill hook:\n%s", codexHooks)
 	}
 	secondary := readFixture(t, secondarySettings)

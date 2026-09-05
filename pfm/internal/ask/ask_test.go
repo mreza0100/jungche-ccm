@@ -121,9 +121,6 @@ IFS= read -r first
 printf 'prompt=%s\n' "$first"
 printf 'usage: input_tokens=7 cached_input_tokens=2 output_tokens=4\n'
 printf 'claude answer\n'`)
-	writeAskStub(t, directory, "pfm", `[ "$1" = internal ] && [ "$2" = codex-launch ] || exit 90
-shift 2
-exec "$@"`)
 	t.Setenv("PATH", directory)
 
 	machine := pfmconfig.Config{
@@ -187,9 +184,6 @@ exec "$@"`)
 func TestProcessEngineUsageIsNilWhenAbsent(t *testing.T) {
 	directory := t.TempDir()
 	writeAskStub(t, directory, "codex", "printf 'answer only\\n'")
-	writeAskStub(t, directory, "pfm", `[ "$1" = internal ] && [ "$2" = codex-launch ] || exit 90
-shift 2
-exec "$@"`)
 	t.Setenv("PATH", directory)
 	engine, err := ResolveEngine(pfmengine.Codex, askMachine("codex"))
 	if err != nil {
@@ -206,9 +200,6 @@ exec "$@"`)
 
 func TestProcessEngineDistinguishesMissingCrashAndTimeout(t *testing.T) {
 	directory := t.TempDir()
-	writeAskStub(t, directory, "pfm", `[ "$1" = internal ] && [ "$2" = codex-launch ] || exit 90
-shift 2
-exec "$@"`)
 	t.Setenv("PATH", directory)
 	machine := askMachine("codex")
 	machine.Codex.Binary = "missing-codex"
