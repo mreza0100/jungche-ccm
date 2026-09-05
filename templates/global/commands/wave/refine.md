@@ -58,7 +58,7 @@ Rules blocks binding a subset of tasks sit above those tasks; all-task rules sit
 
 ### RND findings (when RND/POC fed the wave)
 
-Write `## RND-Validated Mandatory Rules` before the task list: every validated prompt in a fenced block, byte-identical — never paraphrased (a rewritten prompt is an unvalidated prompt) — labelled with where it runs; every technique that separated success from failure, with numbers; every behavior adding an LLM call names its validated prompt artifact or is staged to the wave where its prompt validates.
+Write `## RND-Validated Mandatory Rules` before the task list: every validated prompt in a fenced block, byte-identical — never paraphrased (a rewritten prompt is an unvalidated prompt) — labelled with where it runs; every technique that separated success from failure, with numbers; every behavior adding an LLM call names its validated prompt artifact or is staged to the wave where its prompt validates. Every open item the RND record still carries — its build items, rulings owed, trace findings — is disposed one by one before the spec queues: folded into a task line naming the mechanism (never a generic phrase), deferred with a `[WATCH: …]` tag and a reason, or dropped with a one-line justification; silent omission is not a disposition. A task's annex cites the file that carries each requirement, never only the settled summary beside it.
 
 ## R4 — Review + user gate
 

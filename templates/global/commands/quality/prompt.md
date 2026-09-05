@@ -46,7 +46,7 @@ Every consumer imposes size limits on its prompt files; know the target's limits
 4. **Frontmatter ↔ body duplication.** If `description:` says it, the body opening must not.
 5. **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer", provenance ("adapted from X"). Test clause by clause: inside a voice trait, "(no sunk cost fallacy)" is a rule — keep the kernel, cut the costume. Working prompts carry zero voice; voice belongs in the consumer's dedicated persona layer (for the Claude harness: `/pfm § Claude-harness prompt law`).
 6. **Rationale that rephrases the rule — labeled "Why:" or not.** Trailing purpose clauses and rationale parentheticals whose content the rule's wording already implies. The rule's purpose lives in the rule's wording.
-7. **Negative framing where positive works.** "Use prose paragraphs" beats "don't use bullets." Reserve do NOT / NEVER for sacred ground ({SENSITIVE_DATA}, {DOMAIN_ADJ} safety, secrets) — an isolated "do not X" measurably degrades untargeted behavior (`{AI_PROJECT}/knowledge/bias/llm-biases.md` Part 4, ~31.5% collateral).
+7. **Negative framing where positive works.** "Use prose paragraphs" beats "don't use bullets." Reserve do NOT / NEVER for sacred ground ({SENSITIVE_DATA}, {DOMAIN_ADJ} safety, secrets) — an isolated "do not X" measurably degrades untargeted behavior (~31.5% collateral; see the project's bias-evidence file, where one exists).
 8. **Aggressive emphasis on non-sacred rules** — "CRITICAL", "YOU MUST", "MANDATORY", "(MANDATORY)" heading suffixes, capitalized intensifiers. Frontier models overtrigger on it. Plain language for ordinary rules; reserve emphasis for invariants.
 9. **Inconsistent terminology** — mixing "endpoint / URL / route", "field / box / element", "extract / pull / get". One canonical term per concept, used everywhere.
 10. **Cross-references that say nothing new** ("See § X above" two paragraphs up). If the reference matters, summarize the takeaway inline.
@@ -66,7 +66,7 @@ Every consumer imposes size limits on its prompt files; know the target's limits
 
 ## Correctness & model behavior
 
-The second axis: the rules above keep prompts SHORT; these keep the model's OUTPUT correct — a lean prompt can still be wrong. Empirical companion: `{AI_PROJECT}/knowledge/bias/llm-biases.md` (field-order, few-shot 2–4, verbosity, do-not collateral, target-language gaps) — this file is the craft, that one is the evidence.
+The second axis: the rules above keep prompts SHORT; these keep the model's OUTPUT correct — a lean prompt can still be wrong. Empirical companion: the project's bias-evidence file, where one exists (field-order, few-shot 2–4, verbosity, do-not collateral, target-language gaps) — this file is the craft, that one is the evidence.
 
 **Numbers — compute, don't ask.**
 
