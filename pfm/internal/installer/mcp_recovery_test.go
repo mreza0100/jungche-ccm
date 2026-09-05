@@ -40,7 +40,7 @@ func TestMCPFailedRemovalKeepsOwnershipForRetry(t *testing.T) {
 	original := readFixture(t, path)
 	injected := false
 	e.options.Stdout = registryWriteHook(func(p []byte) (int, error) {
-		if !injected && strings.Contains(string(p), "change  rewrite "+path+" ") {
+		if !injected && strings.Contains(string(p), "change  rewrite "+physicalSettingsPath(path)+" ") {
 			injected = true
 			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
@@ -127,7 +127,7 @@ func TestMCPRefusesConcurrentNativeRegistryUpdate(t *testing.T) {
 	e := engine{options: Options{Home: home, ConfigDir: filepath.Join(home, ".claude"), Stdout: io.Discard}, managedRoot: filepath.Join(home, "managed"), apply: true, stamp: "fixture"}
 	injected := false
 	e.options.Stdout = registryWriteHook(func(p []byte) (int, error) {
-		if !injected && strings.Contains(string(p), "change  rewrite "+path+" ") {
+		if !injected && strings.Contains(string(p), "change  rewrite "+physicalSettingsPath(path)+" ") {
 			injected = true
 			writeFixture(t, path, latest)
 		}

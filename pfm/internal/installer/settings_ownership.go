@@ -252,7 +252,20 @@ func readSettingsHookOwnership(path string) (map[string]settingsHookCounts, []by
 		key := settingsHookKey{Event: record.Event, Matcher: record.Matcher, Command: record.Command}
 		ownership[record.Path][key] += record.Count
 	}
-	return ownership, raw, nil
+	canonical := map[string]settingsHookCounts{}
+	for path, counts := range ownership {
+		physical := physicalSettingsPath(path)
+		if canonical[physical] == nil {
+			canonical[physical] = settingsHookCounts{}
+		}
+		for key, count := range counts {
+			if prior, exists := canonical[physical][key]; exists && prior != count {
+				return nil, nil, fmt.Errorf("conflicting hook ownership aliases for %s in %s", key.Event, physical)
+			}
+			canonical[physical][key] = count
+		}
+	}
+	return canonical, raw, nil
 }
 
 func encodeSettingsHookOwnership(ownership map[string]settingsHookCounts) ([]byte, error) {

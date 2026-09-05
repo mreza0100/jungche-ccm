@@ -1816,11 +1816,7 @@ func (installer *engine) wireSettings() error {
 		seenOwnershipPaths[physicalSettingsPath(filepath.Join(codexHome, "hooks.json"))] = true
 	}
 	for _, candidate := range candidates {
-		physical, err := filepath.EvalSymlinks(candidate)
-		if err != nil {
-			physical = candidate
-		}
-		physical = filepath.Clean(physical)
+		physical := physicalSettingsPath(candidate)
 		if seen[physical] {
 			continue
 		}
@@ -1867,7 +1863,7 @@ func (installer *engine) wireSettings() error {
 			if err := copyBackup(candidate, backup); err != nil {
 				return fmt.Errorf("backup %s: %w", candidate, err)
 			}
-			return atomicWrite(candidate, updated, 0o600)
+			return atomicWrite(physical, updated, 0o600)
 		}); err != nil {
 			return err
 		}

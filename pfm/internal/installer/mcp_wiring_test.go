@@ -292,7 +292,7 @@ func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
 	if err := json.Unmarshal([]byte(readFixture(t, ownershipPath)), &ownership); err != nil {
 		t.Fatal(err)
 	}
-	owned := ownership.Registrations[filepath.Join(home, ".claude.json")]
+	owned := ownership.Registrations[physicalSettingsPath(filepath.Join(home, ".claude.json"))]
 	if len(owned) != 1 || owned["chat"] == nil {
 		t.Fatalf("owned registrations=%v, want chat only", owned)
 	}
@@ -425,7 +425,7 @@ func TestMCPInstallRecognizesAnOwnedStdioChatClientWithoutRewriteOrConflict(t *t
 	if strings.Contains(applied.String(), "preserve conflicting manual MCP client chat") {
 		t.Fatalf("an owned stdio chat registration was treated as a manual conflict:\n%s", applied.String())
 	}
-	if !strings.Contains(applied.String(), "ok      "+clientPath+" wiring") {
+	if !strings.Contains(applied.String(), "ok      "+physicalSettingsPath(clientPath)+" wiring") {
 		t.Fatalf("an already-correct stdio chat registration was rewritten instead of recognized:\n%s", applied.String())
 	}
 	if got := readFixture(t, clientPath); got != owned {

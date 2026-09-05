@@ -98,11 +98,23 @@ func commandByName(hooks []ExpectedHook, name string) string {
 }
 
 func physicalSettingsPath(path string) string {
-	physical, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		physical = path
+	candidate := filepath.Clean(path)
+	var missing []string
+	for {
+		physical, err := filepath.EvalSymlinks(candidate)
+		if err == nil {
+			for i := len(missing) - 1; i >= 0; i-- {
+				physical = filepath.Join(physical, missing[i])
+			}
+			return filepath.Clean(physical)
+		}
+		parent := filepath.Dir(candidate)
+		if !errors.Is(err, os.ErrNotExist) || parent == candidate {
+			return filepath.Clean(path)
+		}
+		missing = append(missing, filepath.Base(candidate))
+		candidate = parent
 	}
-	return filepath.Clean(physical)
 }
 
 // ProbeExpectedHooks parses each expected file once, validates the canonical
