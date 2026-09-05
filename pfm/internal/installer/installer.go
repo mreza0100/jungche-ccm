@@ -259,6 +259,9 @@ func (installer *engine) install(ctx context.Context) error {
 		if err := installer.reconcileCodexCommands(assets); err != nil {
 			return err
 		}
+		if err := installer.wireCodexDefaults(); err != nil {
+			return err
+		}
 		if err := installer.wireCodexAgents(); err != nil {
 			return err
 		}

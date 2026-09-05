@@ -46,6 +46,8 @@ description: "Version, tag, and publish this repo — regenerating the portable 
 
 7. `echo "{NEW_VERSION}" > VERSION`
 
+7b. **Stamp the self-hosted install ledger before Step 8 commits — this repo only.** Sync `.professor/VERSION` and `manifest.json`'s `installed_from.version` to `{NEW_VERSION}`, re-stamp `file_hashes` for the tracked roster `infra/check-self-hosted-manifest.sh` enumerates (`.claude/** .codex/** .opencode/** .gitignore AGENTS.md CLAUDE.md pfm/AGENTS.md pfm/CLAUDE.md docs/commands/pfm/references/**`, each `sha256sum`'d), then `bash infra/check-self-hosted-manifest.sh . templates pfm engines/wave-walker/engine` — STOP on any failure; per `08b78b3`, a ledger left stale is a gate nobody reads.
+
 8. **Gate, then use the authorized Git writer** — route each phase through `/git`; it uses gitter when available and the active main Codex fallback only after explicit current-turn authorization:
 
    a. `scripts/leak-check.sh --files <every changed file>` — brand current+former, user PII, machine home paths, zero secrets. Report its exit status. A single leftover is a refresh bug, not an exception. The committed `.githooks/pre-push` hook enforces the same gate at push time; do not treat that as a reason to skip this one.
