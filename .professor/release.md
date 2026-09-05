@@ -15,3 +15,5 @@ and `(cost)` on any env / hook / permission / model-config delta.
 - Global: harness prompts — keep Claude's Professor replacement and a model-independent Codex appendix in paired templates and installer assets. Codex receives a separate native SessionStart developer message with bounded, best-effort history deduplication and visible warnings for unsupported history. The individually trusted account hook preserves final-project and managed instructions; install-time native RPC has bounded cancellation. No preparatory launch/config-home process remains.
 
 - Project: runtime guidance — move the autonomy and status-summary triggers into both harness prompts and remove duplicated completion guidance from project instructions.
+
+- Engine: retain the legacy `internal codex-launch` entry point as an argv/environment-preserving passthrough so already-sourced shell functions and queued tmux launch commands survive the native-hook migration.

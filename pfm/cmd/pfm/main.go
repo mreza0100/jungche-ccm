@@ -385,6 +385,9 @@ func runInternal(
 	if len(args) != 0 && args[0] == "agent-open" {
 		return runInternalAgentOpen(args[1:], stderr, runtime)
 	}
+	if len(args) != 0 && args[0] == "codex-launch" {
+		return runCodexLaunchCompatibility(args[1:], stderr)
+	}
 	if len(args) != 0 && args[0] == "codex-appendix" {
 		return runCodexAppendix(os.Stdin, stdout, stderr, runtime)
 	}
