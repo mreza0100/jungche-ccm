@@ -7,29 +7,3 @@ Shape: `- {Tier}: {scope} — {semantic change}`, plus a `#### → For:` line wh
 and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
-
-- Engine: Limits monitoring — refreshes account quotas independently with five-second cache freshness; keeps reset countdowns and confirmation ages live while idle, labels percentages as used, cancels requests on tab exit, and prevents stale cache timestamps and delayed animation messages from freezing or rewinding monitoring.
-
-- Engine: Codex coordination defaults (cost) — `pfm install` merges `templates/global/codex/config.toml` into each configured Codex home, preserves existing settings and unrelated TOML, and migrates the retired marked developer-instruction block into the separately installed harness appendix.
-
-- Global: harness prompts (cost) — keep Claude's Professor replacement and a model-independent Codex appendix in paired templates and installer assets. Codex receives a separate native SessionStart developer message with bounded, best-effort history deduplication and visible warnings for unsupported history. The individually trusted account hook preserves final-project and managed instructions; install-time native RPC has bounded cancellation. No preparatory launch/config-home process remains.
-
-- Project: runtime guidance — move the autonomy and status-summary triggers into both harness prompts and remove duplicated completion guidance from project instructions.
-
-- Engine: retain the legacy `internal codex-launch` entry point as an argv/environment-preserving passthrough so already-sourced shell functions and queued tmux launch commands survive the native-hook migration.
-
-- Engine: account migration — wire and inspect MCP clients in each configured Claude user registry and Codex home, preserve private state and manual registrations, journal exact ownership across failed writes, and retain config symlinks. Empty engine rosters stay empty; MCP remains explicitly enabled.
-
-- Engine: installer recovery — retire owned predecessor agents and staged swap assets across configured accounts, preserve personal agent links, and return activation failures when a launchd bootstrap or post-bootstrap probe fails. Scheduler tests use fake managers and platform-correct assertions.
-
-- Engine: Codex identity — select the verified interactive root across every held rollout instead of descriptor order, retain stable thread identity after revert, and carry held-root evidence into doctor. Unknown, unreadable, or conflicting metadata cannot repair a pane binding.
-
-- Engine: doctor — recognize compact-nudge metadata and normalize only optional model-name and knowledge-cutoff lines in the Claude Environment drift baseline; other harness prose changes remain visible. The Sonnet-only check names requested/resolved models, CLI version, and verified baseline identity; model mismatches report missing coverage rather than generic drift.
-
-- Project: generated mirrors — ship the repository Codex skill wrappers and follow installed OpenCode command symlinks and SKILL.md directories, rejecting cycles. Validate the self-hosted manifest's installed arrays as well as its version and hashes.
-
-- Project: retired surfaces (cost) — remove the obsolete Professor output-style selection and inactive limits hook; correct current installer, skill-source, layout, and Walker activation guidance. New Walker candidates use /tokens; a /p:tokens compatibility command keeps the deliberately pinned production bundle usable.
-
-#### → For: remove any opt-in hook entry invoking scripts/limits-hook.sh and use the PFM Limits tab. Keep the pinned Walker bundle until its separate activation evidence gate passes.
-
-- Engine: isolated tests — use the running UID and a jailed temporary socket root for real tmux fixtures; Codex process fixtures now carry native root metadata. Native macOS CI exercises the fake-manager regressions, and trusted CI receives the leak-check denylist through a repository secret.
