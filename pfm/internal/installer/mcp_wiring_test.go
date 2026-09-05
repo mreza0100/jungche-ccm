@@ -76,10 +76,10 @@ func TestMCPInstallCreatesClientJSONWithoutClaimingABackup(t *testing.T) {
 	}
 	clientPath := filepath.Join(home, ".claude.json")
 	out := applied.String()
-	if !strings.Contains(out, "create "+clientPath) {
+	if !strings.Contains(out, "create "+physicalSettingsPath(clientPath)) {
 		t.Fatalf("apply output never says it created %s:\n%s", clientPath, out)
 	}
-	if strings.Contains(out, "rewrite "+clientPath+" (backup preserved)") {
+	if strings.Contains(out, "rewrite "+physicalSettingsPath(clientPath)+" (backup preserved)") {
 		t.Fatalf("claimed a backed-up rewrite for a client registration that never existed:\n%s", out)
 	}
 	if matches, _ := filepath.Glob(clientPath + ".pre-professor-*"); len(matches) != 0 {
@@ -241,7 +241,7 @@ func TestMCPInstallRemovesLegacyCredentialAndAuthHeadersEverywhere(t *testing.T)
 	for _, path := range []string{
 		configPath,
 		credentialPath,
-		filepath.Join(home, ".claude.json"),
+		physicalSettingsPath(filepath.Join(home, ".claude.json")),
 		filepath.Join(home, ".codex", "config.toml"),
 		filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName),
 	} {
