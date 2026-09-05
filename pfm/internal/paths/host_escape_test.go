@@ -71,6 +71,7 @@ func TestNoTestReachesForThePlainHOMEVariable(t *testing.T) {
 	}
 	// Each entry states why the real host is the correct target there.
 	allowed := map[string]string{
+		"e2e/claude_capture_fixture_test.go":   "asserts HOME equals the explicitly supplied private E2E home before reading fixtures or contacting the loopback sink",
 		"e2e/install_e2e_test.go":              "hands `go build` the real module cache",
 		"internal/mcpserv/server_test.go":      "hands `go build` the real module cache",
 		"internal/dream/live_contract_test.go": "opt-in host probe, skipped unless DREAM_LIVE_CONTRACT=1",
