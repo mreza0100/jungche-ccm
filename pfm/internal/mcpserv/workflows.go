@@ -116,4 +116,3 @@ func (service *Service) chatLoad(
 	}
 	return nil, output, nil
 }
-

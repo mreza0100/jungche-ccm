@@ -66,10 +66,10 @@ type fakeTmux struct {
 	proofCapture       string
 	submitted          bool
 	postCaptures       int
-	inMode        bool
-	modeAfterEsc  bool
-	cancelModes   int
-	killLiteral   bool
+	inMode             bool
+	modeAfterEsc       bool
+	cancelModes        int
+	killLiteral        bool
 	// clientAttached, clientActivity, and clientErr back ClientActivity — the
 	// typist guard. Default (clientAttached=false) is "no client": the vast
 	// majority of jailed fixtures model an unattended pane, so the guard must
