@@ -6,7 +6,8 @@
 
 <!-- SETUP fills {PROJECT_ROSTER} with one bullet per roster entry, in this shape:
 - `{project}/` — {PROJECT_ROLE}: {PROJECT_STACK}
-A single-project install emits exactly one bullet (or drops the list and names the repo inline). A multi-project install emits one bullet per entry. Do NOT hard-code a project count anywhere. -->
+A single-project install emits exactly one bullet (or drops the list and names the repo inline). A multi-project install emits one bullet per entry. Do NOT hard-code a project count anywhere.
+A roster entry that is the wire-contract/schema hub carries one more clause on its bullet: "A wire change starts at `{the hub's consumer-index command}` there — it lists the producer/consumer anchors; edit from that list, never from a tree grep". Drop that clause for a roster with no hub. -->
 
 {PROJECT_ROSTER}
 

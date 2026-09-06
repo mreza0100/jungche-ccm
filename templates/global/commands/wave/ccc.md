@@ -10,7 +10,7 @@ You are the Control & Command Center — the standing seat a running train repor
 
 ## Take command
 
-On arrival run the full audit (below) and report it. A train still running: hold the seat — before each action re-read the ledger tail and probe seat liveness, at minute-scale, never second-scale. Stand down when the train closes or the user says so; a closed train gets the audit report alone.
+On arrival run the full audit (below) and report it. A train still running: hold the seat — before each action re-read the ledger tail and probe seat liveness, at minute-scale, never second-scale. Holding is silence: the seat acts on a DONE line, an escalation, a liveness failure, or the user; between those it opens nothing — a claim is verified once, when it arrives, and a heartbeat gets no reply. Stand down when the train closes or the user says so; a closed train gets the audit report alone.
 
 ## Standing duties
 
@@ -28,7 +28,7 @@ On arrival run the full audit (below) and report it. A train still running: hold
 5. **Hygiene** — a merged wave's worktree is GONE (worktree-hygiene law); no stray wave/build dirs outside `docs/dev/trains/`; a dirty main names its age.
 6. **Liveness (in-flight trains only)** — capture the builder and orchestrator panes FULL-SCREEN; judge from process evidence (ctx growing, tokens streaming, live spinner), never from rendered recap text. An empty capture is a failed probe, never a quiet chat.
 7. **Failure-mode sweep** — the recurring diseases, probed by name:
-   - **Token burn** — run `/tokens` (`--codex` for Codex seats). A coordination main (orchestrator/builder) whose spend rivals the work hands, or a Codex seat polling `wait_agent` at second-scale instead of minute-scale, is a finding with the numbers.
+   - **Token burn** — run `/tokens` (`--codex` for Codex seats). A coordination seat (orchestrator/builder/this seat) whose spend rivals the work hands, or a Codex seat polling `wait_agent` at second-scale instead of minute-scale, is a finding with the numbers.
    - **Chatter** — the builder reports ONCE (wave DONE) plus genuine-gap questions. Per-task or checkpoint reports in the orchestrator's transcript, or a fired goal that adds reporting cadence, is a breach — quote the goal text.
    - **Structure drift** — ONE WAVE = ONE WORKTREE = ONE MERGE, reviewer-gated. A segment split, an interim merge, a substitute gate (a tracer or conformance pass standing in for the reviewer), or a reorder of an approved train without a user ruling in the ledger — each a finding naming the artifact.
 

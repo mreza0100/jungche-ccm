@@ -38,7 +38,7 @@ Settle every technical branch before writing: transport, data placement, mechani
 - **Routing** — the exact roster project set the task touches + the conditional build agents (`{project}-db-admin` on data-model change, `{project}-ui-ux` on visual work).
 - **Data model** — every table, column with exact type, index, enum, constraint.
 - **Contracts** — exact API schema, resolver/handler signatures, queue message schemas, realtime event payloads.
-- **File plan** — every file to create/edit with the functions/exports it gains and their signatures. DELETE only for grep-verified single-purpose files; otherwise `EDIT (strip X by def-boundaries)`. A dropped or reshaped column/enum/table names its full coupling including raw-SQL string references; a removed config field names its env-var scrub set. A removal spanning >10 files or >3 layers is declared a fan-out candidate.
+- **File plan** — every file to create/edit with the functions/exports it gains and their signatures. DELETE only for grep-verified single-purpose files; otherwise `EDIT (strip X by def-boundaries)`. A dropped or reshaped column/enum/table names its full coupling including raw-SQL string references; a removed config field names its env-var scrub set. A removal spanning >10 files or >3 layers is declared a fan-out candidate. A change crossing a wire boundary lists every consumer the contracts hub's consumer index returns for the symbol — the file plan covers that list, not a tree grep.
 - **Behavior** — success/failure/edge paths, UX, copy, scope. Every new check names what it reports when the check itself is broken.
 - **Sensitive-data channels** — every place the task moves protected domain content. Content reaches the access-controlled DB and nowhere else; a clause routing it to a log, metric label, error string, or telemetry payload surfaces at the R4 gate as its own plain-words line or does not ship. Escalations carry the pointer, never the text.
 
@@ -52,7 +52,7 @@ Header: `# Wave: {slug}` · `**Status:** QUEUED` · `**Refined:** {YYYY-MM-DD} �
 4. `**Data model:**`
 5. `**Contracts:**`
 6. `**File plan:**`
-7. `**Boundaries & anchors:**` what's NOT included + existing files/identifiers to reuse, every parity claim with its exact anchor
+7. `**Boundaries & anchors:**` what's NOT included + existing files/identifiers to reuse, every parity claim with its exact anchor. Every fact the builder's hand depends on is quoted here with its `file:line` — a pointer to a ledger, walk-notes or evidence directory in place of the quoted fact is a gap; the hand's first command is its target file.
 
 Rules blocks binding a subset of tasks sit above those tasks; all-task rules sit in the header. `[CMD: /km]` / `[CMD: /jc]` tags route non-builder tasks. Tag `[MILESTONE]` on checkpoint task headings.
 

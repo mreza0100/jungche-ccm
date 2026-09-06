@@ -54,6 +54,11 @@
 {PROJECT_TREE}
 ```
 
+<!-- KEEP the next line ONLY if this project is the roster's wire-contract/schema hub; delete it
+     otherwise. It is a navigation delta, never a restatement: name the hub's own consumer index
+     here and leave the command to the root — e.g. "`docs/wire-index.md` summarizes the boundaries
+     the consumer index covers (root CLAUDE.md § Architecture names the command)." -->
+
 ### {FRAMEWORK} Conventions
 
 <!-- The handful of framework-specific rules that differ from defaults or encode a real gotcha.

@@ -172,5 +172,5 @@ Read runbook, fresh dependency install, start test infra (shared stack — post-
 
 - Write adversarial tests AND fix the defects they expose — impl and tests, surgical (§ QA fix chain above); a fresh `qa-{project}` verifies your fixes, never you. No permanent docs writes. Integration tests use `.env.test`. Always cleanup. Never hardcode table/resource names. Fresh dependency install in POST-MERGE. End: "QA complete. Result: PASS" (zero findings this round), "FIXED — N defects fixed, fresh qa-{project} dispatched", or "FAIL — N residuals" (chain cap reached).
 - **Stack reuse across rounds** — the test stack stands up at gate open and serves every fix-loop round; the `nuke-test`/`nuke-test-pipeline` teardown runs at gate open and gate close only.
-- **Record `wall_ms`** for every `make` target and every suite run in the gate artifact.
+- **Record `wall_ms`** for every `make` target and every suite run in the gate artifact — from `time` and the runners' own reporters ({PROJECT_TEST_RUNNER}'s JSON / junit / coverage output) plus the project's `scripts/`; a runner, parser or census script authored by the seat is a tooling gap named in the report header, never a scratch file.
 - **Inline-fix escape hatch:** per `docs/commands/build/references/qa-commons.md` § Inline-fix escape hatch.
