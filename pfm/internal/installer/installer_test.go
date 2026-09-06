@@ -989,6 +989,53 @@ func TestWireGlobalSkillsReportsMissingSkillSource(t *testing.T) {
 	}
 }
 
+// TestWireGlobalSkillsLinksTemplateSkillDirectories pins the second half of
+// the skills registry: every directory shipped under templates/global/skills/
+// becomes ONE whole-directory link in {Home}/.claude/skills, while the
+// sources.json registry beside them — a file, not a skill — is never linked.
+func TestWireGlobalSkillsLinksTemplateSkillDirectories(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, ".professor", "templates", "global", "skills")
+	writeFixture(t, filepath.Join(source, "sources.json"), "{}\n")
+	writeFixture(t, filepath.Join(source, "architecture-design", "SKILL.md"), "# architecture-design skill\n")
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertLink(t,
+		filepath.Join(home, ".claude", "skills", "architecture-design"),
+		filepath.Join(source, "architecture-design"))
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "sources.json")); !os.IsNotExist(err) {
+		t.Fatalf("the skills registry file was linked as if it were a skill: %v", err)
+	}
+}
+
+// TestWireGlobalSkillsReportsATemplateSkillWithoutSKILLMd pins that the
+// SKILL-SOURCE-MISSING report covers template skills too: a directory with no
+// SKILL.md is named and left unlinked rather than linked as a loadable skill.
+func TestWireGlobalSkillsReportsATemplateSkillWithoutSKILLMd(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, ".professor", "templates", "global", "skills")
+	if err := os.MkdirAll(filepath.Join(source, "half-built"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Stdout: &output, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatalf("apply: %v\n%s", err, output.String())
+	}
+	if !strings.Contains(output.String(), "SKILL-SOURCE-MISSING half-built") {
+		t.Fatalf("apply output omitted the missing-skill-source report:\n%s", output.String())
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "half-built")); !os.IsNotExist(err) {
+		t.Fatalf("a skill source without SKILL.md still produced a link: %v", err)
+	}
+}
+
 // TestRetireOrphanCodexAgentsDeletesExactlyTheKnownStrays pins bullet 4's
 // narrow, hardcoded sweep: the retired explorer agent's compiled TOML and
 // any timestamped backup are deleted; a genuinely unrelated agent file next

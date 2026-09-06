@@ -117,6 +117,9 @@
         ".claude/commands/wave/walker.md": "4b853ced8dc9f7cf3ac8f0fe463dce1d47c822fe2fbf7bde6012b9d2461dd4f4"
       }
     },
+    "global/skills/architecture-design/SKILL.md": {
+      "curated": true
+    },
     "global/skills/sources.json": {
       "curated": true
     },

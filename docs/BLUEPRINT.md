@@ -51,9 +51,10 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/audit:code-hygiene** / **/audit:security** / **/audit:ai-output** — code-hygiene, security, and AI-output audit scopes, each carrying their own 360-sweep pre-step. Code-hygiene additionally has a Sweep Mode (`code-hygiene sweep`) that promotes a report-only run to actively removing confirmed-dead code and unused dependencies, end-to-end behind QA.
 - **/qa:live** — live end-to-end QA of the running app on the dev stack: no mocks, no seeded data, judgment-based rather than regression assertions.
 
-**Machine-global skills (`templates/global/skills/sources.json` declares source-fetched skills and in-tree links):**
+**Machine-global skills (shipped under `templates/global/skills/`; its `sources.json` declares the source-fetched ones and the in-tree links):**
 
 - **deep-rr** — in-tree research protocol under `engines/deep-rr/`, linked by host installation.
+- **architecture-design** — codebase layout designed for agent maintainers: one directory per unit of change, a fixed file anatomy, grep-true names, façades for the cross-cutting calls, and the brief anchors a build hand reads; greenfield designs a tree, brownfield measures the existing one and writes the migration. Ships in-tree under `templates/global/skills/architecture-design/`, linked by host installation.
 - **ghostwriter** — captures a writer's mechanical fingerprint and generates in that voice.
 - **vision-factory** — forge, validate, and stress-test a startup vision.
 
@@ -242,7 +243,7 @@ your-project/
 │   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /pfm and framework release tools, /context-meter, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:360, /rnd, /tokens + opt-in Tier B (`/reload` is NOT here — `pfm install` installs it host-level)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh
 │   ├── workflows/                     ← project-local Workflow scripts such as documenter-fanout and audit-ai-output-sessions; Wave Walker runs from the permanent Professor clone
-│   ├── skills/                        ← bundled legal shelf + project source registry; machine-global skills use templates/global/skills/sources.json
+│   ├── skills/                        ← bundled legal shelf + project source registry; machine-global skills live under templates/global/skills/ (its sources.json declares the fetched ones)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) pointer layer over .claude/ — never a restatement of it
 │   ├── config.toml                    ← sandbox reach + the {CODEX_MODEL}/{CODEX_REASONING_EFFORT} pins

@@ -459,22 +459,73 @@ func (installer *engine) wireGlobalCommands() error {
 	return nil
 }
 
-// wireGlobalSkills links {Home}/.claude/skills/deep-rr to the in-tree
-// engines/deep-rr skill directory. ghostwriter/vision-factory clone
-// management is explicitly out of scope here — a different owner entirely.
+// wireGlobalSkills links every machine-global skill into
+// {Home}/.claude/skills/: the in-tree engines/deep-rr directory, and each
+// skill directory shipped under templates/global/skills/.
+// ghostwriter/vision-factory clone management is explicitly out of scope
+// here — a different owner entirely.
 func (installer *engine) wireGlobalSkills() error {
 	sourceRepo, err := installer.globalSourceRepoRoot()
 	if err != nil {
 		return fmt.Errorf("resolve global skills source repository: %w", err)
 	}
-	source := filepath.Join(sourceRepo, "engines", "deep-rr")
+	if err := installer.wireGlobalSkill(sourceRepo, filepath.Join(sourceRepo, "engines", "deep-rr"), "deep-rr"); err != nil {
+		return err
+	}
+	return installer.wireTemplateSkills(sourceRepo)
+}
+
+// wireTemplateSkills links every top-level DIRECTORY of
+// <sourceRepo>/templates/global/skills/ into {Home}/.claude/skills/: one
+// whole-directory link per entry, the same idiom wireGlobalCommands uses for
+// its directory entries. The registry file that sits beside them
+// (sources.json, naming the skills fetched from their own public repos) is
+// not itself a skill and is never linked. An absent or empty source
+// directory is reported and never an error — the same carve-out the global
+// commands source gets.
+func (installer *engine) wireTemplateSkills(sourceRepo string) error {
+	source := filepath.Join(sourceRepo, "templates", "global", "skills")
+	entries, err := os.ReadDir(source)
+	if errors.Is(err, fs.ErrNotExist) {
+		installer.skip("global skills source absent at " + source + " (0 entries)")
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect global skills source %s: %w", source, err)
+	}
+	linked := 0
+	for _, entry := range entries {
+		path := filepath.Join(source, entry.Name())
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			return fmt.Errorf("inspect global skill source %s: %w", path, statErr)
+		}
+		if !info.IsDir() {
+			continue
+		}
+		linked++
+		if err := installer.wireGlobalSkill(sourceRepo, path, entry.Name()); err != nil {
+			return err
+		}
+	}
+	if linked == 0 {
+		installer.skip("global skills source empty at " + source + " (0 skill directories)")
+	}
+	return nil
+}
+
+// wireGlobalSkill links one skill source directory to
+// {Home}/.claude/skills/{name}. A source without a SKILL.md is not a skill
+// any engine can load: it is reported as SKILL-SOURCE-MISSING and no link is
+// ever created for it.
+func (installer *engine) wireGlobalSkill(sourceRepo, source, name string) error {
 	if _, err := os.Stat(filepath.Join(source, "SKILL.md")); errors.Is(err, fs.ErrNotExist) {
-		installer.skip("SKILL-SOURCE-MISSING deep-rr (" + filepath.Join(source, "SKILL.md") + " absent)")
+		installer.skip("SKILL-SOURCE-MISSING " + name + " (" + filepath.Join(source, "SKILL.md") + " absent)")
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("inspect deep-rr skill source: %w", err)
+		return fmt.Errorf("inspect %s skill source: %w", name, err)
 	}
-	target := filepath.Join(installer.options.Home, ".claude", "skills", "deep-rr")
+	target := filepath.Join(installer.options.Home, ".claude", "skills", name)
 	return installer.wireGlobalLink(source, target, sourceRepo, true)
 }
 

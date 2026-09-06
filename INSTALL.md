@@ -107,7 +107,7 @@ pfm install --yes --vscode
 `pfm install --yes` manages eight surfaces, all under `$HOME`; `--vscode` adds a ninth:
 
 1. Staged assets — `~/.local/share/pfm/install/`
-2. Command symlinks — `~/.claude/commands/` (`/reload`); skill symlinks — `~/.claude/skills/` (`deep-rr`, `/handoff`)
+2. Command symlinks — `~/.claude/commands/` (`/reload`); skill symlinks — `~/.claude/skills/` (`deep-rr`, `architecture-design`, `/handoff`)
 3. The `pfm-name-sync` scheduler — three systemd user units (Linux) or one launchd agent (macOS)
 4. Every Claude account settings file it finds (`~/.claude/settings.json` and each `~/.cc/N/settings.json`) — adds the usage, group, and `/clear` `SessionEnd` hooks; adopts the statusline only if none is already set
 5. `~/.codex/prompts/`, `~/.codex/skills/`, and `~/.codex/agents/` — Codex mirrors generated from
