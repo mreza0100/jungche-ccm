@@ -358,3 +358,6 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   twins-move-together rule, the map-before-dispatch law (folded from retro 2026-08-29), and ledger
   consumers on the `.professor/` line.** This file describes the blueprint's own machinery from the
   upstream side; `templates/project/CLAUDE.md` is a different document and unchanged.
+- KEEP-LOCAL: Codex project default (2026-09-05) — removed the repo-local model pin so trusted
+  sessions inherit the user-level default; retained this repo's `xhigh` reasoning-effort override and
+  re-stamped its self-hosted manifest entry. (cost)

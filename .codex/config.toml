@@ -1,6 +1,6 @@
 # Professor repo-level Codex config — loads only when this project is trusted in
 # ~/.codex/config.toml (Codex asks for trust once, per repo). Scope: sandbox
-# reach and model pins for any Codex session started inside this repo.
+# reach and reasoning effort for any Codex session started inside this repo.
 #
 # LANE LAUNCH FLAGS DO NOT BELONG HERE. `-s workspace-write -a never` and the
 # rest of the per-launch policy live with the LAUNCHER — this file is also read
@@ -8,14 +8,8 @@
 # under the founder.
 
 # ─── Model ───────────────────────────────────────────────────────────────────
-# Mirrors CLAUDE.md § Model Selection. The alias→model mapping the compiler
-# applies lives in pfm/internal/codexgen + .claude/codex-build.json:
-#   opus (frontier-judgment) → gpt-5.6-sol
-#   sonnet (spec-execution)  → gpt-5.6-luna
-#   haiku (collector)        → gpt-5.6-luna   ← NAMED GAP: no cheaper tier on
-#     this host. Mapped to the spec model rather than to an invented id, because
-#     a fabricated model name fails at spawn and reads as a harness bug.
-model = "gpt-5.6-sol"
+# No project-local `model`: inherit the user-level default from
+# ~/.codex/config.toml. Keep only this repo's reasoning-effort override.
 model_reasoning_effort = "xhigh"
 
 [sandbox_workspace_write]

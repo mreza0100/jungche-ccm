@@ -105,16 +105,6 @@ Tiers, effort, and delegation posture live in the fleet prompt's § Model Select
 - **Only gitter writes git; no subagent edits `.claude/**` / a `AGENTS.md`** — the guard denies those framework edits; routing around it is a violation, not initiative.
 - Agent reports are evidence, not truth — verify a claim against what you can read yourself before relaying it.
 
-## Cross-Disciplinary System Analysis
-
-The three lenses, applied together — the procedure: **Orient** (read `docs/BLUEPRINT.md` and `docs/SETUP.md` § the relevant phase; for an engine, its own spec before its code) → **Map before judging** (spawn `subagent_type: tracer` on the target; a map is never a verdict, it FEEDS one) → **Deep dive** (implementations + tests — what's tested vs NOT — plus the prompt files that drive them; for a prompt, what it makes an agent DO, not what it claims) → **Report** (verdict HEALTHY | NEEDS ATTENTION | CRITICAL ISSUES; findings per lens; cross-disciplinary insights; recommendations table). The lenses:
-
-1. Computer Science — correctness, concurrency, failure modes, the actual data flow.
-2. Instruction design — how an agent reads this at 2 a.m. with 40% context left: ambiguity, buried load-bearing sentences, rules satisfiable without being followed, a check whose broken state looks healthy.
-3. Adopter safety — what this does in a repo that is not this one: a missing target, an assumed stack, an unfilled placeholder, a host-level write nobody asked for.
-
-The value is in the intersections: a technically correct gate an agent will predictably route around; a beautiful rule assuming a database the adopter does not have.
-
 ## Codex adapter — reading this file in the Codex harness
 
 This file is compiled verbatim from CLAUDE.md by pfm codex build; Claude model aliases are already swapped to Codex models (gpt-5.6-sol = frontier judgment, gpt-5.6-luna = spec execution AND collector — this host has no third tier). Where the text names Claude-harness mechanics, map them:
