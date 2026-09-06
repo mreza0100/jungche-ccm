@@ -189,13 +189,13 @@ defaults, not authoritative billing.
 
 - **Claude models** (`opus`, `sonnet`, `haiku`, `fable`, `mythos`): cache-write = 1.25×
   input rate, cache-read = 0.1× input rate (standard Anthropic prompt-caching multipliers).
-- **Codex models** (`{CODEX_MODEL_FRONTIER}`, `{CODEX_MODEL_SPEC}`, `{CODEX_MODEL_COLLECTOR}`):
+- **Codex models** (`gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-luna`):
   a 4th `PRICING` column carries the cached-input rate, billed separately because Codex
   reports `cached_input_tokens` as a subset of `input_tokens`. Output already includes
-  reasoning. The frontier tier's row is its published standard-tier input / cached-input /
-  output rate; the spec and collector tiers publish input/output only, so their cached
-  rate is derived at the same 0.1× ratio the frontier tier publishes. The vendor's higher
-  long-context tier (>272K input) never applies — the Codex context window is smaller.
+  reasoning. All three rows are the vendor's published standard-tier input / cached-input /
+  output rates (source and read date in the `PRICING` comment); Fast mode and Batch/Flex
+  multipliers are not modelled. The vendor's higher long-context tier (>272K input) never
+  applies — the Codex context window is smaller.
 
 A model with **no** `PRICING` row reports cost **`n/a`**, not `$0`: its tokens still count
 toward the totals, its dollars do not, and the footer says how many sessions are affected.

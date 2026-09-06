@@ -34,13 +34,14 @@ const PRICING = [
   //
   // Codex CLI models. 4th column = the cached-input rate, billed separately because
   // Codex reports cached_input_tokens as a SUBSET of input_tokens (see § CODEX MODE).
-  // ESTIMATES — replace with the vendor's published rates for the models you run. A
-  // tier that publishes input/output only gets its cached rate derived at the same
-  // 0.1x ratio the frontier tier publishes. A vendor's higher long-context tier does
-  // not apply while the Codex context window stays under that tier's threshold.
-  ["{CODEX_MODEL_FRONTIER}", 5.0, 30.0, 0.5],
-  ["{CODEX_MODEL_SPEC}", 2.0, 12.0, 0.2],
-  ["{CODEX_MODEL_COLLECTOR}", 0.2, 1.2, 0.02],
+  // Published standard-tier rates, developers.openai.com/api/docs/pricing (read
+  // 2026-09-07): Astra in/cached/out 10/1/50; Sol 4/0.40/20 (promotional through
+  // 2026-11-21); Luna 0.20/0.02/1.20. Reasoning bills as output. Fast mode (2x) and
+  // Batch/Flex (0.5x) are not modelled; the >272K long-context overage never applies
+  // while the Codex context window stays under that threshold.
+  ["gpt-6-astra", 10.0, 50.0, 1.0],
+  ["gpt-5.6-sol", 4.0, 20.0, 0.4],
+  ["gpt-5.6-luna", 0.2, 1.2, 0.02],
 ];
 const CACHE_WRITE_MULT = 1.25;
 const CACHE_READ_MULT = 0.1;
