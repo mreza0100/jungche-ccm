@@ -28,7 +28,12 @@ const PRICING = [
   // lowercased model id wins, so "opus-4-1" must precede the "opus" catch-all. Omitting the
   // 4th column derives the cached rate at CACHE_READ_MULT.
   ["opus-4-1", 15.0, 75.0], // deprecated Opus 4.1/4.0-era pricing tier
-  ["opus-4-0", 15.0, 75.0],
+  // Opus 4.0's id carries NO minor digit — it is claude-opus-4-<date> — so a
+  // literal "opus-4-0" matches nothing and silently falls through to the 5/25
+  // catch-all below at a third of the real rate. Match the date instead; every
+  // published 4.0 build is claude-opus-4-20{yy}{mm}{dd}, and no current-tier id
+  // (opus-4-5/4-6/4-7/4-8, opus-5) contains "opus-4-20".
+  ["opus-4-20", 15.0, 75.0],
   ["opus", 5.0, 25.0], // current tier: opus-5, opus-4-8, opus-4-7, opus-4-6, opus-4-5
   ["sonnet-4", 3.0, 15.0], // sonnet-4-6, sonnet-4-5, sonnet-4-0
   ["sonnet-5", 2.0, 10.0], // permanent rate; the planned 2026-09-01 step to 3/15 was cancelled
