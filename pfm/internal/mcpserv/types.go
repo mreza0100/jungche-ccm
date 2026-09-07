@@ -7,9 +7,10 @@ import (
 
 // LSInput selects the fleet view returned by chat_ls.
 type LSInput struct {
-	All     bool   `json:"all,omitempty" jsonschema:"include killed, background, and uncapped rows"`
+	All     bool   `json:"all,omitempty" jsonschema:"include killed and background rows; the payload limit below still applies"`
 	Killed  bool   `json:"killed,omitempty" jsonschema:"return killed rows only"`
-	Project string `json:"project,omitempty" jsonschema:"case-insensitive project or directory filter"`
+	Project string `json:"project,omitempty" jsonschema:"case-insensitive substring filter on a row's project or directory"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"maximum rows returned, default 200 and maximum 1000; total and truncated always report the full match count"`
 }
 
 // ChatRow is one structured live or resumable fleet row.
@@ -30,9 +31,18 @@ type ChatRow struct {
 
 // LSOutput is chat_ls's structured response.
 type LSOutput struct {
-	Rows        []ChatRow `json:"rows"`
-	Count       int       `json:"count"`
-	KilledCount int       `json:"killed_count"`
+	Rows  []ChatRow `json:"rows"`
+	Count int       `json:"count"`
+	// Matched is how many rows the view and the project filter selected,
+	// before Limit cut the payload down. Count < Matched is the ONLY way a
+	// caller can tell a short answer from an empty fleet, so Truncated names
+	// it outright rather than leaving it to be inferred from two numbers.
+	Matched     int  `json:"matched"`
+	Truncated   bool `json:"truncated,omitempty"`
+	KilledCount int  `json:"killed_count"`
+	// Filter echoes the project filter that was applied, so a caller reading
+	// an empty result knows whether it filtered itself down to nothing.
+	Filter string `json:"filter,omitempty"`
 }
 
 // ResolveInput selects one chat.sh resolution namespace.
@@ -287,9 +297,13 @@ type KillInput struct {
 	Exit   bool   `json:"exit,omitempty"`
 }
 
+// SaveInput is the one verb whose "target" is a FILE, not a chat. Every other
+// target in this package addresses a chat, so the field is described here and
+// validated in chatSave: a bare word used to create a file of that name in the
+// server's working directory and append a whole transcript to it.
 type SaveInput struct {
-	Target     string `json:"target"`
-	Transcript string `json:"transcript,omitempty"`
+	Target     string `json:"target" jsonschema:"FILE PATH to append the snapshot to (not a chat) — must contain a directory separator, e.g. ./notes/session.md"`
+	Transcript string `json:"transcript,omitempty" jsonschema:"path of the transcript .jsonl to dump; defaults to the calling chat's own transcript"`
 }
 
 type BranchInput struct {

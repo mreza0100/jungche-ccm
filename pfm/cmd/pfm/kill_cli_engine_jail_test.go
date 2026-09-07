@@ -81,6 +81,17 @@ func TestKillCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 		withFD:    true,
 	})
 
+	// F1 regression: runChatKill now resolves EVERY target — uuid or name —
+	// through resolveChat first, and a resolved row that is Live with a
+	// non-empty Socket and Pane is closed through runResolvedChatKill(...,
+	// true, ...), not merely tombstoned. The old code short-circuited
+	// resolution entirely for a well-formed uuid target (both agentID and
+	// codexID are uuids) and only ever passed --exit when the CLI caller
+	// asked for it — never here — so it answered a flat "killed <id>" while
+	// the pane and its process kept running. The new output names the
+	// mechanism precisely so that ambiguity cannot recur: "closing pane %N on
+	// socket S" is proof the resolved chat's real socket and pane reached
+	// kill.Request, not just its id.
 	for _, id := range []string{agentID, codexID} {
 		var stdout, stderr bytes.Buffer
 		if code := run([]string{"chat", "kill", id}, &stdout, &stderr); code != 0 {
@@ -89,8 +100,13 @@ func TestKillCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 				id, code, stdout.String(), stderr.String(),
 			)
 		}
-		if got, want := stdout.String(), "killed "+id+"\n"; got != want {
-			t.Fatalf("kill %s stdout=%q, want %q", id, got, want)
+		prefix := "killed " + id + "\tclosing pane "
+		suffix := " on socket " + socket + "\n"
+		if !strings.HasPrefix(stdout.String(), prefix) || !strings.HasSuffix(stdout.String(), suffix) {
+			t.Fatalf(
+				"kill %s stdout=%q, want prefix %q and suffix %q (the resolved pane and socket named)",
+				id, stdout.String(), prefix, suffix,
+			)
 		}
 	}
 
@@ -114,7 +130,7 @@ func TestKillCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 			selfErr.String(),
 		)
 	}
-	if got, want := selfOut.String(), "killed "+codexID+"\n"; got != want {
+	if got, want := selfOut.String(), "killed "+codexID+"\tde-listed only, no live pane closed\n"; got != want {
 		t.Fatalf("Codex app-server kill self stdout=%q, want %q", got, want)
 	}
 

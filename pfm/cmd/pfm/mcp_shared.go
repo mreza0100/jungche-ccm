@@ -53,21 +53,42 @@ func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 			} else if input.Killed {
 				view = compose.KilledView
 			}
+			limit := input.Limit
+			if limit == 0 {
+				limit = defaultMCPListLimit
+			}
+			if limit < 1 || limit > maxMCPListLimit {
+				return mcpserv.LSOutput{}, fmt.Errorf(
+					"limit must be between 1 and %d", maxMCPListLimit,
+				)
+			}
+			// Query is the interactive picker's search box, NOT a filter: it
+			// only seeds ui.Snapshot.InitialQuery. Passing the caller's
+			// project into it returned the whole fleet while the schema
+			// promised a filter, so the filter is applied here, over the rows.
 			scan, err := scanFleet(ctx, database, scanRequest{
-				View: view, Query: input.Project, Runtime: &runtime,
+				View: view, Runtime: &runtime,
 			}, os.Stderr)
 			if err != nil {
 				return mcpserv.LSOutput{}, err
 			}
+			filter := strings.ToLower(strings.TrimSpace(input.Project))
 			rows := make([]mcpserv.ChatRow, 0, len(scan.Output.Rows))
+			matched := 0
+			truncated := false
 			for _, row := range scan.Output.Rows {
 				if excludedFromMCPList(row.Kind) {
 					continue
 				}
-				state := "resumable"
-				if isLiveKind(row.Kind) {
-					state = "idle"
+				if filter != "" && !matchesProjectFilter(row, filter) {
+					continue
 				}
+				matched++
+				if len(rows) >= limit {
+					truncated = true
+					continue
+				}
+				state := mcpRowState(row)
 				session := row.SessionName
 				if session == "" {
 					session = row.ID
@@ -84,7 +105,9 @@ func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 				})
 			}
 			return mcpserv.LSOutput{
-				Rows: rows, Count: len(rows), KilledCount: scan.Output.KilledCount,
+				Rows: rows, Count: len(rows), Matched: matched,
+				Truncated: truncated, KilledCount: scan.Output.KilledCount,
+				Filter: input.Project,
 			}, nil
 		},
 		Find: func(ctx context.Context, input mcpserv.FindInput) (mcpserv.FindOutput, error) {
@@ -171,6 +194,48 @@ func boundMCPTurns(entries []transcript.Entry, maxBytes int) ([]mcpserv.Turn, in
 	return kept, used, truncated
 }
 
+// defaultMCPListLimit keeps a full killed history (626 rows and growing on
+// this host) from blowing the caller's tool-result budget in one answer;
+// maxMCPListLimit is the ceiling an explicit caller may raise it to.
+const (
+	defaultMCPListLimit = 200
+	maxMCPListLimit     = 1000
+)
+
+// excludedFromMCPList drops only the picker's "start a new chat" placeholder
+// rows. A Booting row is a REAL chat that is still coming up, and is listed
+// with state "booting".
 func excludedFromMCPList(kind compose.Kind) bool {
-	return kind == compose.NewClaude || kind == compose.NewCodex || kind == compose.NewOpencode || kind == compose.Booting
+	return kind == compose.NewClaude || kind == compose.NewCodex || kind == compose.NewOpencode
+}
+
+// mcpRowState is the one place a chat_ls row's state is decided.
+//
+// The killed-but-live arm is the honesty half of the kill fix: a kill that
+// closed nothing still wrote its tombstone, so a row came back asserting BOTH
+// things at once — killed:true beside state "idle" and kind "live-claude" —
+// and no caller could tell a real kill from a de-listing. A contradiction is
+// reported as a contradiction, never smoothed into one of its two halves.
+func mcpRowState(row compose.Row) string {
+	switch {
+	case row.Killed && isLiveKind(row.Kind):
+		return "killed-but-live"
+	case row.Kind == compose.Booting:
+		// A booting chat HAS a socket and already answers chat_inject by
+		// name. Excluding it made chat_ls report a chat that exists as
+		// simply absent for its first minute.
+		return "booting"
+	case isLiveKind(row.Kind):
+		return "idle"
+	default:
+		return "resumable"
+	}
+}
+
+// matchesProjectFilter is the chat_ls project filter: a case-insensitive
+// substring of either the row's project label or its full directory, so both
+// "professor" and "/home/x/.professor" select the same rows.
+func matchesProjectFilter(row compose.Row, lowered string) bool {
+	return strings.Contains(strings.ToLower(row.Project), lowered) ||
+		strings.Contains(strings.ToLower(row.CWD), lowered)
 }

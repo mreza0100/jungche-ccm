@@ -319,7 +319,17 @@ func openID(
 		return 1
 	}
 	defer database.Close()
-	scan, err := scanFleet(ctx, database, scanRequest{View: compose.AllView, Runtime: &runtime}, stderr)
+	// READ-ONLY: open needs to FIND one row, never to persist a gather pass.
+	// A writing scan here wedges whenever the caller already holds the fleet
+	// store open in the same process — which is exactly what made chat_open
+	// hang forever when it was served by the `pfm mcp serve` daemon while the
+	// identical call over a one-shot CLI returned in seconds.
+	scan, err := scanFleet(
+		ctx,
+		database,
+		scanRequest{View: compose.AllView, ReadOnly: true, Runtime: &runtime},
+		stderr,
+	)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1

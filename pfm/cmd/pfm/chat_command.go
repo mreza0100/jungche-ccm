@@ -90,18 +90,47 @@ func runChatKill(args []string, stdout, stderr io.Writer, runtimes ...commandRun
 	}
 	target := targets[0]
 	id := target
-	if !chatUUIDPattern.MatchString(target) {
-		chat, found, err := resolveChat(context.Background(), target, io.Discard, runtimes...)
-		if err != nil {
+	// Resolving FIRST is what makes a named kill a real kill: the resolved row
+	// carries the live socket and pane, and dropping them is why this command
+	// used to answer "killed" for a chat whose engine was still running. A
+	// target that resolves to nothing still reaches runKill below, which is
+	// the only path that can tombstone an id the composer no longer lists.
+	chat, found, err := resolveChat(context.Background(), target, io.Discard, runtimes...)
+	if err != nil {
+		if !chatUUIDPattern.MatchString(target) {
 			fmt.Fprintf(stderr, "pfm chat kill: %v\n", err)
 			return 1
 		}
-		if !found {
-			fmt.Fprintf(stdout, "%s\tnot-found\n", target)
-			fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", target)
-			return codeUnknownChat
-		}
+		// An id needs no roster to be tombstoned, so a resolve failure must
+		// not swallow a kill that never depended on it — but it is reported,
+		// because the kill that follows can only de-list.
+		fmt.Fprintf(
+			stderr,
+			"pfm chat kill: could not resolve %s to a live pane (%v); recording the kill without closing it\n",
+			target, err,
+		)
+		found = false
+	}
+	switch {
+	case found:
 		id = chat.ID
+		if chat.Live && chat.Socket != "" && chat.Pane != "" {
+			return runResolvedChatKill(chat, true, stdout, stderr, runtimes...)
+		}
+		if chat.Live {
+			// Live with no address to close: say so instead of letting the
+			// tombstone read like a termination.
+			fmt.Fprintf(
+				stderr,
+				"pfm chat kill: %s is live but carries no tmux address "+
+					"(socket %q pane %q) — recording the kill without closing it\n",
+				id, chat.Socket, chat.Pane,
+			)
+		}
+	case !chatUUIDPattern.MatchString(target):
+		fmt.Fprintf(stdout, "%s\tnot-found\n", target)
+		fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", target)
+		return codeUnknownChat
 	}
 	killArgs := make([]string, 0, 2)
 	if *exit {
@@ -141,7 +170,18 @@ func runResolvedChatKill(
 		fmt.Fprintf(stderr, "pfm chat kill: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "killed %s\n", target.ID)
+	// Name the mechanism: "killed" alone cannot tell a closed pane from a row
+	// that was merely de-listed, and that ambiguity is the whole defect this
+	// path exists to end.
+	if exit && target.SocketName != "" && target.PaneID != "" {
+		fmt.Fprintf(
+			stdout,
+			"killed %s\tclosing pane %s on socket %s\n",
+			target.ID, target.PaneID, target.SocketName,
+		)
+		return 0
+	}
+	fmt.Fprintf(stdout, "killed %s\tde-listed only, no live pane closed\n", target.ID)
 	return 0
 }
 

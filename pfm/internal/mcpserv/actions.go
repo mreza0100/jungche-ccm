@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"hostops/pfm/internal/headless"
@@ -199,15 +200,46 @@ func (service *Service) chatUnkill(ctx context.Context, request *mcp.CallToolReq
 	return service.cliTargetAction(ctx, "unkill", target)
 }
 
+// chatReload resolves the target to its tmux socket and reloads THAT socket.
+// `pfm chat reload` takes no positional target on purpose — a bare word there
+// would be ambiguous with the account number — so passing one straight through
+// made this verb reject every input it was ever given
+// ("%q is not a reload argument"). The socket is the address reload actually
+// understands.
 func (service *Service) chatReload(ctx context.Context, request *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
 	target, err := service.cliTargetForRequest(ctx, request, input.Target)
 	if err != nil {
 		return nil, ActionOutput{}, err
 	}
-	return service.cliTargetAction(ctx, "reload", target)
+	resolved, code, detail, err := service.backend.injector.Resolve(ctx, target)
+	if err != nil {
+		return nil, ActionOutput{}, fmt.Errorf("resolve reload target %q: %w", target, err)
+	}
+	if code != 0 {
+		return nil, ActionOutput{}, fmt.Errorf(
+			"resolve reload target %q failed with code %d: %s", target, code, detail,
+		)
+	}
+	socket := filepath.Base(resolved.SocketPath)
+	if resolved.SocketPath == "" || socket == "." || socket == string(filepath.Separator) {
+		return nil, ActionOutput{}, fmt.Errorf(
+			"reload target %q resolved to no tmux socket — only a LIVE chat can be reloaded", target,
+		)
+	}
+	return service.cliAction(ctx, "chat", "reload", "--sock", socket)
 }
 
 func (service *Service) chatSave(ctx context.Context, request *mcp.CallToolRequest, input SaveInput) (*mcp.CallToolResult, ActionOutput, error) {
+	// A bare word here is almost always a chat name reached for by habit, and
+	// obeying it writes a transcript into a file of that name beside whatever
+	// directory the server happens to sit in. Demand a path shape instead.
+	if !strings.ContainsRune(input.Target, filepath.Separator) {
+		return nil, ActionOutput{}, fmt.Errorf(
+			"chat_save target %q is not a file path: this verb appends a transcript to a FILE, "+
+				"not to a chat — pass a path such as ./%s.md",
+			input.Target, strings.TrimSpace(input.Target),
+		)
+	}
 	target, err := service.cliTargetForRequest(ctx, request, input.Target)
 	if err != nil {
 		return nil, ActionOutput{}, err
