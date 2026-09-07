@@ -68,14 +68,14 @@ RND's value comes from stressing solutions against reality, not from confirming 
 2. **Stress-test** — the happy path passing starts evaluation. Feed the adversarial inputs, boundary values, concurrent scenarios, malformed data. Surviving earns confidence; skipping it earns none, and a break is the most valuable data point in the loop.
 3. **Evaluate** — apply the plan's success criterion explicitly: "achieves X but not Y. Score: partial / full / fail", naming which adversarial inputs it survived and which broke it.
 4. **Track best** — compare against the current best and update. Satisfying the goal ≠ best result; the delivery is the best across all approaches, never the first that passes.
-5. **Adapt the remaining plan** — the most important step. A later approach revealed as a dead end → remove it. A better variation → swap the next one. Partial success suggesting a combination → add it. Total surprise → reorder. Failure → run the 360° sweep below and let the angles inform the next approach. Show the user the updated list when it changed significantly.
+5. **Adapt the remaining plan** — the most important step. A later approach revealed as a dead end → remove it. A better variation → swap the next one. Partial success suggesting a combination → add it. Total surprise → reorder. Failure → run the blind-spot sweep below and let the angles inform the next approach. Show the user the updated list when it changed significantly.
 6. **Early exit** when the result fully satisfies the goal, survives adversarial testing, and beats anything a remaining approach could reach; when every remaining approach is a variation of a failing pattern; or when the user signals "good enough".
 
-### 360° integration — blind-spot sweep on failure
+### Blind-spot sweep on failure
 
 An approach that fails or scores partial means a blind spot; sweep before iterating — mandatory after a failure, optional after a pass. Spawn it in a clean context (no prior RND findings) to avoid confirmation bias:
 
-`Agent(general-purpose)`: "Read `.claude/commands/p/360.md` and execute the 360° protocol. Subject: {one sentence on what the failed approach was trying to achieve}. Domain: test. Output the full 360° angle list grouped by dimension."
+`Agent(general-purpose)`: "Enumerate this attempt's blind spots across the failure dimensions — inputs and boundaries, state and concurrency, failure and recovery, scale and performance, security and trust, integration and contracts, observability, and the assumptions nobody stated. Subject: {one sentence on what the failed approach was trying to achieve}. Return the angle list grouped by dimension and nothing else — no analysis of your own."
 
 Feed the returned angles into the next iteration.
 
@@ -107,7 +107,7 @@ A prompt-engineering RND usually finds the failing instruction already IN the pr
 
 ## Phase 3 — DELIVER
 
-When the loop ends, report under the heading `## RND Result`: the goal stated precisely; the winning approach; the validated fix written to the sandbox's `PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here, landed by the Professor (or `/jc` / `/wave:builder`) only after user ratification; why that approach beat the others; the adversarial and large inputs it survived (e.g. a 500-segment document, malformed nested JSON, an empty array input, concurrent write state); every approach tried with its outcome and what it taught; approaches planned then discarded, with the reason; which failures triggered 360° sweeps and what blind spots those revealed.
+When the loop ends, report under the heading `## RND Result`: the goal stated precisely; the winning approach; the validated fix written to the sandbox's `PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here, landed by the Professor (or `/jc` / `/wave:builder`) only after user ratification; why that approach beat the others; the adversarial and large inputs it survived (e.g. a 500-segment document, malformed nested JSON, an empty array input, concurrent write state); every approach tried with its outcome and what it taught; approaches planned then discarded, with the reason; which failures triggered blind-spot sweeps and what blind spots those revealed.
 
 If the loop exhausted without full satisfaction, report under `## RND Result — Best Effort`: the goal, the closest result reached, the gap against what the goal required, and one concrete next step — a different goal framing, a new approach category, or the user decision needed.
 

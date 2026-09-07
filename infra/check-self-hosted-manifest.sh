@@ -76,6 +76,11 @@ repo_git ls-files | while IFS= read -r path; do
     .claude/*|.codex/*|.opencode/*|.gitignore|AGENTS.md|CLAUDE.md|pfm/AGENTS.md|pfm/CLAUDE.md|docs/commands/pfm/references/*)
       if [[ -f "$ROOT/$path" ]]; then
         printf '%s\n' "$path"
+      elif [[ ! -e "$ROOT/$path" ]]; then
+        # Tracked but gone from disk: a deletion awaiting its commit, not an
+        # unhashable file type. Both are excluded from coverage and neither is
+        # silent, but they are different facts and never print the same line.
+        echo "self-hosted-manifest: TRACKED-DELETED $path (tracked but absent from disk — a deletion awaiting its commit; excluded from file_hashes coverage)" >&2
       else
         echo "self-hosted-manifest: NOT-HASHABLE $path (tracked under the installed surface but not a regular file — excluded from file_hashes coverage, verified by nothing)" >&2
       fi
@@ -96,6 +101,11 @@ for category in agents commands scripts output_styles; do
     *) source_dir="$category" ;;
   esac
   repo_git ls-files ".claude/$source_dir" | while IFS= read -r path; do
+    # A path tracked but absent from disk is a deletion awaiting its commit —
+    # it is NOT installed, so it must not be demanded of the manifest. The
+    # file_hashes loop above already printed TRACKED-DELETED for it by name, so
+    # this exclusion is announced once rather than twice; it is never silent.
+    [[ -e "$ROOT/$path" ]] || continue
     relative="${path#".claude/$source_dir/"}"
     case "$category" in
       scripts) printf '%s\n' "$relative" ;;

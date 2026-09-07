@@ -12,8 +12,6 @@ argument-hint: [scope]
 
 Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/wave:walker`.
 
-Spawn a clean-context 360 sweep — a `general-purpose` agent reading `.claude/commands/p/360.md`, domain `test`, subject = the audit scope — in parallel with the scan.
-
 **This codebase is largely AI-authored — weight the checks accordingly.** Each category marks the LLM-characteristic failure it catches.
 
 Each category names the linter rules that already cover part of its ground so the audit spends its budget elsewhere. Read the severity and the current rule set from the config itself — each project's lint config (e.g. `eslint.config.mjs` / `.eslintrc.json` for a TS project, `[tool.ruff.lint]` in a Python project's `pyproject.toml`) and each `tsconfig.json`'s `noUnusedLocals` / `noUnusedParameters`.

@@ -22,8 +22,6 @@ The question: is the stored output faithful to the source input, given the code 
 - **AI-generated data** (what came OUT) — read from the **store** (the pipeline's output tables/collections). Never from a seed JSON: the seed is a frozen export that does not reflect the current chains, so auditing it tests history, not the code.
 - **Pipeline code + prompts/knowledge** (the contract) — the chain code (deterministic guards) plus its prompt under the knowledge/prompt registry.
 
-Spawn a clean-context 360 sweep — a `general-purpose` agent reading `.claude/commands/p/360.md`, domain `test`, subject = the audited channel — in parallel with the audit; fold its angle list into the per-unit checks (the same blind-spot backstop `audit/code-hygiene.md` and `audit/security.md` carry).
-
 The orchestrator never inline-audits: accumulated context biases the verdict, and an inline pass has missed real failures before.
 
 ---

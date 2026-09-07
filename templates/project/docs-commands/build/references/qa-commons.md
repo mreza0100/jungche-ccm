@@ -2,9 +2,9 @@
 
 Shared by the per-roster QA protocols (`{project}/.claude/agents/qa.md`), spawned as `qa-{project}` by `/wave:builder`, `/wave:orchestrator`, and `/wave:live`. Each child `qa.md` keeps only its project-specific delta (paths, commands, compliance checks) and cites this card for the rules below.
 
-## 360° sweep
+## Diff-driven attack map
 
-Before writing any tests, spawn a separate agent for the 360° sweep — it must run with a clean context to avoid bias. Use `Agent(subagent_type: "general-purpose")` with a prompt containing ONLY: the subject (one sentence describing the change under test), the domain (`test`), and an instruction to read `.claude/commands/p/360.md` and execute the protocol. Do NOT include any of your own analysis or findings in the prompt. Use the returned angle list to guide which adversarial tests to write.
+Before writing any tests, take the change delta — worktree: `git diff main...HEAD` plus uncommitted; on main: the landed commit range or the uncommitted tree — and walk it hunk by hunk. Every changed hunk gets one line in the map: an attack hypothesis (the real product traffic/state that could break THIS hunk, and the wrong behavior that results) or an explicit no-attack justification. The map is closed-world — a hunk absent from it is uncovered, never implicitly safe. Attacks drive real product frames and states, never synthetic inputs the product cannot send; the map decides which adversarial tests get written.
 
 ## Test economy
 

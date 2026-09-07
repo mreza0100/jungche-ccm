@@ -60,9 +60,9 @@ Relative paths to the infra project are one level up in POST-MERGE (on main), de
 
 Read the brief-named doc dir. Read dev code + tests + architecture doc. Identify edge case gaps.
 
-## Step 3.5: 360° sweep (test domain)
+## Step 3.5: Diff-driven attack map
 
-Follow `docs/commands/build/references/qa-commons.md` § 360° sweep.
+Follow `docs/commands/build/references/qa-commons.md` § Diff-driven attack map.
 
 ## Step 4: Write adversarial integration tests
 

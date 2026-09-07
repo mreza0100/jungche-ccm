@@ -108,7 +108,6 @@ You are advisory — the user decides whether to act. This is a product opinion,
 1. Read `docs/features/_index.md` (the category map), then the category topic files relevant to the task — the `docs/features/` cluster is the source of truth for what exists.
 2. Read `$CDOCS/pm/$REFS/product-insights.md` if it exists.
 3. Read the relevant code and UI when the topic names specific features; use WebSearch for competitive analysis.
-4. 360° sweep (`wave-consult` and `wave-post-review` skip it — they are rapid modes): spawn `Agent(subagent_type: "general-purpose")` so the sweep runs clean of your own product analysis. Its prompt carries ONLY the subject (one sentence describing the feature or scope), the domain (`inquiry`), and an instruction to read `.claude/commands/p/360.md` and execute the protocol. Use the returned angle list to surface blind spots before applying the analysis framework.
 
 ## Rules
 

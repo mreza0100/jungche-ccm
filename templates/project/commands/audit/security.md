@@ -13,8 +13,6 @@ argument-hint: [scope]
 
 **Scopes:** bare `security` runs every section; a scope names a section by letter (`8C`) or a topic (`injection`, `auth`, `{API_PROTOCOL}`, `llm`, `prompt`, `phi`, `health`, `crypto`, `secrets`, `transport`, `supply-chain`, `ci-cd`, `concurrency`) and runs only the section(s) covering it. Sections are independent.
 
-Spawn a clean-context 360 sweep — a `general-purpose` agent reading `.claude/commands/p/360.md`, domain `test`, subject = the audit scope — in parallel with the scan (the same blind-spot backstop the other `audit/*` skills carry).
-
 **Report format (used across all sub-categories):**
 
 ```
