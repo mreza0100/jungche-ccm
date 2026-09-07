@@ -175,23 +175,38 @@ act_templates() { # the shipped product: mechanical gates, no build
     install|build|typecheck) info "templates: no $action step (markdown + shell)" ;;
     verify|test|all)
       head_ "templates — leak gate"
-      local changed
-      changed=$(repo_git status --porcelain -- templates scripts README.md INSTALL.md CHANGELOG.md releases \
-                | awk '{print $NF}' | grep -v '/$' || true)
-      if [[ -z "$changed" ]]; then
-        info "no changed templates/public files — scanning the whole tracked templates tree instead"
-        # shellcheck disable=SC2046
-        if repo_git ls-files templates README.md INSTALL.md | xargs scripts/leak-check.sh --files; then
-          ok "leak-check clean (full tracked scan)"
-        else
-          fail_step "leak-check FAILED — brand / PII / machine-path string in a public file"
-        fi
-      else
-        # shellcheck disable=SC2086
-        if scripts/leak-check.sh --files $changed; then
-          ok "leak-check clean ($(wc -w <<<"$changed") changed file(s))"
+      # EVERY tracked file in this repo is published, so the changed set is the
+      # whole working tree — not a `templates scripts README INSTALL CHANGELOG
+      # releases` pathspec. Under that pathspec a change touching docs/,
+      # .claude/, .codex/, .professor/ or infra/ printed "leak-check clean (N
+      # changed file(s))" having scanned none of it, and the count made the
+      # claim look earned. Deleted paths are dropped and COUNTED here rather
+      # than handed to leak-check, whose --files mode correctly refuses to call
+      # a list of non-files clean.
+      local changed present gone
+      changed=$(repo_git status --porcelain | awk '{print $NF}' | grep -v '/$' || true)
+      present=()
+      gone=0
+      local candidate
+      while IFS= read -r candidate; do
+        [[ -z "$candidate" ]] && continue
+        if [[ -f "$candidate" ]]; then present+=("$candidate"); else gone=$((gone + 1)); fi
+      done <<<"$changed"
+      if (( ${#present[@]} > 0 )); then
+        if scripts/leak-check.sh --files "${present[@]}"; then
+          ok "leak-check clean (${#present[@]} changed file(s) scanned, ${gone} deleted path(s) skipped)"
         else
           fail_step "leak-check FAILED — brand / PII / machine-path string in a changed public file"
+        fi
+      elif (( gone > 0 )); then
+        ok "leak-check: every one of the ${gone} changed path(s) is a deletion — nothing to scan, nothing could leak"
+      else
+        info "working tree clean — scanning the whole tracked templates tree instead"
+        # shellcheck disable=SC2046
+        if repo_git ls-files templates README.md INSTALL.md | xargs scripts/leak-check.sh --files; then
+          ok "leak-check clean (full tracked scan of templates/ + README + INSTALL — NOT the whole repo)"
+        else
+          fail_step "leak-check FAILED — brand / PII / machine-path string in a public file"
         fi
       fi
 

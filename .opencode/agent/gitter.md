@@ -106,7 +106,7 @@ A killed or rejected tool call mid-phase does NOT roll back what already ran —
 
 1. `git add <explicit specific paths>` — only the files the caller named. NEVER `-A` / `.` / `-u`. **NEVER `git restore --staged .`** — unstaging "everything first" clobbers a concurrent session's staged set.
 2. `git status --porcelain` — verify your paths are staged and nothing else of yours is.
-3. **`git commit -- <the same explicit paths>` (HEREDOC message) — the pathspec is MANDATORY and it is the whole defense.** A bare `git commit` ships whatever is in the index at that instant, so a concurrent write lands under your message: a commit that lies about its own contents, which `git log` can never untangle later.
+3. **`git commit -- <the same explicit paths>` (HEREDOC message) — the pathspec is MANDATORY and it is the whole defense.** Options and the message flag go BEFORE the `--` (`git commit -F - -- <paths>`): everything after `--` is a pathspec, so an `-m` or `-F` placed there is read as a filename and the commit aborts. A bare `git commit` ships whatever is in the index at that instant, so a concurrent write lands under your message: a commit that lies about its own contents, which `git log` can never untangle later.
 4. **An index-only change cannot ride a pathspec commit.** `git commit -- <paths>` takes the WORKING TREE for those paths, so a staged `git rm --cached` of a file still on disk is silently re-added and the commit contradicts its own message. Stage such a change by itself, verify it with `git diff --cached --name-status`, and commit it from the index with no pathspec.
 5. `git show --stat <sha>` — verify the commit holds EXACTLY the intended paths. Any extra path landed → surface it to the caller immediately as a scope error.
 
