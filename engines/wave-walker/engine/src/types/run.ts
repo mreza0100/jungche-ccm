@@ -207,7 +207,7 @@ export interface DebugRecord {
     verdictContradictions: { file: string; clean: string[]; flagged: string[] }[];
     contradictionScan: { filesCompared: number; uncomparableThreads: string[] };
   };
-  tokenAttribution: null; // NAMED GAP — not available at the engine layer (agent() returns no usage metadata); use the p:tokens skill post-hoc
+  tokenAttribution: null; // NAMED GAP — not available at the engine layer (agent() returns no usage metadata); use the /tokens command post-hoc
 }
 
 export interface WalkResult {

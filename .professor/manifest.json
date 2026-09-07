@@ -3,7 +3,7 @@
   "installed_from": {
     "mode": "self-hosted",
     "repo": "mreza0100/professor",
-    "version": "0.69.1"
+    "version": "0.70.0"
   },
   "profile": "minimal",
   "answers": {
@@ -51,7 +51,7 @@
       "Pragmatics & linguistics",
       "Cognitive load and attention"
     ],
-    "intersection_lens": "prompt engineering x epistemology of evidence \u2014 the judge must never be the thing being judged",
+    "intersection_lens": "prompt engineering x epistemology of evidence — the judge must never be the thing being judged",
     "failure_modes_watched": [
       "the honest-looking absence (a check that reports its own broken state as a clean result)",
       "drift between .claude/** and its templates/** twin",
@@ -65,8 +65,8 @@
       "renamed": false
     },
     "sacred_ground": [
-      "the leak line \u2014 no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
-      "the publication line \u2014 push/tag/release only on an explicit in-turn request"
+      "the leak line — no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
+      "the publication line — push/tag/release only on an explicit in-turn request"
     ],
     "tier_b_roles": [],
     "codex": true,
@@ -85,6 +85,7 @@
       "git",
       "p:360",
       "pfm",
+      "pfm:refresh",
       "pfm:release",
       "quality:doc",
       "quality:prompt",
@@ -105,7 +106,7 @@
     ],
     "skills_source_fetched": {},
     "deliberately_absent": {
-      "/jc": "no separate hotfix route needed without a worktree pipeline \u2014 work lands on main under /dev + gitter",
+      "/jc": "no separate hotfix route needed without a worktree pipeline — work lands on main under /dev + gitter",
       "format-md.sh + notify.sh + km-guard.sh + filter-test-output.sh": "not wired: prettier is absent on this host and an npx-fetching hook is a silent network call mid-turn",
       "docs/agents/ cluster + /documenter": "no permanent cross-project doc tree in a template repo"
     }
@@ -121,7 +122,8 @@
     ".claude/commands/git.md": "c0d2b20ea0772a93ddbd79305a200fe8c703336feff89886963d3480a6a6b52f",
     ".claude/commands/p/360.md": "151b673eb9bc12124125277763fbeeaa1ea655ae42d09d07482a12c465f667c3",
     ".claude/commands/pfm.md": "92cc310bb449029dc32f0131a3e5dcc689d396635f0a85d7967e366bb3aac970",
-    ".claude/commands/pfm/release.md": "0edf509402fd0ccd3c45faaaf375ced9fb83d25da59160878c3ac433297b7098",
+    ".claude/commands/pfm/refresh.md": "9c4b32f27bef4ab865e936916accfc9c0a24bcee339892e2a3a0c95ae34005fb",
+    ".claude/commands/pfm/release.md": "744422871b08c9af596718fe642720cf4074833fda628beeed15249552111a00",
     ".claude/commands/quality/doc.md": "32318fbb1c56f93634d6a14933e555a580b6443002648f024aeef06a8fdba1e6",
     ".claude/commands/quality/prompt.md": "84243757907fca2b39c63379c087540e1e24424ed59c2029537cb798ac9b3b69",
     ".claude/commands/wave/ccc.md": "ac2836af7745dc278a662fa02e0374df2d9afc7ffdd05e77d8a932de077f892b",
@@ -130,7 +132,7 @@
     ".claude/commands/wave/walker-invariants.md": "1a844bd900040af21cd1e0e3181410d8ffa81a9c471a6ac98835a82ab4bb9c0b",
     ".claude/commands/wave/walker.md": "cc1713bcce44d830fbba6374218943969faa06532e687323fd08b9a7b4836ccf",
     ".claude/scripts/build-opencode.mjs": "bf733565c5b02127fb361bcfcd938b35b34c36b107f09419e9bc0eec92a6db09",
-    ".claude/scripts/codex-sync.sh": "05ba9af95d3d68b5005fe63d82fd6aa517afbf03eb5e8e6cc827d50ed93f92dd",
+    ".claude/scripts/codex-sync.sh": "a9179abfe7b73717b550e54387e76bc316de4de0acaa2b8a01c6db26faaadbe3",
     ".claude/scripts/dev.sh": "ff4cf6668da1063b53f0b6d5d9605a5e55ba49060529ee99cc21977e221d440c",
     ".claude/scripts/explore-deny.sh": "966d38099cd592963ef54b54fb7544d4d44437fd4e36faae0846219ab57b26b6",
     ".claude/scripts/guard-stamp.sh": "45e82d48d90e54906b090518d99a6085a83314380960885b2f608aa421e17e9b",
@@ -145,7 +147,8 @@
     ".codex/skills/dev/SKILL.md": "67ddce017e790996e3621e854785df8b08bbd1417ac3659cf9be40b3b64970cb",
     ".codex/skills/git/SKILL.md": "086b360dbadf9983d6ad0bca89368e3f777d5b77d382ba5e17982216c963d90e",
     ".codex/skills/p-360/SKILL.md": "668962e0d1ae5cec9ea0d1355e7d2212be730243786a36122f687286b44cc4db",
-    ".codex/skills/pfm-release/SKILL.md": "34a75ef1f2f27f48311386b56f2c5268aa2ea6db23d2932a46286a02de18c73c",
+    ".codex/skills/pfm-refresh/SKILL.md": "f165d86c0a1378771eb15f971823e5dc21eb21ae68e9c27b7c3eff7d1feb05f5",
+    ".codex/skills/pfm-release/SKILL.md": "d968390616b0b5f1b75a1518db680a13f00d9c117d5fac3ae837a59ec44b4891",
     ".codex/skills/pfm/SKILL.md": "459415192086eb700d46e912a45920b577df1cb9b984cd6247a19d3102577193",
     ".codex/skills/quality-doc/SKILL.md": "f81757875ad23f00fdb17de3a5656e9aef43eda1d8e1c3267982c444fd3904bf",
     ".codex/skills/quality-prompt/SKILL.md": "52483e66be584709eecd3cf82fce16ddd20037fbbfdd2c6051aeb774532b2373",
@@ -163,7 +166,8 @@
     ".opencode/command/dev.md": "ed84f393ae750e8a5d30e3d6a8bae750b7ef0c5dadbf023a625c690916d129b8",
     ".opencode/command/git.md": "d5e3a219f154b563553e01de81d061f20f9e5d6415829a5add865c0fc70d2f56",
     ".opencode/command/p-360.md": "30d66fb919dbfe4eb51f7e8331eebaefa90dffa58292bcd87e8a83e7feb1d6b7",
-    ".opencode/command/pfm-release.md": "93c6263d6f3b0bb9aa6beb3ab6c0a84b56b78f531ad2305f4f0b8c38ea86df09",
+    ".opencode/command/pfm-refresh.md": "fa60225d67a88ee755b8a7f0442b6fe75173533e12341b6a5b0da60191cdaff5",
+    ".opencode/command/pfm-release.md": "2f10e2f101fc2925d97bba5d77c21a7b931ab852eee3e8d67e7335a79c1cfaf3",
     ".opencode/command/pfm.md": "94cb3571f4a89ccc0f23ff7718c742989bef27488a95b8a924eb53d2764a09b2",
     ".opencode/command/quality-doc.md": "5104d559152689680f7756d7ff56291b9878eaa9f1163e2932e1fd6b104058d2",
     ".opencode/command/quality-prompt.md": "78e1a30e34f6fcfca4e57bf42eef22596e59fcb811172574d6ef627a1974ae83",

@@ -55,10 +55,21 @@ elif ! diff -u "$TMP/want-roster" "$TMP/got-roster"; then
   fail "answers.roster does not match the development roster"
 fi
 
+# Coverage is the set of tracked files under the installed surface that can
+# actually BE hashed. A tracked path that is not a regular file — a symlink to
+# a directory, say — cannot be sha256'd and would make this gate unsatisfiable:
+# the coverage check would demand it while the verification loop's own -f test
+# rejects it. Such a path is excluded and NAMED on stderr, never dropped in
+# silence: "covered by nothing" and "excluded because unhashable" are different
+# facts, and only one of them is safe to leave unsaid.
 repo_git ls-files | while IFS= read -r path; do
   case "$path" in
     .claude/*|.codex/*|.opencode/*|.gitignore|AGENTS.md|CLAUDE.md|pfm/AGENTS.md|pfm/CLAUDE.md|docs/commands/pfm/references/*)
-      printf '%s\n' "$path"
+      if [[ -f "$ROOT/$path" ]]; then
+        printf '%s\n' "$path"
+      else
+        echo "self-hosted-manifest: NOT-HASHABLE $path (tracked under the installed surface but not a regular file — excluded from file_hashes coverage, verified by nothing)" >&2
+      fi
       ;;
   esac
 done | LC_ALL=C sort -u >"$TMP/want-files"

@@ -12,7 +12,12 @@ set -euo pipefail
 #          clears the flag silently, failure BLOCKS turn end (exit 2, reason on
 #          stderr) so a broken mirror is fixed, never silently shipped. Respects
 #          stop_hook_active — a block never loops; on a suppressed block the flag
-#          stays set so the next turn retries.
+#          stays set so the next turn retries. The block names WHICH of the four
+#          stages failed and prints only that stage's output: build failure and
+#          check failure are different defects with different repairs, and one
+#          message covering both reports a compile broken while the writer says
+#          PASS. When this script is itself broken, the stage name is what says
+#          so — a bare "a mirror failed" is indistinguishable from any of them.
 # Coverage (declared): sees Edit/Write TOOL calls only. A Bash-driven write (sed,
 # redirect) to a Claude source does NOT set the flag — `pfm codex check` and
 # `build-opencode.mjs check` in the pfm `structure` audit scope remain the
@@ -59,9 +64,20 @@ case "$MODE" in
     fi
     STOP_ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || echo false)
     [[ "$STOP_ACTIVE" == "true" ]] && exit 0
-    printf 'codex-sync: a runtime mirror failed to compile after this turn'\''s framework edits — fix before ending the turn.\n' >&2
-    (( CODEX_BUILD != 0 || CODEX_CHECK != 0 )) && printf 'codex build:\n%s\ncodex check:\n%s\n' "${OUT:-}" "${CHK:-}" >&2
-    (( OC_BUILD != 0 || OC_CHECK != 0 )) && printf 'opencode generate:\n%s\nopencode check:\n%s\n' "${OGEN:-}" "${OCHK:-}" >&2
+    # Name the stage that actually failed, and print only that stage's output.
+    # A build failure and a check failure demand different repairs: reporting
+    # "failed to compile" when the writer printed PASS and only the verifier
+    # objected sends the reader to fix something that is not broken.
+    FAILED=""
+    (( CODEX_BUILD != 0 )) && FAILED="${FAILED:+$FAILED, }codex build"
+    (( CODEX_CHECK != 0 )) && FAILED="${FAILED:+$FAILED, }codex check"
+    (( OC_BUILD != 0 )) && FAILED="${FAILED:+$FAILED, }opencode generate"
+    (( OC_CHECK != 0 )) && FAILED="${FAILED:+$FAILED, }opencode check"
+    printf 'codex-sync: %s failed after this turn'\''s framework edits — fix before ending the turn.\n' "$FAILED" >&2
+    (( CODEX_BUILD != 0 )) && printf 'codex build:\n%s\n' "${OUT:-}" >&2
+    (( CODEX_CHECK != 0 )) && printf 'codex check:\n%s\n' "${CHK:-}" >&2
+    (( OC_BUILD != 0 )) && printf 'opencode generate:\n%s\n' "${OGEN:-}" >&2
+    (( OC_CHECK != 0 )) && printf 'opencode check:\n%s\n' "${OCHK:-}" >&2
     exit 2
     ;;
 esac

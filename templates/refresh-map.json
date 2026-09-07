@@ -19,12 +19,8 @@
     "{project:backend}/CLAUDE.md",
     "docs/agents/_index.md",
     "docs/agents/standards.md",
-    "docs/commands/pfm/references/*",
-    "docs/commands/git/references/*",
-    "docs/commands/build/references/*",
-    "docs/commands/documenter/references/**",
-    "docs/commands/jc/references/*",
-    ".claude/skills/legal/**"
+    ".claude/skills/legal/**",
+    "docs/references/*"
   ],
   "ignore_sources": [
     ".claude/commands/contentor.md",
@@ -32,7 +28,8 @@
     ".claude/commands/deploy.md",
     "docs/commands/jc/references/deploy.md",
     ".claude/commands/test.md",
-    ".claude/commands/prod-deploy.md"
+    ".claude/commands/prod-deploy.md",
+    ".claude/scripts/prod-deploy-watch.sh"
   ],
   "templates": {
     "global/agents/architect.md": {
@@ -45,9 +42,7 @@
       "curated": true
     },
     "global/agents/scheduler.md": {
-      "sources": {
-        ".claude/agents/scheduler.md": "334281c55596ddf620cf9e75b802e08de7ec54524e9b4e162ae4fd0d17839613"
-      }
+      "curated": true
     },
     "global/agents/tracer.md": {
       "curated": true
@@ -56,22 +51,16 @@
       "curated": true
     },
     "global/commands/git.md": {
-      "sources": {
-        ".claude/commands/git.md": "3ee71d82ef4189e0c2c491395a141b7ec67aa18b35ccfb90d3d9a406051a30da"
-      }
+      "curated": true
     },
     "global/commands/h/gh.md": {
       "curated": true
     },
     "global/commands/quality/doc.md": {
-      "sources": {
-        ".claude/commands/quality/doc.md": "1a2822f726a8aba158f6f2ea80570ad41927e76310ba29dc56a0c7d41bc80c29"
-      }
+      "curated": true
     },
     "global/commands/quality/prompt.md": {
-      "sources": {
-        ".claude/commands/quality/prompt.md": "b1ebb032f2f20e6ca6e8696118cd4e73da049ba05ea1b72de72f1bb8cacd789f"
-      }
+      "curated": true
     },
     "global/commands/rnd.md": {
       "curated": true
@@ -95,27 +84,10 @@
       "curated": true
     },
     "global/commands/wave/ccc.md": {
-      "sources": {
-        ".claude/commands/wave/ccc.md": "f708267a5a1c170e9209c571cdaf1b8a0b3d7b2113856e7789b4721d20e74112"
-      }
-    },
-    "global/commands/wave/live.md": {
-      "sources": {
-        ".claude/commands/wave/live.md": "b663d50da0233ff2acecc827caceb3776d54879ddd28c7ce82a7bab90e08ab9d"
-      }
-    },
-    "global/commands/wave/orchestrator.md": {
       "curated": true
     },
     "global/commands/wave/refine.md": {
-      "sources": {
-        ".claude/commands/wave/refine.md": "cddd98cb30da699cebc0f3f5a2fef36943d9416fe1ce3cb8d45270ebdcb5cac8"
-      }
-    },
-    "global/commands/wave/walker.md": {
-      "sources": {
-        ".claude/commands/wave/walker.md": "4b853ced8dc9f7cf3ac8f0fe463dce1d47c822fe2fbf7bde6012b9d2461dd4f4"
-      }
+      "curated": true
     },
     "global/skills/architecture-design/SKILL.md": {
       "curated": true
@@ -144,38 +116,38 @@
     },
     "project/agents/per-project/developer.md": {
       "sources": {
-        "{project:backend}/.claude/agents/developer.md": "9f677ca37c21e73a3969922faa98d13de904ba252b08360370ab113ca1e04d30"
+        ".claude/agents/be-developer.md": "9f677ca37c21e73a3969922faa98d13de904ba252b08360370ab113ca1e04d30"
       }
     },
     "project/agents/per-project/qa.md": {
       "sources": {
-        "{project:backend}/.claude/agents/qa.md": "a36a3a284f3780c4874ec8da17e97c68a786b72fc6b6aa1e2137a5e0b473efc8"
+        ".claude/agents/be-qa.md": "a36a3a284f3780c4874ec8da17e97c68a786b72fc6b6aa1e2137a5e0b473efc8"
       }
     },
     "project/agents/qa-wrapper.md": {
       "sources": {
-        ".claude/agents/qa-be.md": "0655260cfea04eae3e982c2e1d5fe364a2b10bc2791f548f986b50610b45f068",
-        ".claude/agents/qa-fe.md": "102e1b7bb62de538f2b2bee7150e8c4fd4ac6b1fe890d402bc2a3edd1d546422",
-        ".claude/agents/qa-cortex.md": "dd1a4d4a85d213c9f5377841b1d1d6503584c73e79f396cce4341eb88dd7c434",
-        ".claude/agents/qa-infra.md": "544903a31f20f4b64a0f0440f2bf8440f5306cfe0c74cc377667516536cd1a46",
-        ".claude/agents/qa-web.md": "17fac5e23e6d91b5d6b02b09528fae7790c382f9a56ca10905d25509c1c80459",
-        ".claude/agents/qa-contracts.md": "80456984c8b7a813d63ec04b89414566b0f30278c65e073ced4daa69bb2fa392"
+        ".claude/agents/be-qa.md": "0655260cfea04eae3e982c2e1d5fe364a2b10bc2791f548f986b50610b45f068",
+        ".claude/agents/fe-qa.md": "102e1b7bb62de538f2b2bee7150e8c4fd4ac6b1fe890d402bc2a3edd1d546422",
+        ".claude/agents/cortex-qa.md": "dd1a4d4a85d213c9f5377841b1d1d6503584c73e79f396cce4341eb88dd7c434",
+        ".claude/agents/infra-qa.md": "544903a31f20f4b64a0f0440f2bf8440f5306cfe0c74cc377667516536cd1a46",
+        ".claude/agents/web-qa.md": "17fac5e23e6d91b5d6b02b09528fae7790c382f9a56ca10905d25509c1c80459",
+        ".claude/agents/contracts-qa.md": "80456984c8b7a813d63ec04b89414566b0f30278c65e073ced4daa69bb2fa392"
       }
     },
     "project/agents/role-wrapper.md": {
       "sources": {
-        ".claude/agents/developer-be.md": "cd1955ce638f5450cafce105fa26ecf196fbdca47a4e5d5c55c7a420a573fd24",
-        ".claude/agents/developer-fe.md": "6d6372542abc77c8f51e25007ac137931bdb38475ce245ed7c8468fa15c964b1",
-        ".claude/agents/developer-web.md": "2476b7870a8d64712419c1c2c6e458419a7a90decc539792239d1d793ca5e53c",
-        ".claude/agents/ai-engineer-cortex.md": "63780746d6a15f0454db0ba86deb4df05917f2a03cb6cbf3ea7b30e5dd8fb017",
-        ".claude/agents/devops-infra.md": "d4aa38d216d0192d27e7396b615db38013003fd4ff6adcce6671fd05ee7a4441",
-        ".claude/agents/author-contracts.md": "1a112576e9692963be4d5ab07ca506e550e5e42b6f677779ea6b2c54fdbe0f26",
-        ".claude/agents/db-admin-be.md": "589f5b357abb1a4cdfeb17b07ec2591c74145d04e51670013b0a2c60c48d154f",
-        ".claude/agents/ui-ux-fe.md": "b790e840985c9c8c0e441b361b95b25fd1291e4874ac3c6f6ad309b1adfde845",
-        ".claude/agents/researcher-web.md": "735e23e0dec0e25a905fe5773adbbc391632e39dd81bcec0b87c964f812f2b5d",
-        ".claude/agents/reviewer-web.md": "d38d0516b7927d4321d1751e578f74516bff2f65938e67f4dc9e5613570e2ea3",
-        ".claude/agents/seo-web.md": "d5dfd07540bcd3b81a8031465d74782738315f72b1c7726e3c64ac017ee81244",
-        ".claude/agents/writer-web.md": "c41f3d211b96eab85068bb756d193bfef6586f3c9749a4fdc802785e02f58428"
+        ".claude/agents/be-developer.md": "cd1955ce638f5450cafce105fa26ecf196fbdca47a4e5d5c55c7a420a573fd24",
+        ".claude/agents/fe-developer.md": "6d6372542abc77c8f51e25007ac137931bdb38475ce245ed7c8468fa15c964b1",
+        ".claude/agents/web-developer.md": "2476b7870a8d64712419c1c2c6e458419a7a90decc539792239d1d793ca5e53c",
+        ".claude/agents/cortex-ai-engineer.md": "63780746d6a15f0454db0ba86deb4df05917f2a03cb6cbf3ea7b30e5dd8fb017",
+        ".claude/agents/infra-devops.md": "d4aa38d216d0192d27e7396b615db38013003fd4ff6adcce6671fd05ee7a4441",
+        ".claude/agents/contracts-author.md": "1a112576e9692963be4d5ab07ca506e550e5e42b6f677779ea6b2c54fdbe0f26",
+        ".claude/agents/be-db-admin.md": "589f5b357abb1a4cdfeb17b07ec2591c74145d04e51670013b0a2c60c48d154f",
+        ".claude/agents/fe-ui-ux.md": "b790e840985c9c8c0e441b361b95b25fd1291e4874ac3c6f6ad309b1adfde845",
+        ".claude/agents/web-researcher.md": "735e23e0dec0e25a905fe5773adbbc391632e39dd81bcec0b87c964f812f2b5d",
+        ".claude/agents/web-reviewer.md": "d38d0516b7927d4321d1751e578f74516bff2f65938e67f4dc9e5613570e2ea3",
+        ".claude/agents/web-seo.md": "d5dfd07540bcd3b81a8031465d74782738315f72b1c7726e3c64ac017ee81244",
+        ".claude/agents/web-writer.md": "c41f3d211b96eab85068bb756d193bfef6586f3c9749a4fdc802785e02f58428"
       }
     },
     "project/codex/README.md": {
@@ -270,7 +242,7 @@
     },
     "project/commands/pfm/references/audit-scopes.md": {
       "sources": {
-        "docs/commands/pfm/references/audit-scopes.md": "87016b7e7d424b7f30e3c64bdf459ecbe8628149f76507387bc287ef61824327"
+        "docs/references/pfm-audit-scopes.md": "87016b7e7d424b7f30e3c64bdf459ecbe8628149f76507387bc287ef61824327"
       }
     },
     "project/commands/pm.md": {
@@ -281,9 +253,24 @@
     "project/commands/qa/live.md": {
       "curated": true
     },
+    "project/commands/wave/live.md": {
+      "sources": {
+        ".claude/commands/wave/live.md": "b663d50da0233ff2acecc827caceb3776d54879ddd28c7ce82a7bab90e08ab9d"
+      }
+    },
+    "project/commands/wave/orchestrator.md": {
+      "sources": {
+        ".claude/commands/wave/orchestrator.md": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
     "project/commands/wave/walker-invariants.md": {
       "sources": {
         ".claude/commands/wave/walker-invariants.md": "84b0ac61e0da06368b8041cbd71c41859bd31dfb0b096b09b93c689d0cfb643d"
+      }
+    },
+    "project/commands/wave/walker.md": {
+      "sources": {
+        ".claude/commands/wave/walker.md": "4b853ced8dc9f7cf3ac8f0fe463dce1d47c822fe2fbf7bde6012b9d2461dd4f4"
       }
     },
     "project/docs-agents/_index.md": {
@@ -302,7 +289,7 @@
     },
     "project/docs-commands/documenter/references/doc-approval.md": {
       "sources": {
-        "docs/commands/documenter/references/doc-approval.md": "888fea77f140b284af52aea9139d8caebda8af8d23266b3c3f147c650d4c133f"
+        "docs/references/doc-approval.md": "888fea77f140b284af52aea9139d8caebda8af8d23266b3c3f147c650d4c133f"
       }
     },
     "project/docs-commands/documenter/references/scopes/epic.md": {
@@ -336,27 +323,27 @@
     },
     "project/docs-commands/git/references/gitter-phase-docs.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-docs.md": "3e2e68fd01bbb3cb728e92787bfa3f2b7ed12c687a89bc52176af54b11788d90"
+        "docs/references/gitter-phase-docs.md": "3e2e68fd01bbb3cb728e92787bfa3f2b7ed12c687a89bc52176af54b11788d90"
       }
     },
     "project/docs-commands/git/references/gitter-phase-merge.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-merge.md": "788d06517ace27204a422325e0abbb618465957377218e46e8c5da49890558c3"
+        "docs/references/gitter-phase-merge.md": "788d06517ace27204a422325e0abbb618465957377218e46e8c5da49890558c3"
       }
     },
     "project/docs-commands/git/references/gitter-phase-push.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-push.md": "b0dfbb200f94aa87016a61cda713bfc8f4b8a5d837c49e4fbc083685cf47cded"
+        "docs/references/gitter-phase-push.md": "b0dfbb200f94aa87016a61cda713bfc8f4b8a5d837c49e4fbc083685cf47cded"
       }
     },
     "project/docs-commands/git/references/gitter-phase-setup.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-setup.md": "22a880339e075fa6c4d79e82bf950ccb1d2e3fb188c807e27c30b5b5695fc3f3"
+        "docs/references/gitter-phase-setup.md": "22a880339e075fa6c4d79e82bf950ccb1d2e3fb188c807e27c30b5b5695fc3f3"
       }
     },
     "project/docs-commands/git/references/gitter-phase-wave.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-wave.md": "fbf9e77ba5babeb1e9b77c025ac5ed20a576bb7d68e9982e34842b23f6ff8e04"
+        "docs/references/gitter-phase-wave.md": "fbf9e77ba5babeb1e9b77c025ac5ed20a576bb7d68e9982e34842b23f6ff8e04"
       }
     },
     "project/docs-commands/jc/references/debug-discipline.md": {
@@ -366,7 +353,7 @@
     },
     "project/docs-commands/jc/references/jc-core.md": {
       "sources": {
-        "docs/commands/jc/references/jc-core.md": "0c8b20e38bfff5f0d84161c90de348db59962257e484c893e29f0d36399ff523"
+        "docs/references/jc-core.md": "0c8b20e38bfff5f0d84161c90de348db59962257e484c893e29f0d36399ff523"
       }
     },
     "project/epics/TEMPLATE.md": {
@@ -388,9 +375,7 @@
       }
     },
     "project/scripts/build-codex.mjs": {
-      "sources": {
-        ".claude/scripts/build-codex.mjs": "8eb03c4d8bc34b1765510ace96918418a279786cdce4d33ed1679d2e077acb9f"
-      }
+      "curated": true
     },
     "project/scripts/cc-memory-consolidate.sh": {
       "curated": true

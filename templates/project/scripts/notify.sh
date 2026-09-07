@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-STAMP_BASE="/tmp/{CHARACTER_NAME_LOWER}_turn_start"
+STAMP_BASE="/tmp/professor_turn_start"
 THRESHOLD=30  # seconds — only notify for turns this long or longer
 
 notify() {
@@ -34,9 +34,10 @@ case "${1:-stop}" in
     [ -f "$STAMP" ] || date +%s > "$STAMP"
     ;;
   stop)
-    # Stop — close the /km edit gate (km-guard.sh) at turn end if /km is enabled
+    # Stop — close the /km and /pfm edit gates (km-guard.sh, pfm-guard.sh) at turn end
     ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
-    rm -f "${ROOT:-.}/tmp/{CHARACTER_NAME_LOWER}_km_active"
+    rm -f "${ROOT:-.}/tmp/professor_km_active"
+    rm -f "${ROOT:-.}/tmp/professor_pfm_active"
     # Hook JSON arrives on stdin (session_id, transcript_path, cwd, ...).
     # Tolerate it missing — manual invocations have no stdin payload.
     HOOK_INPUT=$(cat 2>/dev/null || true)

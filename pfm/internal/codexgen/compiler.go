@@ -26,13 +26,28 @@ type Options struct {
 }
 
 type Result struct {
-	OK        bool
-	Warnings  []string
-	Problems  []string
+	OK       bool
+	Warnings []string
+	Problems []string
+	// Dangling records sources that vanished, as a TYPED condition rather than
+	// a substring of rendered prose. Build reports these as warnings and still
+	// writes; Check promotes them to Problems. Classifying by scanning warning
+	// TEXT for "dangling" is a coincidence detector: rewording a message
+	// silently disarms the gate, and an unrelated warning that happens to carry
+	// the word arms it against nothing.
+	Dangling  []string
 	Wrote     int
 	Unchanged int
 	Deleted   int
 	Actions   []Action
+}
+
+// danglingSource records a source that could not be resolved: a warning for
+// every mode, plus the typed entry Check gates on.
+func (result *Result) danglingSource(path string, err error) {
+	message := fmt.Sprintf("dangling source %s: %v", path, err)
+	result.Warnings = append(result.Warnings, message)
+	result.Dangling = append(result.Dangling, message)
 }
 
 // Action is one filesystem mutation a build performs. Check returns the same
@@ -79,7 +94,7 @@ func Run(options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{Warnings: []string{}, Problems: []string{}}
+	result := Result{Warnings: []string{}, Problems: []string{}, Dangling: []string{}}
 	outputs := make([]generatedFile, 0)
 	add := func(output generatedFile) { outputs = append(outputs, output) }
 	warn := func(message string) { result.Warnings = append(result.Warnings, message) }
@@ -106,7 +121,7 @@ func Run(options Options) (Result, error) {
 
 	compileAgents(root, projects, cfg, transform, add, problem, warn, &result)
 	compileRepoCommands(root, cfg, transform, roster, add, problem, warn, &result)
-	compileRepoSkills(root, add, problem, warn)
+	compileRepoSkills(root, add, problem, &result)
 	if cfg.GlobalCommands {
 		compileInstalledGlobalCommands(home, home, add, problem, warn, &result)
 	}
@@ -124,10 +139,8 @@ func Run(options Options) (Result, error) {
 		result.Problems = append(result.Problems, mcp.Problems...)
 	}
 	if options.Mode == ModeCheck {
-		for _, warning := range result.Warnings {
-			if strings.Contains(strings.ToLower(warning), "dangling") {
-				result.Problems = append(result.Problems, warning)
-			}
+		for _, entry := range result.Dangling {
+			result.Problems = append(result.Problems, entry+" — retire the stale link; `pfm install` prunes an orphaned global-command link automatically")
 		}
 	}
 
@@ -187,7 +200,7 @@ func RunGlobalCommands(options GlobalCommandsOptions) (Result, error) {
 			return Result{}, err
 		}
 	}
-	result := Result{Warnings: []string{}, Problems: []string{}}
+	result := Result{Warnings: []string{}, Problems: []string{}, Dangling: []string{}}
 	outputs := make([]generatedFile, 0)
 	add := func(output generatedFile) { outputs = append(outputs, output) }
 	warn := func(message string) { result.Warnings = append(result.Warnings, message) }
@@ -195,10 +208,8 @@ func RunGlobalCommands(options GlobalCommandsOptions) (Result, error) {
 	compileInstalledGlobalCommands(sourceHome, home, add, problem, warn, &result)
 
 	if options.Mode == ModeCheck {
-		for _, warning := range result.Warnings {
-			if strings.Contains(strings.ToLower(warning), "dangling") {
-				result.Problems = append(result.Problems, warning)
-			}
+		for _, entry := range result.Dangling {
+			result.Problems = append(result.Problems, entry+" — retire the stale link; `pfm install` prunes an orphaned global-command link automatically")
 		}
 	}
 	if options.Mode == ModeBuild && len(result.Problems) != 0 {
@@ -351,7 +362,7 @@ func discoverMarkdown(dir string, excludes []string, result *Result) []sourceEnt
 	walk = func(current, relative string) {
 		real, evalErr := filepath.EvalSymlinks(current)
 		if evalErr != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("dangling source %s: %v", current, evalErr))
+			result.danglingSource(current, evalErr)
 			return
 		}
 		if visited[real] {
@@ -377,7 +388,7 @@ func discoverMarkdown(dir string, excludes []string, result *Result) []sourceEnt
 			info, statErr := os.Stat(path)
 			if item.Type()&os.ModeSymlink != 0 {
 				if statErr != nil {
-					result.Warnings = append(result.Warnings, fmt.Sprintf("dangling source %s: %v", path, statErr))
+					result.danglingSource(path, statErr)
 					continue
 				}
 			}
@@ -548,7 +559,7 @@ func compileCommandFile(outputBase, sourceRoot string, entry sourceEntry, label,
 	raw, err := os.ReadFile(entry.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			warn("dangling source " + entry.path + ": " + err.Error())
+			result.danglingSource(entry.path, err)
 		} else {
 			problem(fmt.Sprintf("read %s: %v", entry.path, err))
 		}
@@ -607,7 +618,7 @@ func frontmatterLines(text string) []string {
 	return nil
 }
 
-func compileRepoSkills(root string, add func(generatedFile), problem func(string), warn func(string)) {
+func compileRepoSkills(root string, add func(generatedFile), problem func(string), result *Result) {
 	dir := filepath.Join(root, ".claude", "skills")
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -620,7 +631,7 @@ func compileRepoSkills(root string, add func(generatedFile), problem func(string
 		path := filepath.Join(dir, entry.Name())
 		info, statErr := os.Stat(path)
 		if statErr != nil {
-			warn(fmt.Sprintf("dangling source %s: %v", path, statErr))
+			result.danglingSource(path, statErr)
 			continue
 		}
 		if !info.IsDir() {

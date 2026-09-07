@@ -29,11 +29,7 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}] [--l
 
 3. **Refresh pass — only when `--from {live-project-root}` is given.** Without it, say `refresh skipped — no live source named` and go to Step 4; a release of hand-authored blueprint edits is legitimate, a SILENT skip is not.
 
-   a. `scripts/refresh-scope.sh scan {live-project-root}` — hashes every live source in `templates/refresh-map.json`. UNCHANGED hashes are a mechanical untouched-proof; those templates are SKIPPED. Re-derive only CHANGED templates plus any file named by a bullet the Step 2b sweep collected, from ANY ledger — a linked project's bullet earns its template a re-derivation exactly as this repo's does. UNMAPPED-LIVE files get a mapping ruling (map it, or add to `ignore_sources`) before continuing; `curated` templates are hand-maintained, never auto-derived. **If the scan itself fails to run, that is a FAILED SCAN, not an empty one — stop.**
-
-   b. Read `docs/commands/pfm/references/refresh.md` and execute it over that scope: run `scripts/genericize.sh` first on each re-derived template (deterministic placeholder pass from `scripts/placeholder-map.tsv`), then hand-judge structure only. Update the public README.
-
-   c. After template edits land: `scripts/refresh-scope.sh regen {live-project-root}` — fresh hashes are the next release's baseline. STOP if any step fails.
+   Run `/pfm:refresh {live-project-root}` — it owns the scope scan, the MISSING-SOURCE rulings, the hunk-by-hunk SYNC/LOCAL/TOKEN classification, the reviewed sonnet batches, and the closing `regen`. Feed it every template named by a bullet the Step 2b sweep collected, from ANY ledger. STOP if it stops; a FAILED scan is never an empty one. Update the public README from its report.
 
 4. **Read `VERSION`, compute the new version.** It must exceed every tag from Pre-flight 4.
 

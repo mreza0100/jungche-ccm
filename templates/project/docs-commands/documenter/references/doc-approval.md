@@ -1,6 +1,6 @@
 # Doc Consolidation Contract — worker card
 
-Worker-facing extract of `.claude/commands/quality/doc.md` (canonical) — edit both together. Every fan-out documenter worker reads this card BEFORE touching any doc; main-loop sessions load the full skill instead.
+Worker-facing extract of `~/.claude/commands/quality/doc.md` (canonical, machine-global) — edit both together. Every fan-out documenter worker reads this card BEFORE touching any doc; main-loop sessions load the full skill instead.
 
 ## Write rules
 

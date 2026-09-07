@@ -41,14 +41,27 @@ case "$MODE" in
     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
     FLAG="$REPO_ROOT/tmp/professor_codex_dirty"
     [[ -f "$FLAG" ]] || exit 0
-    if OUT=$("$PFM_BIN" codex build "$REPO_ROOT" 2>&1) \
-       && CHK=$("$PFM_BIN" codex check "$REPO_ROOT" 2>&1); then
+    # A host without pfm silently skips the auto-compile — clear the flag so it
+    # never blocks turn end (mirror rebuild happens on the next pfm-equipped run).
+    [[ -x "$PFM_BIN" ]] || { rm -f "$FLAG"; exit 0; }
+    OUT=$("$PFM_BIN" codex build "$REPO_ROOT" 2>&1) && BUILD=0 || BUILD=$?
+    CHK=$("$PFM_BIN" codex check "$REPO_ROOT" 2>&1) && CHECK=0 || CHECK=$?
+    if (( BUILD == 0 && CHECK == 0 )); then
       rm -f "$FLAG"
       exit 0
     fi
     STOP_ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || echo false)
     [[ "$STOP_ACTIVE" == "true" ]] && exit 0
-    printf 'codex-sync: the Codex mirror failed to compile after this turn'\''s framework edits — fix before ending the turn.\n%s\n%s\n' "${OUT:-}" "${CHK:-}" >&2
+    # Name the stage that actually failed, and print only that stage's output.
+    # A build failure and a check failure demand different repairs: reporting
+    # "failed to compile" when the writer printed PASS and only the verifier
+    # objected sends the reader to fix something that is not broken.
+    FAILED=""
+    (( BUILD != 0 )) && FAILED="${FAILED:+$FAILED, }codex build"
+    (( CHECK != 0 )) && FAILED="${FAILED:+$FAILED, }codex check"
+    printf 'codex-sync: %s failed after this turn'\''s framework edits — fix before ending the turn.\n' "$FAILED" >&2
+    (( BUILD != 0 )) && printf 'codex build:\n%s\n' "${OUT:-}" >&2
+    (( CHECK != 0 )) && printf 'codex check:\n%s\n' "${CHK:-}" >&2
     exit 2
     ;;
 esac

@@ -2,7 +2,7 @@
 
 > Distilled from the `skill-optimizer` (self-improve) skill in github.com/lawve-ai/awesome-legal-skills (AGPL-3.0, © Malik Taiar / Lawvable) — summarised meta-loop, not copied. The meta-layer that keeps this `legal` skill improving from real use.
 
-Use after a legal-drafting or compliance session to capture what was learned and propose precise improvements to the relevant reference file. In this repo, infra edits route through `/pfm` — so this is a **propose-then-PTM-applies** loop, not a self-editing one.
+Use after a legal-drafting or compliance session to capture what was learned and propose precise improvements to the relevant reference file. In this repo, infra edits route through `/pfm` — so this is a **propose-then-PFM-applies** loop, not a self-editing one.
 
 ## The loop
 

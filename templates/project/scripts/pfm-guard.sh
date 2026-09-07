@@ -13,7 +13,7 @@ set -euo pipefail
 # Sliding expiry: every ALLOWED edit re-touches both markers, so an active session
 # never expires mid-batch; the TTL reaps only abandoned sessions (guard-stamp.sh's
 # Stop pass reaps >1h leftovers; markers SURVIVE turn ends — stamp once per session).
-# Silent no-op for every other path. Knowledge / prompt files belong to km-guard.sh.
+# Silent no-op for every other path. Knowledge files belong to km-guard.sh.
 
 INPUT=$(cat)
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')

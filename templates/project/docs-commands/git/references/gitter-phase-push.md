@@ -11,9 +11,10 @@ Invoked only by `/git push` or a direct user request that explicitly asks to pus
 ```bash
 git status --short
 git log origin/main..HEAD --oneline 2>/dev/null || true
+git -C .professor log origin/professor..professor --oneline 2>/dev/null || true  # sub-repo commits not yet on the remote
 ```
 
-If clean and no unpushed commits: "Nothing to push — working tree is clean and in sync with origin." Stop.
+If clean and no unpushed commits in either repo: "Nothing to push — working tree is clean and in sync with origin." Stop.
 
 ## 2. Review for dangerous files
 
@@ -43,6 +44,7 @@ If it fails, release the lock, stop immediately, and report.
 
 ```bash
 bash .claude/scripts/git-lock.sh acquire "push"
+git -C .professor push origin professor  # always first: the parent's .professor pointer never lands on the remote before its target
 git push
 bash .claude/scripts/git-lock.sh release
 ```

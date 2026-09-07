@@ -40,7 +40,7 @@ Check each against its source of truth:
 - Infra calls — the live infra project's `Makefile` target names; `grep -E '^[a-z0-9-]+:' {infra}/Makefile` before trusting any name
 - `clean_ports()` and `cmd_kill()` patterns — must match what UP launches
 - Service count — add any project or service the script doesn't yet handle
-- Env file defaults — each project's `.env.local` template against its runbook's required env vars
+- Env file bootstrap — `cmd_up()` seeds a roster entry's missing `.env.local` from that project's own `.env.local.example` and fills required secrets from the infra project's secrets file; the example must carry every key the project's env/config module requires
 
 ### 0c. Update the script if drift detected
 
@@ -215,10 +215,6 @@ Merges the worktree branch into main. ISO-specific files never reach main. Steps
 5. Merge: `cd {repo_root} && git merge pipeline/{profile} --no-edit`
 6. Post-merge check: `grep -l "{db_prefix}_{profile}\|{pg_port}\|{queue_port}" {project}/.env.{profile} 2>/dev/null` across all entries — on any match, revert those files from `HEAD~1` and commit the fix.
 7. Report the branch merged into main, the commit count, that env sanitization excluded the iso-specific files and the post-merge check found no iso artifacts. The environment keeps running — destroy it separately with `/dev iso destroy {profile}`.
-
-### ISO LIST — `/dev iso list`
-
-Scan `.worktrees/*/` for dirs with `.dev-ports`. Report profile, ports, infra/server status.
 
 ### ISO DESTROY — `/dev iso destroy {profile}`
 

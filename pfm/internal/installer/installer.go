@@ -247,6 +247,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireGlobalCommands(); err != nil {
 		return err
 	}
+	if err := installer.retireOrphanGlobalCommands(); err != nil {
+		return err
+	}
 	if err := installer.wireGlobalSkills(); err != nil {
 		return err
 	}
@@ -423,10 +426,11 @@ func (installer *engine) retireOrphanCodexAgents() error {
 // wireGlobalCommands links every top-level entry of
 // <sourceRepo>/templates/global/commands/ into {ConfigDir}/commands/: one
 // file link per file entry, one whole-directory link per directory entry
-// (wave/, quality/, h/, tokens/). An absent or empty source directory is
+// (wave/, quality/, h/, rnd/, tokens/). An absent or empty source directory is
 // reported and never an error — populating it is a parallel lane's job. The
 // pfm-owned chat/* and reload.md links belong to a different owner and are
-// never touched here.
+// never touched here. This links what the source HOLDS; retiring the link of
+// a command the source no longer ships is retireOrphanGlobalCommands' job.
 func (installer *engine) wireGlobalCommands() error {
 	sourceRepo, err := installer.globalSourceRepoRoot()
 	if err != nil {
@@ -454,6 +458,84 @@ func (installer *engine) wireGlobalCommands() error {
 			entry.IsDir(),
 		); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// retireOrphanGlobalCommands prunes the registry links wireGlobalCommands
+// itself created for templates that no longer ship. Wiring links every entry
+// the source directory HOLDS and forms no opinion about entries it has
+// stopped holding, so a command retired upstream otherwise leaves a dangling
+// ~/.claude/commands/<name> in every registry forever. The Codex mirror has
+// prevented exactly this since codexgen grew orphan reconciliation; this is
+// the Claude-side half of the same rule.
+//
+// Ownership is decided by the link's TARGET, never by its name: a symlink is
+// retired only when it points at <recorded professor repo>/templates/global/
+// commands/<its own name> AND that target no longer exists. An operator's own
+// command is untouched — a regular file, a link that resolves elsewhere, and a
+// link whose target still exists all fall through, and a dangling personal
+// link pointing outside the blueprint survives, matching the preservation rule
+// retireRenamedGlobalAgents holds to.
+//
+// Its own broken states are distinguishable at the surface: a registry that
+// cannot be read, a link that cannot be resolved, and a source that cannot be
+// stat'd each return a wrapped error naming the path, so a failed look never
+// renders as the silent no-op of a registry that simply had no orphan.
+func (installer *engine) retireOrphanGlobalCommands() error {
+	repos, err := installer.recordedProfessorSourceRepos()
+	if err != nil {
+		return err
+	}
+	repos = append(repos, filepath.Join(installer.options.Home, ".professor"))
+	for _, config := range installer.claudeConfigDirs() {
+		registry := filepath.Join(config, "commands")
+		entries, err := os.ReadDir(registry)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect global command registry %s: %w", registry, err)
+		}
+		for _, entry := range entries {
+			path := filepath.Join(registry, entry.Name())
+			info, err := os.Lstat(path)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("inspect global command %s: %w", path, err)
+			}
+			if info.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			target, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("read global command link %s: %w", path, err)
+			}
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(path), target)
+			}
+			target = filepath.Clean(target)
+			owned := false
+			for _, repo := range repos {
+				if target == filepath.Join(repo, "templates", "global", "commands", entry.Name()) {
+					owned = true
+					break
+				}
+			}
+			if !owned {
+				continue
+			}
+			if _, err := os.Stat(target); err == nil {
+				continue
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("inspect global command source %s: %w", target, err)
+			}
+			if err := installer.retire(path, "retired global command — "+target+" no longer ships"); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

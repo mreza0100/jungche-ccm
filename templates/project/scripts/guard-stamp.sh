@@ -37,10 +37,10 @@ case "$MODE" in
     # The quality law is machine-global — one file, reachable from every
     # install — so the READ file's own repo is not necessarily the repo being
     # edited. Anchoring only there stamps the framework repo while pfm-guard
-    # reads the EDITED file's repo (its own comment explains why), and the
-    # gate then can never open: the agent reads the law, is denied anyway, and
-    # follows a message that cannot help it. Stamp the law file's repo AND
-    # this session's own project root.
+    # reads the EDITED file's repo (its own comment explains why it anchors
+    # that way), and the gate then can never open: the agent reads the law,
+    # is denied anyway, and follows a message that cannot help it. Stamp the
+    # law file's repo AND this session's own project root.
     ROOTS=()
     FILE_ROOT=$(git -C "$(dirname "$FILE_PATH")" rev-parse --show-toplevel 2>/dev/null) || FILE_ROOT=""
     if [[ -n "$FILE_ROOT" ]]; then

@@ -361,3 +361,33 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 - KEEP-LOCAL: Codex project default (2026-09-05) — removed the repo-local model pin so trusted
   sessions inherit the user-level default; retained this repo's `xhigh` reasoning-effort override and
   re-stamped its self-hosted manifest entry. (cost)
+
+- **KEEP-LOCAL: `/pfm:refresh` — the blueprint re-derivation command** (`.claude/commands/pfm/refresh.md`). Maintainer
+  machinery, the sibling of `/pfm:release`: it re-derives `templates/**` from a live source project and ships no
+  adopter twin, because an adopter consumes the blueprint and never derives it. It owns the execution mechanic that
+  `$CDOCS/pfm/$REFS/refresh.md` (the law) never carried: the pass is diff-driven rather than file-driven — the
+  orchestrator reads no template and no live source, a worker reads at most its 2 files, one worker owns one template
+  pair — and every diff hunk is classified `SYNC` (framework change, applied) / `LOCAL` (project-specific, never
+  applied) / `TOKEN` (value the template parameterizes) / `UNRULED` (reported, never silently dropped), applied in
+  reviewed `sonnet`-effort-High batches ordered smallest-diff-first with a review gate between waves. `/pfm:release`
+  step 3 was rewritten to DELEGATE to it rather than restate the mechanic — the duplication that would have drifted.
+  Its `rulings` mode settles `MISSING-SOURCE` / `UNMAPPED-LIVE` map entries and carries the two integrity checks the
+  scan structurally cannot make, because `refresh-scope.sh` reads the map's keys rather than the template tree:
+  ZOMBIE (map entry whose template file does not ship) and ORPHAN (shipped template with no map entry).
+
+- **KEEP-LOCAL: `templates/refresh-map.json` re-ruled against the live source's re-layout (40 rulings).** The scan was
+  BLOCKED at 41 `MISSING-SOURCE` + 20 `UNMAPPED-LIVE`; it now reports 6 and 0. CURATED (7): the six machine-global
+  templates still carrying a dead live source (`global/agents/scheduler.md`, `global/commands/git.md`,
+  `quality/{doc,prompt}.md`, `wave/{ccc,refine}.md`) — `templates/global/**` IS the truth by law, so a global entry
+  with a live source was a mapping bug — plus `project/scripts/build-codex.mjs`, retired live-side and now blueprint-
+  only. RETARGET (3): the ZOMBIE keys `global/commands/wave/{live,orchestrator,walker}.md`, whose template files had
+  already moved to `project/commands/wave/` under the wave scope split while the map still named the global paths.
+  REMAP (28): the 18 `{role}-{project}` → `{project}-{role}` agent renames across `role-wrapper.md` + `qa-wrapper.md`,
+  the two `per-project/{developer,qa}.md` entries whose backend sub-project `.claude/` was consolidated into the flat
+  root registry, and the 8 reference docs the live project moved from `docs/commands/{cmd}/references/` to a flat
+  `docs/references/` (pfm's renamed `pfm-audit-scopes.md`). `source_globs` follows that move; `.claude/scripts/prod-
+  deploy-watch.sh` joins `ignore_sources` beside its already-ignored `prod-deploy.md` sibling. The 6 survivors are all
+  DELETE rulings whose cascades are end-to-end removals, not map edits, and are queued for the batch pass:
+  `commands/p/360.md` (the user's ruling, 360 removed end to end — it has ~10 citing files), `scripts/checkpoint.sh`,
+  `codex/skills/wave-builder/SKILL.md`, and the three reference docs with no successor (`gitter-history.md`,
+  `debug-discipline.md`, `build-reference.md`).
