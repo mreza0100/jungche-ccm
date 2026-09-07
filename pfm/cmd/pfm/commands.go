@@ -445,10 +445,8 @@ func freshEngineSocket(id pfmengine.ID) string {
 // initialCache1H resolves the prompt-cache TTL for a freshly launched chat.
 // Config sets the default; CC_ARM_1H or ENABLE_PROMPT_CACHING_1H, when
 // PRESENT in the environment at all (any value, not just "1"), is an
-// explicit override that wins over config — this is load-bearing for
-// synth.go's NewClaude route, which re-exports "CC_ARM_1H=0
-// ENABLE_PROMPT_CACHING_1H=0" into a spawned shell specifically to force
-// caching off downstream; a value-only check would silently ignore that.
+// explicit override that wins over config. CC_ARM_1H is accepted from
+// existing automation; native actions carry the chosen TTL in ClaudeSpawn.
 //
 // account is the Claude account the chat will be born under, or 0 when the
 // caller has no account context yet (the fleet-wide picker default).

@@ -333,7 +333,14 @@ func reloadTestMachine(systemPrompt, home string) pfmconfig.Config {
 // spawn site with no idea the fleet had a configured system prompt, so a
 // rebooted seat silently reverted to the CLI's own.
 func TestClaudeRunCarriesTheConfiguredSystemPrompt(t *testing.T) {
-	home := "/jail/home"
+	home := t.TempDir()
+	promptPath := action.ProfessorPromptPath(home)
+	if err := os.MkdirAll(filepath.Dir(promptPath), 0o755); err != nil {
+		t.Fatalf("stage professor prompt dir: %v", err)
+	}
+	if err := os.WriteFile(promptPath, []byte("professor prompt\n"), 0o644); err != nil {
+		t.Fatalf("stage professor prompt file: %v", err)
+	}
 	professor, err := claudeRun(Request{
 		Account:   2,
 		Home:      home,

@@ -24,7 +24,7 @@ func TestActionDispatchExecHelper(t *testing.T) {
 func TestTerminalShellActionExecsInteractiveZsh(t *testing.T) {
 	home := t.TempDir()
 	marker := filepath.Join(home, "called")
-	zshrc := "cc1() {\n  print -r -- \"$1\" > \"$PFM_ACTION_MARKER\"\n}\n"
+	zshrc := "cx() {\n  print -r -- \"$1\" > \"$PFM_ACTION_MARKER\"\n}\n"
 	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte(zshrc), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestTerminalShellActionExecsInteractiveZsh(t *testing.T) {
 		"HOME":                  home,
 		"ZDOTDIR":               home,
 		"PFM_ACTION_MARKER":     marker,
-		actionDispatchHelperEnv: "(cc1 'shell-function-proof')",
+		actionDispatchHelperEnv: "(cx 'shell-function-proof')",
 	})
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("interactive zsh action: %v: %s", err, output)

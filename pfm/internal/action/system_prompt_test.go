@@ -8,7 +8,8 @@ import (
 )
 
 func TestLauncherRunSystemPromptModes(t *testing.T) {
-	home := "/home/test"
+	home := t.TempDir()
+	stageProfessorPrompt(t, home)
 	professorFile := Quote(ProfessorPromptPath(home))
 	cases := []struct {
 		mode     string
@@ -45,7 +46,8 @@ func TestLauncherRunHygieneStripsInheritedArm(t *testing.T) {
 }
 
 func TestClaudeCommandSystemPromptModes(t *testing.T) {
-	home := "/home/test"
+	home := t.TempDir()
+	stageProfessorPrompt(t, home)
 	for _, testCase := range []struct {
 		mode     string
 		wantLean bool

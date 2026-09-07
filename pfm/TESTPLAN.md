@@ -379,7 +379,7 @@ tonight's four bugs all live in.
 
 | flow                                                                                                           | safety           | expected behavior (source)                                              | regression |
 | -------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------- | ---------- |
-| `NewClaude` → `(cd -- <cwd> && CC_ARM_1H=… cc<N>)`                                                             | JAIL             | `action/synth.go:83-93`                                                 |            |
+| `NewClaude` → native `ClaudeSpawn` policy and `tmux new-session` | JAIL | `action.Synthesize`, `action.ClaudeSpawn` | `internal/action/native_new_claude_test.go` |
 | `NewCodex` → `(cd -- <cwd> && cx)`                                                                             | JAIL             | `action/synth.go:94-98`                                                 |            |
 | `tmux.titles.enabled` (default true) and `nameSync.interval` (Go duration, minimum 1m floor, default 15m) load, validate, round-trip through `Marshal`, and show up in `pfm config show` with their source | JAIL | `internal/config/config.go`, `internal/config/tmux_titles_test.go`, `internal/config/name_sync_test.go`, `cmd/pfm/tmux_titles_command_test.go` | issue #14 F10/F12 |
 | all three title-applying paths obey that ONE key — the Claude spawn (`spawn.CommandTmux.Titles`), the Codex spawn (plan-carried `CodexServer.Titles` set by `Synthesize`), and the shim — a disabled policy applies NEITHER option, a nil policy keeps today's behaviour, and `automatic-rename off` is never gated by it | JAIL+tmux | `internal/spawn/tmux_titles_jail_test.go`, `internal/action/tmux_titles_jail_test.go`, `cmd/pfm/tmux_titles_command_test.go`, `shim/tmux_titles_shim_test.go` | issue #14 F10 |
@@ -521,26 +521,20 @@ complete command reaches the transcript and fires.
 
 ## I — zsh shell surface: launchers
 
-The embedded `internal/installer/assets/shim/pfm.zsh` owns fresh interactive launchers and
-delegates fleet operations to the Go binary. `pfm install` wires this single active shim.
+The Go action policy owns fresh Claude launches. The binary executes selected actions on a
+terminal and preserves its one-line shell protocol when stdout is captured. The installed
+shim retains Codex and direct-harness terminal ownership, and unloads retired shell commands.
 
-| flow                                                                              | safety    | expected behavior (source)                       | regression |
-| --------------------------------------------------------------------------------- | --------- | ------------------------------------------------ | ---------- |
-| shim aborts when `~/.local/bin/pfm` is missing/not executable                     | JAIL+sh   | `shim/pfm.zsh:5-9`                               |            |
-| `cc-ls` routes `--check/--plain/--tsv` direct, everything else through `eval`     | JAIL+sh   | `shim/pfm.zsh:25-33`                             |            |
-| `cc-open` pass-through                                                            | JAIL+sh   | `shim/pfm.zsh:39`                                |            |
-| `_pfm_eval` evals ONLY on rc 0 and non-empty output                               | JAIL+sh   | `shim/pfm.zsh:15-23`                             |            |
-| `cc` uses the primary account from hidden `pfm internal primary-get`              | JAIL+sh   | `shim/pfm.zsh`, `shim/shim_test.go`              |            |
-| `cc1` / `cc2` force an account; account 3 has no launcher                         | JAIL+sh   | `shim/pfm.zsh:107-108`, `action/synth.go:19`     |            |
-| `claude` function delegates to the canonical managed launcher instead of resolving the native binary itself | JAIL+sh | `shim/pfm.zsh`, `shim/shim_test.go` | |
-| `_cc_run` per-element quoting of `CC_AUTONOMY_FLAGS` and user args                | JAIL+sh   | `shim/pfm.zsh:89-93`                             |            |
-| `_cc_run` env hygiene + `FORCE_PROMPT_CACHING_5M` when un-armed                   | JAIL+sh   | `shim/pfm.zsh:83-101`                            |            |
-| `_cc_arm1h`: `CC_ARM_1H=1`, or `ENABLE_PROMPT_CACHING_1H=1` from a non-chat shell | JAIL+sh   | `shim/pfm.zsh:62-66`                             |            |
-| `cx` creates its server DETACHED with title plumbing, then attaches               | JAIL+sh   | `shim/pfm.zsh:116-139`                           | B1         |
-| `_cc_selfswitch` refuses to nest a session inside itself                          | JAIL+tmux | `shim/pfm.zsh:201-222`                           |            |
-| `_cc_in_bunker` → `exec` into the client so no husk survives                      | JAIL+sh   | `shim/pfm.zsh:95,125,197`                        |            |
-| `cc-swap <1\|2>` / fzf picker → hidden `pfm internal primary-set` is the writer   | JAIL+sh   | `shim/pfm.zsh`, `shim/shim_test.go`              |            |
-| `_cc_label` reads account 1's identity from `~/.claude.json`, not the config dir  | JAIL+sh   | `shim/pfm.zsh:142-154`                           |            |
+| Flow | Safety | Source |
+| --- | --- | --- |
+| Missing/non-executable PFM stops shim sourcing with a diagnostic | JAIL+sh | `shim/shim_test.go` |
+| Source/re-source leaves no public `cc*` functions or aliases; external compiler remains | JAIL+sh | `shim/shim_test.go` |
+| Fresh Claude account, cache, prompt, autonomy and quoting use native policy | JAIL | `internal/action/synth.go`, `internal/action/claude_spawn.go` |
+| Captured output stays a shell line; terminal output executes the action | JAIL | `cmd/pfm/action_dispatch_test.go` |
+| Auto-open runs once after shell startup; legacy profile values open the picker | JAIL+sh | `shim/shim_test.go` |
+| `cx` creates its server detached with title policy, then attaches | JAIL+sh | `shim/tmux_titles_shim_test.go` |
+| `_pfm_selfswitch` prevents nesting the same server | JAIL+tmux | `shim/shim_test.go` |
+| `_pfm_own_terminal` preserves scripts/nested chats and closes owned terminals | JAIL+sh | `shim/shim_test.go` |
 
 ## J — Internal wiring and store
 
@@ -673,7 +667,7 @@ stashing a second draft while one is already parked OVERWRITES it — last-write
 no warning. The observed semantics are pinned as a comment block at the top of the file and
 referenced from engine.go's stash-guard comment. Re-run on any Claude Code upgrade.
 
-**Needs real multi-account state:** 29. `_cc_label` reading `oauthAccount.emailAddress` per account. 30. `cc-swap` fzf picker → primary flips for `cc` but not `cc1`/`cc2`. 31. Transcripts under a SEPARATE account root (not a symlink back to account 1). 32. Statusline badge computation across accounts.
+**Needs real multi-account state:** 31. Transcripts under a SEPARATE account root (not a symlink back to account 1). 32. Statusline badge computation across accounts.
 
 ---
 
@@ -682,13 +676,9 @@ referenced from engine.go's stash-guard comment. Re-run on any Claude Code upgra
 1. **Store-only rows carry no parent link** (`index/codexstate.go`) — a live-state audit found
    no real instance because Codex ≥0.146 resume continues the same thread id. Re-open if Codex
    changes that behavior; detect it by grouping same-cwd rows with the same first message.
-2. **Account roster disagrees three ways.** `paths.go:64-68` builds THREE Claude roots,
-   `compose/compose.go:873` accepts accounts 1-3, `pipeline.go:536` labels them 1-3 — but
-   `action/synth.go:19` caps at 2 and the shim has no `cc3`. `readPrimaryAccount` clamps
-   off-roster values upstream, so launches stay correct; the divergence is dormant, not dead.
-3. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
+2. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
    An agent row is capture-probed for busy state in MCP and treated as non-live in the TUI.
-4. **Stats `TOKENS` is transcript traffic, not cost.** Claude assistant records add
+3. **Stats `TOKENS` is transcript traffic, not cost.** Claude assistant records add
    `cache_read_input_tokens` on every turn, so a long chat repeatedly counts its cached prefix.
    The open product question is whether this total should remain traffic or become a billed-cost
    metric; the live-rate change deliberately leaves the total unchanged.

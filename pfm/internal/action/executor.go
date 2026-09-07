@@ -239,7 +239,7 @@ func (executor *Executor) SelfSwitch(
 	if err != nil || len(panes) == 0 {
 		fmt.Fprintln(
 			executor.stderr,
-			"cc: already inside this chat's tmux — refusing to nest it inside itself; switch windows yourself (prefix + w)",
+			"pfm: already inside this chat's tmux — refusing to nest it inside itself; switch windows yourself (prefix + w)",
 		)
 		return true
 	}
@@ -254,13 +254,13 @@ func (executor *Executor) SelfSwitch(
 	); err != nil {
 		fmt.Fprintln(
 			executor.stderr,
-			"cc: already inside this chat's tmux — refusing to nest it inside itself; switch windows yourself (prefix + w)",
+			"pfm: already inside this chat's tmux — refusing to nest it inside itself; switch windows yourself (prefix + w)",
 		)
 		return true
 	}
 	fmt.Fprintln(
 		executor.stderr,
-		"cc: already inside this chat's tmux — switched to its window (a session must never nest inside itself)",
+		"pfm: already inside this chat's tmux — switched to its window (a session must never nest inside itself)",
 	)
 	return true
 }

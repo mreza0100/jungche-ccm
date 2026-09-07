@@ -194,13 +194,13 @@ func TestRenderOutsideAFleetSocketNeverForksTmux(t *testing.T) {
 	for _, environment := range []map[string]string{
 		{},
 		{"TMUX": "/elsewhere/cc-1800000003-1-1,1,0", "TMUX_PANE": "%0"},
-		{"TMUX": filepath.Join(root, "tmux-1000", "cx-1800000004-1-1") + ",1,0", "TMUX_PANE": "%0"},
+		{"TMUX": filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()), "cx-1800000004-1-1") + ",1,0", "TMUX_PANE": "%0"},
 	} {
 		runner := &countingRunner{}
 		runtime := Runtime{
 			Now: time.Now, Home: root, ConfigDir: filepath.Join(root, ".claude"),
 			CacheDir: filepath.Join(root, "cache"), RateLimitDir: filepath.Join(root, "rates"),
-			SIDDir: filepath.Join(root, "sid"), TmuxDir: filepath.Join(root, "tmux-1000"),
+			SIDDir: filepath.Join(root, "sid"), TmuxDir: filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid())),
 			ProcRoot: filepath.Join(root, "proc"), Engine: pfmengine.Claude,
 			Command: runner, Env: environment,
 		}

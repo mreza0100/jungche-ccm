@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# cc-memory-consolidate.sh — one-time consolidation. Moves every ~/work/<project>
+# memory-consolidate.sh — one-time consolidation. Moves every ~/work/<project>
 # Claude memory dir into a per-project subdir of the single shared memory vault.
 # Non-destructive: copies content in, VERIFIES file-for-file, only THEN swaps the
 # local dir for a symlink. Idempotent. A memory dir already symlinked into the
 # vault (including the legacy ROOT brain) is left untouched.
-# Run once per machine; the SessionStart hook (cc-memory-wire.sh) handles new projects.
+# Run once per machine; the SessionStart hook (memory-wire.sh) handles new projects.
 #
 # Vault path: $CLAUDE_MEMORY_REPO if set, else the install-baked default below.
 # ---------------------------------------------------------------------------

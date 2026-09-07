@@ -78,12 +78,11 @@ type Options struct {
 	Stdout     io.Writer
 	Runner     CommandRunner
 
-	MCPEnabled     map[string]bool
-	MCPPort        int
-	MCPConfigPath  string
-	ClaudeBinary   string
-	ClaudePrompted map[int]bool
-	CodexYolo      map[int]bool
+	MCPEnabled    map[string]bool
+	MCPPort       int
+	MCPConfigPath string
+	ClaudeBinary  string
+	CodexYolo     map[int]bool
 	// NameSyncInterval is the machine config's nameSync.interval. It renders
 	// into BOTH schedulers — the launchd job's StartInterval and the systemd
 	// timer's OnUnitInactiveSec — from this ONE value, so a host that switches
@@ -159,9 +158,6 @@ func normalize(options Options) (Options, error) {
 	}
 	if options.MCPPort == 0 {
 		options.MCPPort = 8377
-	}
-	if options.ClaudePrompted == nil {
-		options.ClaudePrompted = map[int]bool{1: false, 2: false, 3: false}
 	}
 	if options.CodexYolo == nil {
 		options.CodexYolo = map[int]bool{1: true, 2: true, 3: true}

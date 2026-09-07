@@ -77,15 +77,6 @@ func mcpSchedulerAsset(relative string) bool {
 }
 
 func renderShimAsset(content []byte, options Options) ([]byte, error) {
-	claude := []string{"typeset -gA PFM_CLAUDE_PROMPTED=("}
-	for _, account := range sortedBoolKeys(options.ClaudePrompted) {
-		value := 0
-		if options.ClaudePrompted[account] {
-			value = 1
-		}
-		claude = append(claude, "  ["+strconv.Itoa(account)+"]="+strconv.Itoa(value))
-	}
-	claude = append(claude, ")")
 	codex := []string{"typeset -gA PFM_CODEX_YOLO=("}
 	for _, account := range sortedBoolKeys(options.CodexYolo) {
 		value := 0
@@ -95,11 +86,7 @@ func renderShimAsset(content []byte, options Options) ([]byte, error) {
 		codex = append(codex, "  ["+strconv.Itoa(account)+"]="+strconv.Itoa(value))
 	}
 	codex = append(codex, ")")
-	text, err := replaceSingleAssetMarker(string(content), "typeset -gA PFM_CLAUDE_PROMPTED=()", strings.Join(claude, "\n"))
-	if err != nil {
-		return nil, err
-	}
-	text, err = replaceSingleAssetMarker(text, "typeset -gA PFM_CODEX_YOLO=()", strings.Join(codex, "\n"))
+	text, err := replaceSingleAssetMarker(string(content), "typeset -gA PFM_CODEX_YOLO=()", strings.Join(codex, "\n"))
 	if err != nil {
 		return nil, err
 	}

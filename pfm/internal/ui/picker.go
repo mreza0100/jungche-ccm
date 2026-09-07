@@ -34,6 +34,7 @@ func (picker BubblePicker) Pick(
 		tea.WithContext(ctx),
 		tea.WithInput(terminal),
 		tea.WithOutput(terminal),
+		tea.WithColorProfile(interactiveColorProfile(terminal)),
 		tea.WithWindowSize(model.width, model.height),
 		// Bubble Tea's own renderer runs an internal flush ticker independent
 		// of every application-level backoff above (skyCadence, the fleet

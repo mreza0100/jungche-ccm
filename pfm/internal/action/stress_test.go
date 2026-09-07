@@ -1,12 +1,12 @@
 package action
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,11 +163,22 @@ func stressHostileProjectDirectories(t *testing.T) {
 			},
 			PrimaryAccount: 1,
 			Home:           "/home/test",
+			FreshSocket:    "cc-stress-1",
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		script := "cc1() { pwd > \"$ACTION_ROUNDTRIP\"; }\n" + plan.Line
+		if !strings.HasPrefix(plan.Line, "TMUX= tmux -L ") {
+			t.Fatalf("native fresh plan %q did not call tmux directly", plan.Line)
+		}
+		script := `tmux() {
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = -c ]; then printf %s "$2" > "$ACTION_ROUNDTRIP"; return; fi
+    shift
+  done
+  return 9
+}
+` + plan.Line
 		if output, err := exec.Command("sh", "-n", "-c", script).CombinedOutput(); err != nil {
 			t.Fatalf("sh -n hostile case %d: %v: %s", index, err, output)
 		}
@@ -184,7 +195,6 @@ func stressHostileProjectDirectories(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		content = bytes.TrimSuffix(content, []byte{'\n'})
 		if string(content) != projectDir {
 			t.Fatalf(
 				"hostile path %d round trip=%q, want=%q",

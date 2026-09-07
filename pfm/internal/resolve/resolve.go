@@ -235,7 +235,7 @@ func (resolver *Resolver) resolveLabel(
 				Code:   0,
 				Stdout: targetLine(winner.socketPath, winner.paneID),
 				Stderr: fmt.Sprintf(
-					"note: 🔖 '%s' is hosted by %d servers for ONE chat (%s) — resolving to the newest (cc-ls shows it ⚠%dsrv; open it there to reap the elders)\n",
+					"note: 🔖 '%s' is hosted by %d servers for ONE chat (%s) — resolving to the newest (pfm shows it ⚠%dsrv; open it there to reap the elders)\n",
 					want,
 					len(matches),
 					uuid,

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/installer"
@@ -147,11 +146,7 @@ func newInstallerOptions(
 			options.CodexBinary = pfmengine.MustLookup(pfmengine.Codex).Binary
 		}
 		options.NameSyncInterval = runtime.Config.NameSync.Interval
-		options.ClaudePrompted = make(map[int]bool, len(runtime.Config.Accounts))
 		options.CodexYolo = make(map[int]bool, len(runtime.Config.CodexAccounts))
-		for _, account := range runtime.Config.Accounts {
-			options.ClaudePrompted[account.ID] = runtime.Config.EffectiveClaude(account.ID).PermissionMode == pfmconfig.PermissionPrompt
-		}
 		options.CodexHomes = make([]string, 0, len(runtime.Config.CodexAccounts))
 		for _, account := range runtime.Config.CodexAccounts {
 			options.CodexHomes = append(options.CodexHomes, account.Home)

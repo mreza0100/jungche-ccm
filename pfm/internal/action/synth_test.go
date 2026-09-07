@@ -108,14 +108,17 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A fresh launch calls the shell launcher, whose _cc_run prepends the
-	// autonomy flags — repeating them here would duplicate them in argv
-	// by the launcher.
-	if plan.Line != "(cd -- '/rotated/project' && CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 cc2)" {
-		t.Fatalf("new Claude line = %q", plan.Line)
+	if plan.Line != newSessionLine(request.FreshSocket, request.Row.CWD, plan.Run, false) {
+		t.Fatalf("new Claude line = %q, run = %q", plan.Line, plan.Run)
 	}
-	if strings.Contains(plan.Line, "skip-permissions") {
-		t.Fatalf("new Claude line duplicated the autonomy flags: %q", plan.Line)
+	for _, want := range []string{
+		"CLAUDE_CONFIG_DIR='/home/test/.cc/2'",
+		"FORCE_PROMPT_CACHING_5M=1",
+		autonomyFlags,
+	} {
+		if !strings.Contains(plan.Run, want) {
+			t.Fatalf("new Claude run %q lacks %q", plan.Run, want)
+		}
 	}
 }
 
@@ -130,6 +133,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 			},
 			PrimaryAccount: account,
 			Home:           "/home/test",
+			FreshSocket:    "cc-roster-test",
 		})
 		if err == nil || !strings.Contains(err.Error(), "Claude account") {
 			t.Fatalf("account %d error = %v, want a roster rejection", account, err)
@@ -143,6 +147,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 			},
 			PrimaryAccount: account,
 			Home:           "/home/test",
+			FreshSocket:    "cc-roster-test",
 		}); err != nil {
 			t.Fatalf("account %d rejected: %v", account, err)
 		}
@@ -361,7 +366,7 @@ func TestPickerLaunchPromptReachesClaudeCodexAndOpenCode(t *testing.T) {
 		{
 			name: "Claude",
 			row:  compose.Row{Kind: compose.NewClaude, CWD: "/work/.professor"},
-			want: []string{"cc1", Quote(prompt)},
+			want: []string{"claude", Quote(prompt), "new-session"},
 		},
 		{
 			name: "Codex",

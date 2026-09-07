@@ -126,6 +126,22 @@ pfm install --yes --vscode
 
 Every rewritten file is backed up before it's touched.
 
+Run `pfm` for the interactive picker. Its colors are enabled independently of inherited
+`NO_COLOR` or `CLICOLOR=0`; `pfm ls --plain` and `pfm ls --tsv` remain uncolored. The managed
+terminal profile uses `PFM_AUTO_OPEN=pfm` to open the picker once at the first prompt.
+
+The Professor `cc*` shell commands are retired. Use `pfm`, `pfm chat open <target>`, and the
+picker's account selector. Installation removes the named legacy launch/account scripts,
+backing up regular files outside `PATH` under `~/.local/state/pfm/retired-commands/`;
+source the updated shim or start a new shell to unload old functions and aliases. Account
+credentials, transcripts, live chat socket names, and the system C compiler are preserved.
+
+Optional `cc-memory-wire.sh` and `cc-memory-consolidate.sh` helpers become `memory-wire.sh`
+and `memory-consolidate.sh`. Installation migrates recognized historical copies and exact
+hook paths without executing either helper or changing memory data. Customized helpers,
+conflicting destinations, and unsupported hook commands stop migration with an error;
+hosts without these helpers remain opted out.
+
 **Known gate — read before you run it.** A mutating install refuses with exit 97 only while
 PFM's name-sync job is actively running, so it cannot replace the job or binary mid-execution.
 On Linux, wait or run `systemctl --user stop pfm-name-sync.service`; on macOS, wait or run
