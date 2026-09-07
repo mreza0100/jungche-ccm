@@ -801,6 +801,11 @@ func copyPlanTree(source, target string) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		resolved, err := filepath.EvalSymlinks(source)
 		if err != nil {
+			// A dangling link is exactly what this install is about to prune, so
+			// the preview must skip it rather than abort before the prune runs.
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
 			return err
 		}
 		return copyPlanTree(resolved, target)
