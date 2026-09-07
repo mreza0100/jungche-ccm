@@ -3,7 +3,7 @@
   "installed_from": {
     "mode": "self-hosted",
     "repo": "mreza0100/professor",
-    "version": "0.71.0"
+    "version": "0.72.0"
   },
   "profile": "minimal",
   "answers": {
@@ -51,7 +51,7 @@
       "Pragmatics & linguistics",
       "Cognitive load and attention"
     ],
-    "intersection_lens": "prompt engineering x epistemology of evidence — the judge must never be the thing being judged",
+    "intersection_lens": "prompt engineering x epistemology of evidence \u2014 the judge must never be the thing being judged",
     "failure_modes_watched": [
       "the honest-looking absence (a check that reports its own broken state as a clean result)",
       "drift between .claude/** and its templates/** twin",
@@ -65,8 +65,8 @@
       "renamed": false
     },
     "sacred_ground": [
-      "the leak line — no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
-      "the publication line — push/tag/release only on an explicit in-turn request"
+      "the leak line \u2014 no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
+      "the publication line \u2014 push/tag/release only on an explicit in-turn request"
     ],
     "tier_b_roles": [],
     "codex": true,
@@ -105,7 +105,7 @@
     ],
     "skills_source_fetched": {},
     "deliberately_absent": {
-      "/jc": "no separate hotfix route needed without a worktree pipeline — work lands on main under /dev + gitter",
+      "/jc": "no separate hotfix route needed without a worktree pipeline \u2014 work lands on main under /dev + gitter",
       "format-md.sh + notify.sh + km-guard.sh + filter-test-output.sh": "not wired: prettier is absent on this host and an npx-fetching hook is a silent network call mid-turn",
       "docs/agents/ cluster + /documenter": "no permanent cross-project doc tree in a template repo"
     }
