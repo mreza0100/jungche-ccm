@@ -307,7 +307,12 @@ act_pfm() {
     install) run "pfm: go mod download" -- go -C "$d" mod download ;;
     build)   run "pfm: go build" -- go -C "$d" build ./... ;;
     typecheck|verify) run "pfm: go vet" -- go -C "$d" vet ./... ;;
-    test)    run "pfm: go test" -- go -C "$d" test ./... ;;
+    # -count=1 is not optional: without it a package whose inputs are unchanged
+    # reports `ok  (cached)`, and this gate would call a run it never watched a
+    # pass. -timeout is measured, not guessed — internal/index's OpenCode WAL
+    # stress test alone takes ~4.5 minutes (268s watched), so the 10m default
+    # turns an ordinary loaded host into a red suite that names the wrong cause.
+    test)    run "pfm: go test" -- go -C "$d" test ./... -count=1 -timeout 25m ;;
     all)     act_pfm build; act_pfm verify; act_pfm test ;;
   esac
 }
