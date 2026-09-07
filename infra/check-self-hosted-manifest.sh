@@ -22,6 +22,15 @@ repo_git() {
   fi
 }
 
+# An empty ROOT is a CALLER error, not a missing repository: without this the
+# loop below reports `missing ` and `missing /VERSION` — absolute paths nobody
+# ever asked about — which reads as a broken install instead of a call with no
+# argument.
+if [[ -z "$ROOT" ]]; then
+  echo "self-hosted-manifest: NO-ROOT — usage: $0 <repo-root> [scoped-project...]; nothing was verified" >&2
+  exit 2
+fi
+
 for tool in git jq sort; do
   command -v "$tool" >/dev/null 2>&1 || { fail "TOOLCHAIN-MISSING $tool"; }
 done

@@ -177,27 +177,65 @@ scan_diff_stream() {
     fi
   done
 
-  [[ ${#contents[@]} -eq 0 ]] && return 0
-
-  local matches
-  matches="$(printf '%s\n' "${contents[@]}" | grep -niE "$PATTERN" || true)"
-  [[ -z "$matches" ]] && return 0
-
-  local idx content
+  # This function is the last stage of a pipeline, so it runs in a subshell:
+  # nothing it assigns survives to the parent. Coverage is therefore written
+  # to $coverage_file (a file the parent already created) rather than handed
+  # back through a variable — and it is written UNCONDITIONALLY, including
+  # the zero-added-lines case, because that case is exactly the one a
+  # coincidence detector would otherwise skip reporting on.
+  local added_lines=${#contents[@]}
+  local -A seen_files=()
+  local distinct_files=0
+  local unattributed=0
   local suppressed=0
-  while IFS=: read -r idx content; do
-    if line_is_real_hit "$content"; then
-      printf 'LEAK %s: %s\n' "${files[idx-1]}" "$content"
-    else
-      suppressed=$((suppressed + 1))
+
+  if (( added_lines > 0 )); then
+    local f
+    for f in "${files[@]}"; do
+      # An added line with no `+++` header before it belongs to no file: the
+      # diff stream was malformed (a format change, a truncated pipe). Counting
+      # it as a file would report coverage of a file that does not exist, so it
+      # is counted separately and named in the verdict.
+      if [[ -z "$f" ]]; then
+        unattributed=$((unattributed + 1))
+        continue
+      fi
+      if [[ -z "${seen_files[$f]+x}" ]]; then
+        seen_files[$f]=1
+        distinct_files=$((distinct_files + 1))
+      fi
+    done
+
+    local matches
+    matches="$(printf '%s\n' "${contents[@]}" | grep -niE "$PATTERN" || true)"
+    if [[ -n "$matches" ]]; then
+      local idx content
+      while IFS=: read -r idx content; do
+        if line_is_real_hit "$content"; then
+          printf 'LEAK %s: %s\n' "${files[idx-1]}" "$content"
+        else
+          suppressed=$((suppressed + 1))
+        fi
+      done <<< "$matches"
     fi
-  done <<< "$matches"
+  fi
+
+  {
+    printf 'added_lines=%d\n' "$added_lines"
+    printf 'distinct_files=%d\n' "$distinct_files"
+    printf 'term_count=%d\n' "${#terms[@]}"
+    printf 'structural_patterns=3\n'
+    printf 'suppressed=%d\n' "$suppressed"
+    printf 'unattributed=%d\n' "$unattributed"
+  } > "$coverage_file"
+
   (( suppressed > 0 )) && printf 'leak-check: %d benign-token line(s) suppressed by the documented allowlist\n' "$suppressed" >&2
   return 0
 }
 
 hits_file="$(mktemp)"
-trap 'rm -f "$hits_file"' EXIT
+coverage_file="$(mktemp)"
+trap 'rm -f "$hits_file" "$coverage_file"' EXIT
 
 case "$mode" in
   staged)
@@ -263,6 +301,49 @@ if [[ "$n" -gt 0 ]]; then
   cat "$hits_file"
   echo "leak-check: FAILED — ${n} leak line(s)" >&2
   exit 1
+fi
+
+if [[ "$mode" == "staged" || "$mode" == "range" ]]; then
+  # scan_diff_stream ran in a subshell (last stage of the diff pipeline) and
+  # left its coverage in $coverage_file — a "clean" verdict here must name
+  # what it scanned, and if that file is missing or unparseable this is a
+  # FAILURE, never a silent default of 0 reported as clean.
+  if [[ ! -s "$coverage_file" ]]; then
+    echo "leak-check: FAILED — the scan's own coverage could not be read (${mode} coverage file is missing or empty); refusing to report clean" >&2
+    exit 1
+  fi
+
+  added_lines=""
+  distinct_files=""
+  term_count=""
+  structural_patterns=""
+  suppressed=""
+  unattributed=""
+  while IFS='=' read -r key value; do
+    case "$key" in
+      added_lines) added_lines="$value" ;;
+      distinct_files) distinct_files="$value" ;;
+      term_count) term_count="$value" ;;
+      structural_patterns) structural_patterns="$value" ;;
+      suppressed) suppressed="$value" ;;
+      unattributed) unattributed="$value" ;;
+    esac
+  done < "$coverage_file"
+
+  if [[ -z "$added_lines" || -z "$distinct_files" || -z "$term_count" || -z "$structural_patterns" || -z "$suppressed" || -z "$unattributed" ]]; then
+    echo "leak-check: FAILED — the scan's own coverage could not be read (${mode} coverage file is unparseable); refusing to report clean" >&2
+    exit 1
+  fi
+
+  if [[ "$added_lines" -eq 0 ]]; then
+    echo "leak-check: NOTHING TO SCAN — the ${mode} diff contained no added lines; nothing could leak and no verdict was earned"
+    exit 0
+  fi
+
+  verdict="leak-check: clean — ${added_lines} added line(s) across ${distinct_files} file(s) scanned against ${term_count} private term(s) + ${structural_patterns} structural pattern(s); ${suppressed} benign-token line(s) suppressed"
+  (( unattributed > 0 )) && verdict+=" — WARNING: ${unattributed} added line(s) carried no file header and are attributed to no file; the diff stream was malformed"
+  echo "$verdict"
+  exit 0
 fi
 
 echo "leak-check: clean"
