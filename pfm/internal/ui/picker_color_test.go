@@ -12,23 +12,54 @@ import (
 	"github.com/charmbracelet/colorprofile"
 )
 
+// TestInteractiveColorProfileIgnoresNoninteractiveColorOptOuts pins the
+// capability-vs-preference line from interactiveColorProfileFrom's doc
+// comment. Every environ here is constructed inline — no t.Setenv, so no
+// ambient variable (this host's TMUX included) can reach the decision.
 func TestInteractiveColorProfileIgnoresNoninteractiveColorOptOuts(t *testing.T) {
-	t.Setenv("TERM", "dumb")
-	t.Setenv("TTY_FORCE", "0")
-	t.Setenv("COLORTERM", "")
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("CLICOLOR", "0")
-
-	if got := interactiveColorProfile(io.Discard); got != colorprofile.ANSI {
-		t.Fatalf("interactiveColorProfile() = %s, want minimum ANSI", got)
+	for _, testCase := range []struct {
+		name    string
+		environ []string
+		want    colorprofile.Profile
+	}{
+		{
+			// TERM=dumb is a terminal CAPABILITY statement, never overridden:
+			// the honest sub-ANSI answer must survive even with NO_COLOR and
+			// CLICOLOR=0 also present.
+			name: "dumb terminal reports its honest capability",
+			environ: []string{
+				"TERM=dumb",
+				"TTY_FORCE=0",
+				"COLORTERM=",
+				"NO_COLOR=1",
+				"CLICOLOR=0",
+			},
+			want: colorprofile.NoTTY,
+		},
+		{
+			// NO_COLOR and CLICOLOR=0 are shell PREFERENCES and are
+			// overridden by design: a color-capable TERM keeps its
+			// advertised profile despite both opt-outs being set.
+			name: "color-capable terminal keeps its advertised profile despite the opt-outs",
+			environ: []string{
+				"TERM=xterm-256color",
+				"TTY_FORCE=1",
+				"COLORTERM=",
+				"NO_COLOR=1",
+				"CLICOLOR=0",
+			},
+			want: colorprofile.ANSI256,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := interactiveColorProfileFrom(io.Discard, testCase.environ); got != testCase.want {
+				t.Fatalf("interactiveColorProfileFrom() = %s, want %s", got, testCase.want)
+			}
+		})
 	}
 }
 
 func TestInteractiveColorProfileKeepsAdvertisedCapabilities(t *testing.T) {
-	t.Setenv("TTY_FORCE", "1")
-	t.Setenv("NO_COLOR", "")
-	t.Setenv("CLICOLOR", "")
-
 	for _, testCase := range []struct {
 		name      string
 		term      string
@@ -39,18 +70,27 @@ func TestInteractiveColorProfileKeepsAdvertisedCapabilities(t *testing.T) {
 		{name: "true color", term: "xterm-256color", colorTerm: "truecolor", want: colorprofile.TrueColor},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			t.Setenv("TERM", testCase.term)
-			t.Setenv("COLORTERM", testCase.colorTerm)
-			if got := interactiveColorProfile(io.Discard); got != testCase.want {
-				t.Fatalf("interactiveColorProfile() = %s, want %s", got, testCase.want)
+			environ := []string{
+				"TTY_FORCE=1",
+				"NO_COLOR=",
+				"CLICOLOR=",
+				"TERM=" + testCase.term,
+				"COLORTERM=" + testCase.colorTerm,
+			}
+			if got := interactiveColorProfileFrom(io.Discard, environ); got != testCase.want {
+				t.Fatalf("interactiveColorProfileFrom() = %s, want %s", got, testCase.want)
 			}
 		})
 	}
 }
 
 func TestBubblePickerRendererStaysColoredWhenParentDisablesColor(t *testing.T) {
-	t.Setenv("TERM", "dumb")
-	t.Setenv("TTY_FORCE", "0")
+	// A color-capable TERM, not a dumb one: NO_COLOR/CLICOLOR=0 are shell
+	// PREFERENCES this test proves get overridden. TERM=dumb would instead
+	// be a terminal CAPABILITY statement (see interactiveColorProfileFrom),
+	// which is never overridden and belongs to a different test.
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TTY_FORCE", "1")
 	t.Setenv("COLORTERM", "")
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("CLICOLOR", "0")

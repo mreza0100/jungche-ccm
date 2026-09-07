@@ -271,12 +271,43 @@ func (spawn ClaudeSpawn) leanEnvironment(prefs pfmconfig.ClaudePrefs) bool {
 }
 
 // promptFile is the staged professor prompt for a conversational spawn whose
-// account chose it, and "" everywhere else.
+// account chose it, and "" everywhere else — including when the staged file
+// is missing.
+//
+// A missing prompt must never brick a chat launch. That is the retired
+// `pfm internal prompt-args` shim's contract, verbatim: "Fail-OPEN on any
+// nonzero exit — a broken prompt layer must not brick every chat spawn." This
+// door has no diagnostic/warning channel of its own to name the gap on —
+// ShellCommand and Command either succeed or hard-fail validate(), and
+// wiring one in here would print on every ordinary launch of an account that
+// simply has not run `pfm install` yet. The surface that DOES report this
+// gap already exists: `pfm doctor`'s spawn audit
+// (cmd/pfm/spawn_audit_doctor.go:194 promptLayerStamp, fed into the
+// classifier a few lines above) reports a live Professor-policy launch with
+// no --system-prompt-file in its argv as VIOLATION, "fresh launch with no
+// prompt material — some spawn site bypassed the door".
+//
+// A stat error that is not "file does not exist" (permission denied, a
+// dangling symlink, a filesystem gone away) is not the same silence as
+// absence. It still fails open today — refusing to launch over a broken
+// filesystem permission is worse than the lean fallback — but it is branched
+// separately so that distinction survives if a diagnostic channel is ever
+// added here.
 func (spawn ClaudeSpawn) promptFile(prefs pfmconfig.ClaudePrefs) string {
 	switch spawn.Purpose {
 	case PurposeInteractive, PurposeResume:
-		if prefs.SystemPrompt == pfmconfig.SystemPromptProfessor {
-			return ProfessorPromptPath(spawn.Home)
+		if prefs.SystemPrompt != pfmconfig.SystemPromptProfessor {
+			return ""
+		}
+		path := ProfessorPromptPath(spawn.Home)
+		_, err := os.Stat(path)
+		switch {
+		case err == nil:
+			return path
+		case errors.Is(err, os.ErrNotExist):
+			return ""
+		default:
+			return ""
 		}
 	}
 	return ""

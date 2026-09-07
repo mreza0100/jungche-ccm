@@ -145,9 +145,9 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 				Kind: compose.NewClaude,
 				CWD:  "/work/project",
 			},
-				PrimaryAccount: account,
-				Home:           "/home/test",
-				FreshSocket:    "cc-roster-test",
+			PrimaryAccount: account,
+			Home:           "/home/test",
+			FreshSocket:    "cc-roster-test",
 		}); err != nil {
 			t.Fatalf("account %d rejected: %v", account, err)
 		}

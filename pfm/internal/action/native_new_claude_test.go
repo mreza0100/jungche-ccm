@@ -1,6 +1,8 @@
 package action
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -8,8 +10,24 @@ import (
 	pfmconfig "hostops/pfm/internal/config"
 )
 
+// stageProfessorPrompt writes the staged professor prompt file a
+// SystemPromptProfessor spawn reads via ProfessorPromptPath, so a test can
+// exercise the "file present" side of promptFile's absence guard.
+func stageProfessorPrompt(t *testing.T, home string) string {
+	t.Helper()
+	path := ProfessorPromptPath(home)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("stage professor prompt dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("professor prompt\n"), 0o644); err != nil {
+		t.Fatalf("stage professor prompt file: %v", err)
+	}
+	return path
+}
+
 func TestNewClaudeUsesNativeConfiguredSpawn(t *testing.T) {
 	home := t.TempDir()
+	stageProfessorPrompt(t, home)
 	machine := configuredMachinePolicy(home)
 	machine.Claude.SystemPrompt = pfmconfig.SystemPromptProfessor
 	prompt := "fresh prompt with '$HOME' and $(touch nope)"
@@ -51,6 +69,37 @@ func TestNewClaudeUsesNativeConfiguredSpawn(t *testing.T) {
 		if strings.Contains(plan.Line, retired) || strings.Contains(plan.Run, retired) {
 			t.Fatalf("native fresh action retained retired shell surface %q: %#v", retired, plan)
 		}
+	}
+}
+
+// TestNewClaudeNativeSpawnOmitsMissingSystemPromptFile is F3/F4's regression
+// test: a fresh account chose SystemPromptProfessor, but pfm install never
+// staged the prompt file (a brand-new machine, a wiped .local/share). The
+// door must degrade to the lean fallback rather than pass claude a
+// --system-prompt-file flag pointing at nothing, which would brick the
+// launch instead of merely losing the extra prompt material — the fail-open
+// contract promptFile's doc comment states.
+func TestNewClaudeNativeSpawnOmitsMissingSystemPromptFile(t *testing.T) {
+	home := t.TempDir()
+	// Deliberately NOT staging the professor prompt file under home.
+	machine := configuredMachinePolicy(home)
+	machine.Claude.SystemPrompt = pfmconfig.SystemPromptProfessor
+	request := Request{
+		Row: compose.Row{
+			Kind: compose.NewClaude,
+			CWD:  "/work/project with spaces",
+		},
+		PrimaryAccount: 42,
+		Home:           home,
+		FreshSocket:    "cc-native-42",
+		Config:         machine,
+	}
+	plan, err := Synthesize(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plan.Run, "--system-prompt-file") {
+		t.Fatalf("native fresh run carried --system-prompt-file for a missing staged prompt: %q", plan.Run)
 	}
 }
 
