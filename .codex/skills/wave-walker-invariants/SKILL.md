@@ -155,11 +155,11 @@ Any addition is `$pfm`-routed (guarded file) with the SAME rigor as a CLAUDE.md 
 - `.claude/scripts/*.sh`
 - `templates/project/scripts/**`
 
-**Triggers:** diff adds or edits any site that execs, synthesizes, or templates a `claude` invocation; diff adds a spawn subcommand, shell alias, or launcher function; diff touches prompt-injection plumbing (`claudeCommandWith`, `LauncherRun`, `pfm internal prompt-args`, `_cc_run`) or the passthrough predicates (`launchPassThrough`).
+**Triggers:** diff adds or edits any site that execs, synthesizes, or templates a `claude` invocation; diff adds a spawn subcommand, shell alias, or launcher function; diff touches prompt-injection plumbing (`claudeCommandWith`, `LauncherRun`, `action.ClaudeSpawn.promptFile`, `ClaudeSpawn.ShellCommand`) or the passthrough predicates (`launchPassThrough`).
 
-**Exemplars:** `pfm/internal/installer/assets/shim/pfm.zsh:105,123` — `_cc_run` built the claude argv bare while the Go synthesizers injected `--system-prompt-file`; a fresh picker chat ran the production prompt — STATUS: FIXED (`pfm internal prompt-args` + `_cc_run` line-protocol parse, prompt-layer wave).
+**Exemplars:** the shim's `_cc_run` built the claude argv bare while the Go synthesizers injected `--system-prompt-file`, so a fresh picker chat ran the production prompt — STATUS: FIXED by retiring that door entirely; a fresh Claude chat is now synthesized in Go by `action.ClaudeSpawn`, and `promptFile` is the single place `--system-prompt-file` is decided.
 
-**Hunt Brief:** Enumerate EVERY site in the repo that launches or synthesizes a Claude CLI invocation — Go exec/argv builders, zsh shim functions, shell scripts, templated adopter scripts. For each, name the injection point it flows through (`claudeCommandWith` | `LauncherRun` | `pfm internal prompt-args`) or the documented exemption it sits behind (`launchPassThrough`'s inside-tmux and non-interactive doors; the doctor's deliberate production-prompt capture). A door with neither is a finding, LIVE, with `file:line`. The enumeration is closed-world: state the patterns searched and name any surface you could not rule out.
+**Hunt Brief:** Enumerate EVERY site in the repo that launches or synthesizes a Claude CLI invocation — Go exec/argv builders, zsh shim functions, shell scripts, templated adopter scripts. For each, name the injection point it flows through (`claudeCommandWith` | `LauncherRun` | `action.ClaudeSpawn.promptFile`) or the documented exemption it sits behind (`launchPassThrough`'s inside-tmux and non-interactive doors; the doctor's deliberate production-prompt capture). A door with neither is a finding, LIVE, with `file:line`. The enumeration is closed-world: state the patterns searched and name any surface you could not rule out.
 
 ---
 

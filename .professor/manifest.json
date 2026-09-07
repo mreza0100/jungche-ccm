@@ -127,7 +127,7 @@
     ".claude/commands/wave/ccc.md": "ac2836af7745dc278a662fa02e0374df2d9afc7ffdd05e77d8a932de077f892b",
     ".claude/commands/wave/live.md": "1eac2188cfcca4b3428c46936fbeeedad654f03345d4944bcdbb67cbbbee2f5f",
     ".claude/commands/wave/refine.md": "8b01092906b0a3ff14a1b9477c2cb4529ea82691a09ca7ff44fc0035a8af1f08",
-    ".claude/commands/wave/walker-invariants.md": "1a844bd900040af21cd1e0e3181410d8ffa81a9c471a6ac98835a82ab4bb9c0b",
+    ".claude/commands/wave/walker-invariants.md": "ea1e592e0ef454b8f178b26bec006fa306428625109757de826a510c5ce3ea18",
     ".claude/commands/wave/walker.md": "cc1713bcce44d830fbba6374218943969faa06532e687323fd08b9a7b4836ccf",
     ".claude/scripts/build-opencode.mjs": "bf733565c5b02127fb361bcfcd938b35b34c36b107f09419e9bc0eec92a6db09",
     ".claude/scripts/codex-sync.sh": "a9179abfe7b73717b550e54387e76bc316de4de0acaa2b8a01c6db26faaadbe3",
@@ -152,7 +152,7 @@
     ".codex/skills/wave-ccc/SKILL.md": "5eef1eb65b059627e880f2be286fe727ab0c9d1cec19124d136340ca31ad5e8a",
     ".codex/skills/wave-live/SKILL.md": "ca171afc64ca67c611b2555bba92d463b8a7ba39e664d04dada76eca7a2c3414",
     ".codex/skills/wave-refine/SKILL.md": "2bbbe2d5a117d009ac3d78b7ecc87cd678da5fea1c11004982b5fa10708bba5e",
-    ".codex/skills/wave-walker-invariants/SKILL.md": "4efd92cbbc0a6a56d6f28b3372a410e9d37b63ba90697193fa5f133d25410576",
+    ".codex/skills/wave-walker-invariants/SKILL.md": "5cd879cc7f9416e293a14d07f5a33f4a5c3b4adf3b93561aeb8583be0a22401b",
     ".codex/skills/wave-walker/SKILL.md": "966a7aa010ce11fc7aa4ab4abbf2341b083e58e800d819aa3d29000dd3457a61",
     ".gitignore": "45d584464d867115f7e20727ef10a30b9796d8c0f1f91eef9b6278d8efd15067",
     ".opencode/agent/dev.md": "e5dca45cf9da5bb45b005a94b6acc59af1d41e020ceaa593b2ca3b485cbdcf1a",
@@ -170,14 +170,14 @@
     ".opencode/command/wave-ccc.md": "e9d1db5e58ac0381563c8c461018c02fa34034670b338eafea2bdcd7a299e54b",
     ".opencode/command/wave-live.md": "db47274ce5955c62f776b39c1d8fbd72705e47bb1cf73fe9a4fac8ccc88023dc",
     ".opencode/command/wave-refine.md": "d8eaf6d7bbeabc95b735cb509bad67440645f017eaca70c0f26d0c9811eb6a7a",
-    ".opencode/command/wave-walker-invariants.md": "716ae4499af366c9e02abd0b778265b35209823a1f96a3405bdc6c610ec90228",
+    ".opencode/command/wave-walker-invariants.md": "3547ce908f35873f635ac954d00aa902f82e62227d9c636a5655f563ccac5cbb",
     ".opencode/command/wave-walker.md": "5ac7fb6dd6b56933d5de34fccdf6d5b6980bdec0ece01f63457dda748e0d4d2c",
     ".opencode/opencode.jsonc": "a7d7d8147da1f7a731f971dfbc20e8497f6e1953a3ad88ff0fd705e38cadaf47",
     "AGENTS.md": "d90a9abae1037403104f25857b34cd8478041e00c1a7eb4cc047bbc156e1b0b2",
     "CLAUDE.md": "ee824293b72519975256122d4700924dbb2540287a36678e1596685c596cb93d",
     "docs/commands/pfm/references/audit-scopes.md": "8634be6c91bfcdcb3ec7609afea5470e92a24918045806f5c5e48a9ab038f4c1",
     "docs/commands/pfm/references/refresh.md": "0fc21ca1f250c5fdd962863754e34a0e6d1f675f3a58e100091a4f6b953ce340",
-    "pfm/AGENTS.md": "c3ae38d3563a5629df74c47e022c31bbb0059dff48e38b88bec0e8b704f15c94",
-    "pfm/CLAUDE.md": "43e6ccf047c35aa245fd9105c484c826ecaf553a5f9ea3d678b8ec98f724bc17"
+    "pfm/AGENTS.md": "13bf36f680a691950abd0f2ff6f0c37d8832b6d9b8e0f7e7c2a387ce88c23d01",
+    "pfm/CLAUDE.md": "bebc0be4ee0a2934bfb7c1f06bae2e508daf6209085550847c9fdc405ac1a906"
   }
 }
