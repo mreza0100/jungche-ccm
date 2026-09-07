@@ -51,7 +51,7 @@ var fixedCommands = []Entry{
 	{Name: "lsof", Purpose: "Darwin open-file inspection", Required: true, Platforms: []string{"darwin"}, VersionArgs: []string{"-v"}, Parse: lsofVersion, InstallHint: "install lsof"},
 	{Name: "script", Purpose: "terminal-backed command execution", InstallHint: "install util-linux or the BSD script command"},
 	{Name: "setsid", Purpose: "detached Linux helper processes", Required: true, Platforms: []string{"linux"}, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install util-linux (setsid)"},
-	{Name: "nohup", Purpose: "detached Linux helper fallback", Platforms: []string{"linux"}, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install coreutils (nohup)"},
+	{Name: "nohup", Purpose: "detached helper fallback where setsid is absent", Platforms: []string{"linux", "darwin"}, InstallHint: "install coreutils (nohup)"},
 	{Name: "sleep", Purpose: "bounded shell-side polling", Required: true, InstallHint: "restore the system sleep command"},
 	{Name: "go", Purpose: "building a staged pfm update", VersionArgs: []string{"version"}, Parse: firstVersion, InstallHint: "install Go 1.24 or newer to use pfm update"},
 	{Name: "systemctl", Purpose: "Linux user-service wiring", Platforms: []string{"linux"}, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install systemd to enable user units"},

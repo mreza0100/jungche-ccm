@@ -24,13 +24,24 @@ import readline from "node:readline";
 const PRICING = [
   // [substring, inputPerMTok, outputPerMTok, cachedInputPerMTok?]
   //
-  // Claude models. Cache-write = 1.25x input, cache-read = 0.1x input — the standard
-  // Anthropic prompt-caching multipliers, applied via the MULT consts below.
-  ["opus", 15.0, 75.0],
-  ["sonnet", 3.0, 15.0],
-  ["haiku", 0.8, 4.0],
-  ["fable", 3.0, 15.0], // Fable 5 — priced as a Sonnet-class model; adjust if it diverges
-  ["mythos", 15.0, 75.0], // Mythos — priced as an Opus-class model; adjust if it diverges
+  // Claude models. Checked in order, most-specific first — the first substring match on the
+  // lowercased model id wins, so "opus-4-1" must precede the "opus" catch-all. Omitting the
+  // 4th column derives the cached rate at CACHE_READ_MULT.
+  ["opus-4-1", 15.0, 75.0], // deprecated Opus 4.1/4.0-era pricing tier
+  // Opus 4.0's id carries NO minor digit — it is claude-opus-4-<date> — so a
+  // literal "opus-4-0" matches nothing and silently falls through to the 5/25
+  // catch-all below at a third of the real rate. Match the date instead; every
+  // published 4.0 build is claude-opus-4-20{yy}{mm}{dd}, and no current-tier id
+  // (opus-4-5/4-6/4-7/4-8, opus-5) contains "opus-4-20".
+  ["opus-4-20", 15.0, 75.0],
+  ["opus", 5.0, 25.0], // current tier: opus-5, opus-4-8, opus-4-7, opus-4-6, opus-4-5
+  ["sonnet-4", 3.0, 15.0], // sonnet-4-6, sonnet-4-5, sonnet-4-0
+  ["sonnet-5", 2.0, 10.0], // permanent rate; the planned 2026-09-01 step to 3/15 was cancelled
+  ["sonnet", 3.0, 15.0], // older sonnet catch-all (3.7 etc.)
+  ["haiku-4-5", 1.0, 5.0],
+  ["haiku", 0.8, 4.0], // haiku 3.5/3 catch-all (retired, kept for historical transcripts)
+  ["fable", 10.0, 50.0],
+  ["mythos", 10.0, 50.0],
   //
   // Codex CLI models. 4th column = the cached-input rate, billed separately because
   // Codex reports cached_input_tokens as a SUBSET of input_tokens (see § CODEX MODE).

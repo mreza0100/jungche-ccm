@@ -20,6 +20,7 @@ Use `$dev build pfm` · `$dev verify pfm` · `$dev test pfm` for anything the pi
 - **Fuzzy match:** `sahilm/fuzzy` · **MCP:** `modelcontextprotocol/go-sdk`
 - **Storage:** `modernc.org/sqlite` — pure Go, `CGO_ENABLED=0`, static binary. On-demand incremental indexing; **no daemon.**
 - **CLI:** stdlib `flag` dispatch in `cmd/pfm/`. **No cobra, no config system, no telemetry** — boring Go for one box.
+- **Platforms:** Linux and Darwin, one codebase — no build tags, no per-OS packages. Platform differences live as `Platforms` gates on `internal/deps` registry entries; see § Platforms.
 
 ## File Structure
 
@@ -46,6 +47,31 @@ Use `$dev build pfm` · `$dev verify pfm` · `$dev test pfm` for anything the pi
 | `check/`, `spawn/`, `transcript/`, `shared/`, `legacy/`, `dream/` | doctor probes, process spawn, transcript follow, cross-writer shared state, legacy `.at` import, dreamer isolation |
 
 `internal/installer/assets/shim/pfm.zsh` is the thin post-cutover wrapper (`shim/` holds only its tests). `testdata/` holds `claude-store/ codex-store/ crumbs/ proc/ golden/` plus the reference harness `e2e.sh`.
+
+## Platforms
+
+`internal/deps.Registry` is the single place a platform difference is declared. An entry with no `Platforms` field applies everywhere; a gated entry is skipped on any other OS, and `deps.Resolve` REFUSES a gated name off-platform even when the binary is present on PATH — so a gate is a capability claim, not a hint.
+
+Platform-gated entries:
+
+| Dependency | Platform | Required | Purpose |
+| --- | --- | --- | --- |
+| `ps` | darwin | yes | process-table inspection |
+| `lsof` | darwin | yes | open-file inspection |
+| `launchctl` | darwin | yes | launch-agent wiring |
+| `setsid` | linux | yes | detached helper processes |
+| `systemctl` | linux | no | user-service wiring |
+| `systemd-run` | linux | no | durable chat scopes from user services |
+| `nohup` | linux, darwin | no | detach fallback where `setsid` is absent |
+| `uv` | linux, darwin | yes | provisioned harvestpy package verifier |
+| `harvestpy` | linux, darwin | yes | provisioned harvestpy interpreter |
+
+Everything else (`tmux`, `git`, `sh`, `bash`, `zsh`, `sleep`, `script`, `go`) is ungated and must work identically on both.
+
+Two rules follow from the table:
+
+- A fallback's gate must cover every platform that reaches it. `setsid` is linux-only, so darwin is the only platform that ever takes the `nohup` branch — gating `nohup` to linux would make the fallback unreachable exactly where it is needed.
+- Gate on the binary's real availability, and give an entry `VersionArgs` only if every gated platform's build accepts them. BSD and GNU builds of the same name diverge: `nohup --version` is a GNU extension that BSD `nohup` rejects, so a version probe there reports a working binary as broken.
 
 ## Code Standards
 
